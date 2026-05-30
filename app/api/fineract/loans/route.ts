@@ -3,8 +3,15 @@ import { getSession } from "@/lib/auth";
 import { getSession as getCustomSession } from "@/app/actions/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSearchHeaders } from "@/lib/fineract-search-auth";
+import { prisma } from "@/lib/prisma";
+import { sendLoanStatusSms } from "@/lib/notification-service";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
+
+type AccessTokenSession = {
+  base64EncodedAuthenticationKey?: string;
+  accessToken?: string;
+};
 
 function sanitizeCreateLoanPayload(body: Record<string, unknown>) {
   const sanitized = { ...body };
@@ -23,7 +30,7 @@ function sanitizeCreateLoanPayload(body: Record<string, unknown>) {
  */
 async function getAccessToken(): Promise<string | undefined> {
   try {
-    const nextAuthSession = (await getSession()) as any;
+    const nextAuthSession = (await getSession()) as AccessTokenSession;
     // Check for base64EncodedAuthenticationKey first (Fineract format), then accessToken
     if (nextAuthSession?.base64EncodedAuthenticationKey) {
       return nextAuthSession.base64EncodedAuthenticationKey;
@@ -32,7 +39,7 @@ async function getAccessToken(): Promise<string | undefined> {
       return nextAuthSession.accessToken;
     }
 
-    const customSession = (await getCustomSession()) as any;
+    const customSession = (await getCustomSession()) as AccessTokenSession;
     if (customSession?.base64EncodedAuthenticationKey) {
       return customSession.base64EncodedAuthenticationKey;
     }
@@ -283,6 +290,55 @@ export async function POST(request: NextRequest) {
 
     const result = await response.json();
     console.log("Loan created successfully:", result);
+
+    // Best-effort SMS for the contract-tab final submit flow.
+    // This only runs when we can resolve the originating lead from externalId.
+    void (async () => {
+      const leadId =
+        typeof body?.externalId === "string" ? body.externalId.trim() : "";
+
+      if (!leadId) {
+        return;
+      }
+
+      const lead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: {
+          firstname: true,
+          middlename: true,
+          lastname: true,
+          mobileNo: true,
+          countryCode: true,
+          tenantId: true,
+        },
+      });
+
+      if (!lead?.mobileNo) {
+        return;
+      }
+
+      const tenant = lead.tenantId
+        ? await prisma.tenant.findUnique({
+            where: { id: lead.tenantId },
+            select: { slug: true },
+          })
+        : null;
+
+      const clientName = [lead.firstname, lead.middlename, lead.lastname]
+        .filter(Boolean)
+        .join(" ");
+
+      await sendLoanStatusSms({
+        type: "pending_approval",
+        clientName: clientName || "Customer",
+        phone: lead.mobileNo,
+        countryCode: lead.countryCode,
+        amount: Number(body?.principal) || 0,
+        tenantId: tenant?.slug,
+      });
+    })().catch((smsError) => {
+      console.error("Failed to send pending-approval SMS:", smsError);
+    });
 
     return NextResponse.json({ success: true, data: result });
   } catch (error) {

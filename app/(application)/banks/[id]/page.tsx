@@ -13,6 +13,7 @@ import {
   TrendingUp,
   TrendingDown,
   Edit,
+  Wallet,
 } from "lucide-react";
 import {
   Card,
@@ -178,6 +179,12 @@ export default function BankDetailsPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link href={`/banks/${id}/transactions`}>
+            <Button variant="outline" size="sm">
+              <Wallet className="h-4 w-4 mr-2" />
+              Transactions
+            </Button>
+          </Link>
           <Button variant="outline" size="sm" onClick={() => setEditModalOpen(true)}>
             <Edit className="h-4 w-4 mr-2" />
             Edit
@@ -449,4 +456,3 @@ export default function BankDetailsPage({
     </div>
   );
 }
-

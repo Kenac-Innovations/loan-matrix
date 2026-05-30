@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSession } from "@/lib/auth";
+import { hasSuperAdminServer } from "@/lib/authorization";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { prisma } from "@/lib/prisma";
 import { ClientDetails } from "./components/client-details";
@@ -135,7 +136,7 @@ async function getClientImage(clientId: number): Promise<string | null> {
     let imageData: string | ImagePayload;
 
     if (contentType?.includes("application/json")) {
-      imageData = await response.json();
+      imageData = (await response.json()) as ClientImageResponse;
     } else {
       imageData = await response.text();
     }
@@ -155,13 +156,21 @@ async function getClientImage(clientId: number): Promise<string | null> {
       } else if (isBase64Like(imageData)) {
         return `data:image/jpeg;base64,${imageData}`;
       }
-    } else if (imageData?.imageData) {
+    } else if (
+      typeof imageData === "object" &&
+      imageData !== null &&
+      imageData.imageData
+    ) {
       if (imageData.imageData.startsWith("data:image/")) {
         return imageData.imageData;
       } else if (isBase64Like(imageData.imageData)) {
         return `data:image/jpeg;base64,${imageData.imageData}`;
       }
-    } else if (imageData?.base64EncodedImage) {
+    } else if (
+      typeof imageData === "object" &&
+      imageData !== null &&
+      imageData.base64EncodedImage
+    ) {
       if (imageData.base64EncodedImage.startsWith("data:image/")) {
         return imageData.base64EncodedImage;
       } else if (isBase64Like(imageData.base64EncodedImage)) {
@@ -369,10 +378,11 @@ export default async function ClientDetailPage({ params }: PageProps) {
   }
 
   // Fetch all data server-side in parallel
-  const [client, clientImage, datatables] = await Promise.all([
+  const [client, clientImage, datatables, canEditClient] = await Promise.all([
     getClientData(clientId),
     getClientImage(clientId),
     getDatatables(),
+    hasSuperAdminServer(),
   ]);
 
   // Fetch datatable data after we have the datatables list
@@ -409,6 +419,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
         clientId={clientId}
         client={client}
         clientImage={clientImage}
+        canEditClient={canEditClient}
       />
 
       {/* Client Overview Cards */}

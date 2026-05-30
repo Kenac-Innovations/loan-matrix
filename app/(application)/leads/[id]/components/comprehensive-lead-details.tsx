@@ -606,7 +606,7 @@ export function ComprehensiveLeadDetails({
             </Dialog>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-muted-foreground" />
                 <span>{phoneNumber}</span>
@@ -1141,7 +1141,7 @@ export function ComprehensiveLeadDetails({
                           <h4 className="text-sm font-semibold text-foreground border-b pb-2">
                             Principal
                           </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
                               <p className="text-xs text-muted-foreground">
                                 Disbursed
@@ -1196,7 +1196,7 @@ export function ComprehensiveLeadDetails({
                           <h4 className="text-sm font-semibold text-foreground border-b pb-2">
                             Interest
                           </h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
                               <p className="text-xs text-muted-foreground">
                                 Charged
@@ -1256,7 +1256,7 @@ export function ComprehensiveLeadDetails({
                             <h4 className="text-sm font-semibold text-foreground border-b pb-2">
                               Charges
                             </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4">
                               {fineractLoan.summary.feeChargesCharged > 0 && (
                                 <>
                                   <div>
@@ -1434,7 +1434,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Loan Timeline</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       {fineractLoan.timeline.submittedOnDate && (
                         <div>
                           <p className="text-sm text-muted-foreground">
@@ -1618,7 +1618,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Credit Scoring</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Credit Score
@@ -1703,7 +1703,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Affordability Assessment</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">
                           DTI Ratio
@@ -1778,7 +1778,7 @@ export function ComprehensiveLeadDetails({
                     <CardTitle>Pricing & Risk Assessment</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <p className="text-sm text-muted-foreground">APR</p>
                         <p className="text-2xl font-bold text-red-600">
@@ -2084,7 +2084,7 @@ export function ComprehensiveLeadDetails({
                 {fineractLoan.repaymentSchedule.periods && (
                   <div className="space-y-4">
                     {/* Summary */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-lg">
                       <div>
                         <p className="text-xs text-muted-foreground">
                           Total Principal

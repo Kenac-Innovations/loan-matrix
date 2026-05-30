@@ -284,10 +284,7 @@ export default function ReportDetailPage() {
     }
   };
 
-  const loadParameterOptions = async (
-    params: ReportParameter[],
-    currentParamValues: Record<string, string> = {}
-  ) => {
+  const loadParameterOptions = async (params: ReportParameter[]) => {
     const options: Record<string, ParameterOption[]> = {};
 
     for (const param of params) {
@@ -315,7 +312,9 @@ export default function ReportDetailPage() {
             ...fetchParams,
           });
           const response = await fetch(
-            `/api/fineract/reports?${searchParams.toString()}`
+            `/api/fineract/reports?action=parameterOptions&parameterName=${encodeURIComponent(
+              param.parameter_name
+            )}`
           );
           if (response.ok) {
             const optionData = await response.json();

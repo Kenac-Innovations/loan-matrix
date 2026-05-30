@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
-import { getFineractErrorMessage } from "@/lib/fineract-error";
 
 export async function GET(
   request: NextRequest,
@@ -16,10 +15,12 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching credit balance refund template:", error);
-    const status = error.status || 500;
+    if (error.status && error.errorData) {
+      return NextResponse.json(error.errorData, { status: error.status });
+    }
     return NextResponse.json(
-      { error: getFineractErrorMessage(error) },
-      { status }
+      { error: error.message || "Failed to fetch credit balance refund template" },
+      { status: 500 }
     );
   }
 }

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import {
+  buildTellerVaultTransactions,
+  summarizeTellerVaultTransactions,
+} from "@/lib/teller-vault-transactions";
 
 /**
  * GET /api/tellers/[id]/transactions
@@ -50,77 +54,35 @@ export async function GET(
       // Continue without user names - will fall back to IDs
     }
 
-    // Get all cash allocations for this teller's vault (cashierId = null)
-    const allVaultAllocations = await prisma.cashAllocation.findMany({
+    // Get all teller-linked allocations so the vault history can include:
+    // - direct vault movements (cashierId = null)
+    // - cash allocated from the vault to cashier drawers (cashierId != null, shown as outflows)
+    const allTellerAllocations = await prisma.cashAllocation.findMany({
       where: {
         tellerId: teller.id,
         tenantId: tenant.id,
-        cashierId: null, // Only vault allocations
       },
       orderBy: { allocatedDate: "asc" }, // Chronological order
     });
 
-    // Exclude loan disbursements: money for disbursements leaves the cashier till, not the vault.
-    // Any vault allocation with "loan disbursement" is incorrect and should not appear in vault history.
-    const allocations = allVaultAllocations.filter(
-      (a) =>
-        !a.notes?.toLowerCase().includes("loan disbursement") &&
-        !a.notes?.toLowerCase().includes("disbursement (cash out)")
+    const transactionsWithBalance = buildTellerVaultTransactions(allTellerAllocations).map(
+      (tx) => {
+        // Get user name from map, or use special labels for system entries
+        let allocatedByName = tx.allocatedBy;
+        if (tx.allocatedBy === "SYSTEM-IMPORT") {
+          allocatedByName = "System Import";
+        } else if (userMap[tx.allocatedBy]) {
+          allocatedByName = userMap[tx.allocatedBy];
+        }
+
+        return {
+          ...tx,
+          allocatedByName,
+        };
+      }
     );
-
-    // Calculate running balance
-    let runningBalance = 0;
-    const transactionsWithBalance = allocations.map((alloc) => {
-      runningBalance += alloc.amount;
-      
-      // Determine transaction type based on notes and allocatedBy
-      let transactionType = "ALLOCATION";
-      if (alloc.notes?.toLowerCase().includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") {
-        transactionType = "OPENING_BALANCE";
-      } else if (alloc.notes?.toLowerCase().includes("settlement") || alloc.notes?.toLowerCase().includes("returned")) {
-        transactionType = "SETTLEMENT_RETURN";
-      } else if (alloc.notes?.toLowerCase().includes("variance")) {
-        transactionType = "VARIANCE_ADJUSTMENT";
-      }
-
-      // Get user name from map, or use special labels for system entries
-      let allocatedByName = alloc.allocatedBy;
-      if (alloc.allocatedBy === "SYSTEM-IMPORT") {
-        allocatedByName = "System Import";
-      } else if (userMap[alloc.allocatedBy]) {
-        allocatedByName = userMap[alloc.allocatedBy];
-      }
-
-      return {
-        id: alloc.id,
-        date: alloc.allocatedDate,
-        amount: alloc.amount,
-        currency: alloc.currency,
-        type: transactionType,
-        notes: alloc.notes,
-        allocatedBy: alloc.allocatedBy,
-        allocatedByName,
-        status: alloc.status,
-        runningBalance,
-      };
-    });
-
-    // Summary
-    const openingBalance = transactionsWithBalance
-      .filter((t) => t.type === "OPENING_BALANCE")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const allocationsFromBank = transactionsWithBalance
-      .filter((t) => t.type === "ALLOCATION")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const settlementReturns = transactionsWithBalance
-      .filter((t) => t.type === "SETTLEMENT_RETURN")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const varianceAdjustments = transactionsWithBalance
-      .filter((t) => t.type === "VARIANCE_ADJUSTMENT")
-      .reduce((sum, t) => sum + t.amount, 0);
+    const summary = summarizeTellerVaultTransactions(transactionsWithBalance);
+    const transactionsNewestFirst = [...transactionsWithBalance].reverse();
 
     return NextResponse.json({
       teller: {
@@ -128,15 +90,8 @@ export async function GET(
         name: teller.name,
         fineractTellerId: teller.fineractTellerId,
       },
-      summary: {
-        openingBalance,
-        allocationsFromBank,
-        settlementReturns,
-        varianceAdjustments,
-        currentBalance: runningBalance,
-        transactionCount: transactionsWithBalance.length,
-      },
-      transactions: transactionsWithBalance,
+      summary,
+      transactions: transactionsNewestFirst,
     });
   } catch (error) {
     console.error("Error fetching teller transactions:", error);

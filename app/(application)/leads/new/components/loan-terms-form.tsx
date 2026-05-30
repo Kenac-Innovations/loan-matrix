@@ -3402,23 +3402,7 @@ export function LoanTermsForm({
                   <Select
                     onValueChange={(val) => {
                       field.onChange(val);
-                      const repaymentId = repaymentFrequencyIdForTermFrequencySelection(
-                        val,
-                        loanTemplate.termFrequencyTypeOptions,
-                        loanTemplate.repaymentFrequencyTypeOptions
-                      );
-                      if (repaymentId) {
-                        form.setValue("repaymentFrequency", repaymentId, {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        });
-                        updateFrequencyValues({
-                          termFrequency: val,
-                          repaymentFrequency: repaymentId,
-                        });
-                      } else {
-                        updateFrequencyValues({ termFrequency: val });
-                      }
+                      updateFrequencyValues({ termFrequency: val });
                     }}
                     value={field.value || ""}
                     disabled={!canEditLoan}
@@ -4284,7 +4268,7 @@ export function LoanTermsForm({
                   <CardTitle>Charges</CardTitle>
                   <CardDescription>
                     {isChargesStructureReadOnly
-                      ? "Edit charge amounts only. Adding or removing charges and due dates is fixed for this product."
+                      ? "View loan charges and fees. Charges cannot be modified."
                       : "Manage loan charges and fees. Add, remove, or edit charges and their due dates."}
                   </CardDescription>
                   {!isInvoiceDiscountingLead && topupTakeHomePreview && (

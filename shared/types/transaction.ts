@@ -3,6 +3,7 @@ export interface Transaction {
     officeName: string;
     externalId?: string;
     date?: number[];
+    manuallyReversed?: boolean;
     type?: {
       value: string;
       disbursement?: boolean;
@@ -28,3 +29,4 @@ export interface Transaction {
       };
     }>;
   }
+

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fetchFineractAPI } from '@/lib/api';
 import { format } from 'date-fns';
+import { sendLoanStatusSms } from '@/lib/notification-service';
 
 /**
  * POST /api/ussd-leads/[id]/submit
@@ -19,10 +20,15 @@ export async function POST(
     }
 
     // Optional payload from caller (leadId override for externalId)
-    let incoming: any = {};
+    let incoming: Record<string, unknown> = {};
     try {
-      incoming = await request.json();
-    } catch {}
+      const parsed = await request.json();
+      if (parsed && typeof parsed === "object") {
+        incoming = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Ignore malformed optional payloads.
+    }
 
     // Load application by loanApplicationUssdId
     const app = await prisma.ussdLoanApplication.findFirst({
@@ -46,15 +52,23 @@ export async function POST(
     // Align with client's activation date to satisfy domain rule
     if (app.loanMatrixClientId) {
       try {
-        const client = await fetchFineractAPI(`/clients/${app.loanMatrixClientId}`);
-        const activationArr = client?.timeline?.activationDate as number[] | undefined;
+        const client = await fetchFineractAPI(
+          `/clients/${app.loanMatrixClientId}`
+        );
+        const activationArr = client?.timeline?.activationDate as
+          | number[]
+          | undefined;
         if (Array.isArray(activationArr) && activationArr.length >= 3) {
           const [y, m, d] = activationArr;
-          let activationDate = new Date(y as number, (m as number) - 1, d as number);
+          let activationDate = new Date(
+            y as number,
+            (m as number) - 1,
+            d as number
+          );
           activationDate = coerceValidDate(activationDate);
           if (baseDate < activationDate) baseDate = activationDate;
         }
-      } catch (e) {
+      } catch {
         // If we can't load client, continue with current baseDate
       }
     }
@@ -79,7 +93,7 @@ export async function POST(
     const repaymentEvery = 1; // months per installment
     const loanTermFrequency = clampedRepayments * repaymentEvery; // align term with repayments
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       clientId: app.loanMatrixClientId,
       productId: app.loanMatrixLoanProductId,
       principal: app.principalAmount,
@@ -102,7 +116,7 @@ export async function POST(
       // then fall back to referenceNumber or messageId
       externalId:
         (app.id ? String(app.id) : undefined) ||
-        (incoming?.leadId ? String(incoming.leadId) : undefined) ||
+        (typeof incoming.leadId === "string" ? incoming.leadId : undefined) ||
         app.referenceNumber ||
         app.messageId ||
         undefined,
@@ -140,19 +154,45 @@ export async function POST(
         console.error('Failed to update loan external ID:', updateError);
         // Don't fail the entire operation if external ID update fails
       }
+
+      // Send SMS: loan submitted, pending approval (best-effort)
+      // if (app.userPhoneNumber) {
+      //   void (async () => {
+      //     const tenant = await prisma.tenant.findUnique({
+      //       where: { id: app.tenantId },
+      //       select: { slug: true },
+      //     });
+      //     await sendLoanStatusSms({
+      //       type: "pending_approval",
+      //       clientName: app.userFullName || "Customer",
+      //       phone: app.userPhoneNumber,
+      //       amount: Number(app.principalAmount) || 0,
+      //       tenantId: tenant?.slug,
+      //     });
+      //   })().catch((smsError) => {
+      //     console.error("Failed to send pending-approval SMS:", smsError);
+      //   });
+      // }
     }
 
     return NextResponse.json({ success: true, coreResponse: result });
-  } catch (error: any) {
-    console.error('Error creating loan from USSD application:', error);
-    if (error.status && error.errorData) {
+  } catch (error: unknown) {
+    type LoanCreationError = {
+      status?: number;
+      errorData?: {
+        defaultUserMessage?: string;
+        errors?: Array<{ defaultUserMessage?: string }>;
+      };
+      message?: string;
+    };
+    const loanCreationError = error as LoanCreationError;
+    console.error('Error creating loan from USSD application:', loanCreationError);
+    if (loanCreationError.status && loanCreationError.errorData) {
       return NextResponse.json(
-        { error: error.message, status: error.status, errorData: error.errorData },
-        { status: error.status }
+        { error: loanCreationError.message, status: loanCreationError.status, errorData: loanCreationError.errorData },
+        { status: loanCreationError.status }
       );
     }
-    return NextResponse.json({ error: error.message || 'Unknown error' }, { status: 500 });
+    return NextResponse.json({ error: loanCreationError.message || 'Unknown error' }, { status: 500 });
   }
 }
-
-

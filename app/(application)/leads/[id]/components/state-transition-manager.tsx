@@ -61,7 +61,6 @@ interface AvailableTransition {
   skipToStageColor?: string | null;
   skipToFineractAction?: string | null;
   skippedActions?: { stageName: string; action: string }[];
-  skipToFineractAction?: string | null;
   receivingTeam: {
     id: string;
     name: string;

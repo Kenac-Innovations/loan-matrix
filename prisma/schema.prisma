@@ -24,11 +24,13 @@ model Tenant {
   leads                  Lead[]
   leadCommunications     LeadCommunication[]
   leadDocuments          LeadDocument[]
+  fineractDocumentUploads FineractDocumentUpload[]
   pipelineStages         PipelineStage[]
   slaConfigs             SLAConfig[]
   teams                  Team[]
   validationRules        ValidationRule[]
   receiptRanges          ReceiptRange[]
+  repaymentCashLinks     RepaymentCashLink[]
   usedReceipts           UsedReceipt[]
   loanContractTemplates  LoanContractTemplate[]
   requiredDocuments      RequiredDocument[]
@@ -427,7 +429,6 @@ model ValidationRule {
   severity        String         @default("warning")
   enabled         Boolean        @default(true)
   order           Int            @default(0)
-  tab             String?        // Which tab this validation appears on: details, documents, communication, appraisal, notes
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: Cascade)
@@ -435,7 +436,6 @@ model ValidationRule {
 
   @@index([tenantId, enabled])
   @@index([tenantId, pipelineStageId])
-  @@index([tenantId, tab])
 }
 
 model SLAConfig {
@@ -464,8 +464,8 @@ model Team {
   name               String
   description        String?
   pipelineStageIds   String[]
-  assignmentStrategy String       @default("round_robin") // round_robin | least_loaded | manual | specific_member
-  assignmentConfig   Json?        // e.g. { specificMemberId: "...", lastAssignedIndex: 0 }
+  assignmentStrategy String       @default("round_robin")
+  assignmentConfig   Json?
   isActive           Boolean      @default(true)
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
@@ -728,6 +728,23 @@ model FineractDocument {
   @@index([fineractId])
 }
 
+model FineractDocumentUpload {
+  id               String   @id @default(cuid())
+  tenantId         String
+  entityType       String
+  entityId         Int
+  documentId       Int
+  fineractUserId   Int
+  username         String
+  documentSavedAt  DateTime @default(now())
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, documentId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, fineractUserId])
+  @@index([tenantId, documentSavedAt])
+}
+
 model FineractDataCache {
   id          String   @id @default(cuid())
   endpoint    String
@@ -889,6 +906,7 @@ model Teller {
   bank             Bank?            @relation(fields: [bankId], references: [id])
   cashAllocations  CashAllocation[]
   cashiers         Cashier[]
+  repaymentCashLinks RepaymentCashLink[]
   settlements      CashSettlement[]
   sessions         CashierSession[]
 
@@ -916,6 +934,7 @@ model Cashier {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   teller            Teller           @relation(fields: [tellerId], references: [id], onDelete: Cascade)
+  repaymentCashLinks RepaymentCashLink[]
   settlements       CashSettlement[]
   sessions          CashierSession[]
   cashAllocations   CashAllocation[]
@@ -1135,6 +1154,7 @@ model BulkRepaymentUpload {
   queuedCount   Int                  @default(0)
   successCount  Int                  @default(0)
   failedCount   Int                  @default(0)
+  reversedCount Int                  @default(0)
   totalAmount   Decimal              @default(0) @db.Decimal(19, 4)
   columnMapping Json?
   createdAt     DateTime             @default(now())
@@ -1163,15 +1183,59 @@ model BulkRepaymentItem {
   bankNumber      String?
   note            String?
   transactionDate DateTime?
-  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED
+  status          String              @default("STAGED") // STAGED, QUEUED, PROCESSING, SUCCESS, FAILED, REVERSED
   errorMessage    String?
   fineractTxnId   String?
   processedAt     DateTime?
+  reversalStatus  String?
+  reversalErrorMessage String?
+  reversedAt      DateTime?
+  reversedBy      String?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
   @@index([uploadId, status])
+  @@index([uploadId, reversalStatus])
   @@index([loanId])
+}
+
+model LoanEligibilityUpload {
+  id                String                    @id @default(cuid())
+  tenantId          String
+  fileName          String
+  productExternalId String
+  productName       String
+  uploadedBy        String
+  status            String                    @default("STAGING") // STAGING, SYNCING, SYNCED, FAILED
+  totalRows         Int                       @default(0)
+  syncedRows        Int                       @default(0)
+  failedRows        Int                       @default(0)
+  syncError         String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  items             LoanEligibilityUploadItem[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, productExternalId])
+  @@index([tenantId, status])
+}
+
+model LoanEligibilityUploadItem {
+  id              String              @id @default(cuid())
+  uploadId        String
+  upload          LoanEligibilityUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  rowNumber       Int
+  name            String
+  nrc             String
+  phone           String
+  normalizedPhone String
+  status          String              @default("PENDING") // PENDING, SYNCED, FAILED
+  errorMessage    String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([uploadId, status])
+  @@index([uploadId, normalizedPhone])
 }
 
 model ReceiptRange {
@@ -1213,6 +1277,46 @@ model UsedReceipt {
 
   @@unique([tenantId, receiptNumber])
   @@index([tenantId])
+}
+
+model RepaymentCashLink {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  fineractTransactionId Int
+  loanId                Int
+  transactionType       String    @default("REPAYMENT") // REPAYMENT, RECOVERY_REPAYMENT
+  amount                Float
+  currency              String    @default("ZMW")
+  tellerId              String?
+  cashierId             String?
+  fineractAllocationId  Int?
+  isCash                Boolean   @default(false)
+  linkedAt              DateTime  @default(now())
+  reversedAt            DateTime?
+  reversalNotes         String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  teller                Teller?   @relation(fields: [tellerId], references: [id], onDelete: SetNull)
+  cashier               Cashier?  @relation(fields: [cashierId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, fineractTransactionId])
+  @@index([tenantId, loanId])
+  @@index([tenantId, tellerId])
+  @@index([tenantId, cashierId])
+  @@index([tenantId, transactionType])
+  @@index([tenantId, isCash])
+  @@index([tenantId, fineractAllocationId])
+}
+
+model UserSignature {
+  id              String   @id @default(cuid())
+  fineractUserId  Int      @unique
+  signatureData   String   @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([fineractUserId])
 }
 
 enum RevolvingCreditDrawdownStatus {

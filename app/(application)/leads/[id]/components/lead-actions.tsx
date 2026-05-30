@@ -70,7 +70,7 @@ export function LeadActions({
 
   return (
     <div className="flex flex-wrap gap-2 items-center">
-      {payoutStatus === "PAID" && (
+      {isDisbursed && payoutStatus === "PAID" && (
         <Badge className="bg-green-100 text-green-800 border-green-200 flex items-center gap-1">
           <CheckCircle className="h-3 w-3" />
           Paid Out

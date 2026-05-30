@@ -15,7 +15,7 @@ import {
  * Fetch loan status reports from Fineract or local DB
  * 
  * Query params:
- * - report: "drafts" | "pending" | "approved" | "rejected" | "disbursed"
+ * - report: "drafts" | "pending" | "approved" | "rejected" | "disbursed" | "payout"
  * - startDate: YYYY-MM-DD
  * - endDate: YYYY-MM-DD
  */
@@ -91,18 +91,22 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Payout = disbursed loans that have been paid out (payout status PAID). Fetched via disbursed then filtered.
+    const isPayoutReport = report === "payout";
+
     // Map report type to Fineract report name
     const reportNames: Record<string, string> = {
       pending: "system submitted pending approval",
       approved: "system approved pending disbursement",
       rejected: "system loans rejected",
       disbursed: "system disbursed",
+      payout: "system disbursed", // same source, filter to PAID only below
     };
 
     const reportName = reportNames[report];
     if (!reportName) {
       return NextResponse.json(
-        { error: "Invalid report type. Use: drafts, pending, approved, rejected, or disbursed" },
+        { error: "Invalid report type. Use: drafts, pending, approved, rejected, disbursed, or payout" },
         { status: 400 }
       );
     }
@@ -125,9 +129,28 @@ export async function GET(request: NextRequest) {
 
     console.log(`Report ${reportName} parsed ${result.length} rows`);
 
-    // Enrich with local lead IDs and payout status by looking up via fineractLoanId
+    // Enrich with local lead IDs, creator names, and payout status by looking up via fineractLoanId
     if (result.length > 0) {
       if (tenant) {
+        let userMap: Record<string, { name: string; office: string }> = {};
+        try {
+          const users = await fineractService.getUsers();
+          users.forEach((user: any) => {
+            const displayName =
+              [user.firstname, user.lastname].filter(Boolean).join(" ") ||
+              user.displayName ||
+              user.username ||
+              `User ${user.id}`;
+
+            userMap[String(user.id)] = {
+              name: displayName,
+              office: user.officeName || "",
+            };
+          });
+        } catch (err) {
+          console.error("Error fetching Fineract users:", err);
+        }
+
         // Extract loan IDs and external IDs (lead IDs) from the report data
         const loanIds = result
           .map((row: any) => row.loan_id)
@@ -149,6 +172,8 @@ export async function GET(request: NextRequest) {
             select: {
               id: true,
               fineractLoanId: true,
+              userId: true,
+              createdByUserName: true,
               preferredPaymentMethod: true,
               facilityType: true,
             },
@@ -162,7 +187,7 @@ export async function GET(request: NextRequest) {
             leads.map((lead) => [lead.id, lead])
           );
 
-          // For disbursed report, fetch payout statuses and payment methods
+          // For disbursed or payout report, fetch payout statuses; for payout only, also payment method
           // Use fineractLoanId from matched leads as well (in case Fineract report has no loan_id column)
           const allFineractLoanIds = [
             ...loanIds.map((id: any) => Number(id)),
@@ -211,7 +236,7 @@ export async function GET(request: NextRequest) {
             return u === "CASH" || u === "MOBILE_MONEY" || u === "BANK_TRANSFER" || v === "Mobile" || v === "Cash" || v === "Bank Transfer";
           };
 
-          // Add lead_id, payout_status, payment_type, and fix branch when it shows payment type
+          // Add lead_id, payout_status, payment_type (dedicated column), and fix branch when it shows payment type
           result = result.map((row: any) => {
             const rowLoanId = row.loan_id != null ? Number(row.loan_id) : null;
             const rowExternalId = row.external_id || row.client_external_id || null;
@@ -225,12 +250,17 @@ export async function GET(request: NextRequest) {
             const resolvedLeadId = resolvedLead?.id || null;
             const resolvedFineractLoanId = resolvedLead?.fineractLoanId ?? rowLoanId;
             const fromLead = resolvedLead?.preferredPaymentMethod ?? null;
-            const fromPayout = report === "disbursed" && resolvedFineractLoanId
+            const fromPayout = (report === "disbursed" || report === "payout") && resolvedFineractLoanId
               ? payoutPaymentMethodMap.get(resolvedFineractLoanId) : null;
             const rawPaymentType = fromLead || fromPayout || null;
             const paymentTypeLabel = rawPaymentType
               ? (PAYMENT_TYPE_LABELS[String(rawPaymentType).toUpperCase().replace(/\s+/g, "_")] || rawPaymentType)
               : null;
+            const originatorName =
+              resolvedLead?.createdByUserName ||
+              (resolvedLead?.userId ? userMap[String(resolvedLead.userId)]?.name : null) ||
+              resolvedLead?.userId ||
+              null;
 
             const enrichedRow: any = {
               ...row,
@@ -239,7 +269,11 @@ export async function GET(request: NextRequest) {
               facility_type: resolvedLead?.facilityType ?? null,
             };
 
-            if (report === "disbursed") {
+            if (originatorName) {
+              enrichedRow.created_by = originatorName;
+            }
+
+            if (report === "disbursed" || report === "payout") {
               enrichedRow.payout_status = resolvedFineractLoanId
                 ? (payoutStatusMap.get(resolvedFineractLoanId) || "PENDING")
                 : "PENDING";

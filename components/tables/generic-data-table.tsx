@@ -624,7 +624,7 @@ export function GenericDataTable<TData>({
       </div>
 
       {/* Table Container - Single scroll container */}
-      <div className="flex-1 min-h-0 rounded-md border overflow-x-auto">
+      <div className="flex-1 min-h-0 rounded-md border overflow-visible">
         <Table className="min-w-full">
           <TableHeader className="sticky top-0 bg-background z-10">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -717,7 +717,7 @@ export function GenericDataTable<TData>({
                     <SelectValue placeholder={table.getState().pagination.pageSize} />
                   </SelectTrigger>
                   <SelectContent>
-                    {[10, 20, 30, 40, 50].map((pageSize) => (
+                    {[10, 25, 50, 100].map((pageSize) => (
                       <SelectItem key={pageSize} value={`${pageSize}`}>
                         {pageSize}
                       </SelectItem>

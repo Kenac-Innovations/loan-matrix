@@ -1,11 +1,24 @@
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { LeadTimeline } from "./components/lead-timeline";
+import { LeadDetails } from "./components/lead-details";
+import { ComprehensiveLeadDetails } from "./components/comprehensive-lead-details";
+import { LeadDocuments } from "./components/lead-documents";
 import { LeadActions } from "./components/lead-actions";
 import { RcfLeadActions } from "./components/rcf-lead-actions";
 import { LeadSidebar } from "./components/lead-sidebar";
 import StateTransitionManager from "./components/state-transition-manager";
-import { LeadMoreActions } from "./components/lead-more-actions";
 import { LeadDetailTabs } from "./components/lead-detail-tabs";
+import { LeadMoreActions } from "./components/lead-more-actions";
+import { LeadAdditionalInfo } from "./components/lead-additional-info";
 import {
   ArrowLeft,
   Landmark,
@@ -15,6 +28,11 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
 import { extractTenantSlug } from "@/lib/tenant-service";
@@ -469,10 +487,10 @@ export default async function LeadDetailPage({
   const rcfApproved = isRcfLead && !!(lead as any).revolving;
 
   return (
-    <div className={`-m-4 p-4 sm:-m-6 sm:p-6 min-h-screen ${pageHue}`}>
-      <div className="space-y-3 sm:space-y-4">
+    <div className={`-m-6 p-6 min-h-screen ${pageHue}`}>
+      <div className="space-y-4">
         {/* Breadcrumbs */}
-        <nav className="flex items-center space-x-2 text-xs sm:text-sm text-muted-foreground bg-muted/30 px-3 py-2 sm:px-4 sm:py-3 rounded-lg overflow-x-auto">
+        <nav className="flex items-center space-x-2 text-sm text-muted-foreground bg-muted/30 px-4 py-3 rounded-lg">
           <Link href="/" className="hover:text-foreground transition-colors">
             Home
           </Link>
@@ -744,7 +762,7 @@ export default async function LeadDetailPage({
             hasCreditFacility={hasCreditFacility}
           />
         </div>
-        <div className="mt-0 lg:mt-10">
+        <div className="mt-10">
           <LeadSidebar leadId={id} />
         </div>
       </div>

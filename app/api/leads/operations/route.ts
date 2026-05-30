@@ -52,8 +52,12 @@ async function resolveCurrentTenant(tx?: any, req?: Request) {
   return fallbackTenant;
 }
 
-// Resolve the initial pipeline stage for a tenant (used when creating new leads)
-async function getInitialStageId(tenantId: string, tx?: any): Promise<string | null> {
+// Resolve the initial pipeline stage for a tenant so newly created leads enter
+// the workflow immediately instead of being left without a current stage.
+async function getInitialStageId(
+  tenantId: string,
+  tx?: any
+): Promise<string | null> {
   const db = tx || prisma;
   const stage = await db.pipelineStage.findFirst({
     where: { tenantId, isInitialState: true, isActive: true },
@@ -1764,8 +1768,6 @@ async function handleUpdateClient(data: any, leadId?: string) {
             throw new Error("User not authenticated");
           }
           const userId = session.user.id;
-
-          // Resolve initial pipeline stage for this tenant
           const initialStageId = await getInitialStageId(currentTenant.id, tx);
 
           // Create a new lead record

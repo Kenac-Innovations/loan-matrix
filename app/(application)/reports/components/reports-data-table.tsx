@@ -35,28 +35,20 @@ export function ReportsDataTable({
   // Get unique values for filters
   const categories = useMemo(() => {
     const uniqueCategories = Array.from(
-      new Set(
-        reports
-          .map((report) => report.reportCategory)
-          .filter((c): c is string => c != null && c !== "")
-      )
+      new Set(reports.map((report) => report.reportCategory))
     );
     return uniqueCategories.sort();
   }, [reports]);
 
   const types = useMemo(() => {
     const uniqueTypes = Array.from(
-      new Set(
-        reports
-          .map((report) => report.reportType)
-          .filter((t): t is string => t != null && t !== "")
-      )
+      new Set(reports.map((report) => report.reportType))
     );
     return uniqueTypes.sort();
   }, [reports]);
 
-  const getCategoryIcon = (category: string | undefined) => {
-    switch ((category ?? "").toLowerCase()) {
+  const getCategoryIcon = (category: string) => {
+    switch (category.toLowerCase()) {
       case "client":
         return Users;
       case "loan":
@@ -68,8 +60,8 @@ export function ReportsDataTable({
     }
   };
 
-  const getCategoryColor = (category: string | undefined) => {
-    switch ((category ?? "").toLowerCase()) {
+  const getCategoryColor = (category: string) => {
+    switch (category.toLowerCase()) {
       case "client":
         return "bg-blue-500/20 text-blue-500";
       case "loan":
@@ -129,10 +121,10 @@ export function ReportsDataTable({
       header: "Type",
       accessorKey: "reportType",
       cell: ({ getValue }) => {
-        const type = getValue() as string | undefined;
+        const type = getValue() as string;
         return (
           <Badge variant="outline" className="text-xs">
-            {type ?? "-"}
+            {type}
           </Badge>
         );
       },

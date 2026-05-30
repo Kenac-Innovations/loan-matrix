@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import {
-  Dialog,
+  Dialog, 
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -13,59 +12,76 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 interface EditCashierModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tellerId: string;
   cashier: {
-    id: number;
-    dbId?: string;
+    id: string | number;
+    dbId?: string | null;
     staffId: number;
     staffName: string;
     startDate: string | Date | number[];
     endDate?: string | Date | number[] | null;
-    isFullDay?: boolean;
-    startTime?: string | null;
-    endTime?: string | null;
   };
+  onSuccess?: () => void;
 }
+
+const toDateInputValue = (
+  date: string | Date | number[] | null | undefined
+): string => {
+  if (!date) return "";
+
+  if (Array.isArray(date)) {
+    const [year, month, day] = date;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(
+      2,
+      "0"
+    )}`;
+  }
+
+  if (typeof date === "string") {
+    const dateOnlyMatch = date.match(/^\d{4}-\d{2}-\d{2}/);
+    if (dateOnlyMatch) {
+      return dateOnlyMatch[0];
+    }
+  }
+
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "";
+  }
+
+  return `${parsedDate.getUTCFullYear()}-${String(
+    parsedDate.getUTCMonth() + 1
+  ).padStart(2, "0")}-${String(parsedDate.getUTCDate()).padStart(2, "0")}`;
+};
 
 export function EditCashierModal({
   open,
   onOpenChange,
   tellerId,
   cashier,
+  onSuccess,
 }: EditCashierModalProps) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
+    startDate: "",
     endDate: "",
-    isFullDay: true,
-    startTime: "",
-    endTime: "",
   });
+  const isEndDateMissing = !formData.endDate;
+  const hasDateRangeError =
+    !!formData.startDate &&
+    !!formData.endDate &&
+    new Date(formData.startDate) > new Date(formData.endDate);
 
   useEffect(() => {
     if (open && cashier) {
-      // Parse dates from cashier
-      const parseDate = (date: string | Date | number[] | null | undefined): string => {
-        if (!date) return "";
-        if (Array.isArray(date)) {
-          return new Date(date[0], date[1] - 1, date[2]).toISOString().split("T")[0];
-        }
-        if (typeof date === "string") {
-          return new Date(date).toISOString().split("T")[0];
-        }
-        return new Date(date).toISOString().split("T")[0];
-      };
-
       setFormData({
-        endDate: parseDate(cashier.endDate),
-        isFullDay: cashier.isFullDay !== undefined ? cashier.isFullDay : true,
-        startTime: cashier.startTime || "",
-        endTime: cashier.endTime || "",
+        startDate: toDateInputValue(cashier.startDate),
+        endDate: toDateInputValue(cashier.endDate),
       });
     }
   }, [open, cashier]);
@@ -75,24 +91,22 @@ export function EditCashierModal({
     setLoading(true);
 
     try {
-      const cashierId = cashier.dbId || cashier.id.toString();
+      const cashierId = cashier.dbId || String(cashier.id);
       const response = await fetch(
         `/api/tellers/${tellerId}/cashiers/${cashierId}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            startDate: formData.startDate,
             endDate: formData.endDate || null,
-            isFullDay: formData.isFullDay,
-            startTime: formData.startTime || null,
-            endTime: formData.endTime || null,
           }),
         }
       );
 
       if (response.ok) {
         onOpenChange(false);
-        window.location.reload();
+        onSuccess?.();
       } else {
         const error = await response.json();
         alert(error.error || "Failed to update cashier");
@@ -105,39 +119,45 @@ export function EditCashierModal({
     }
   };
 
-  const parseStartDate = (date: string | Date | number[] | null | undefined): string => {
-    if (!date) return "";
-    if (Array.isArray(date)) {
-      return new Date(date[0], date[1] - 1, date[2]).toISOString().split("T")[0];
-    }
-    if (typeof date === "string") {
-      return new Date(date).toISOString().split("T")[0];
-    }
-    return new Date(date).toISOString().split("T")[0];
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Edit Cashier</DialogTitle>
+          <DialogTitle>Edit Cashier Dates</DialogTitle>
           <DialogDescription>
-            Update cashier information. Note: Staff member and start date cannot be changed.
+            Update the assignment dates for {cashier.staffName}.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
-            <div className="p-3 bg-muted rounded-md space-y-1">
-              <p className="text-sm">
-                <strong>Staff:</strong> {cashier.staffName}
-              </p>
-              <p className="text-sm">
-                <strong>Start Date:</strong> {parseStartDate(cashier.startDate)}
-              </p>
+            <div className="space-y-2">
+              <Label htmlFor="startDate">
+                Start Date <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={formData.startDate}
+                onChange={(e) =>
+                  setFormData({ ...formData, startDate: e.target.value })
+                }
+                className={cn(
+                  hasDateRangeError &&
+                    "border-red-500 focus-visible:ring-red-500"
+                )}
+                required
+              />
+              {hasDateRangeError && (
+                <p className="text-sm text-red-600">
+                  Start date cannot be after end date.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="endDate">End Date</Label>
+              <Label htmlFor="endDate">
+                End Date <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="endDate"
                 type="date"
@@ -145,51 +165,28 @@ export function EditCashierModal({
                 onChange={(e) =>
                   setFormData({ ...formData, endDate: e.target.value })
                 }
-                min={parseStartDate(cashier.startDate)}
+                className={cn(
+                  isEndDateMissing &&
+                    "border-red-500 focus-visible:ring-red-500",
+                  hasDateRangeError &&
+                    "border-red-500 focus-visible:ring-red-500"
+                )}
+                min={formData.startDate}
+                required
               />
+              {isEndDateMissing && (
+                <p className="text-sm text-red-600">End date is required.</p>
+              )}
+              {hasDateRangeError && (
+                <p className="text-sm text-red-600">
+                  End date cannot be before start date.
+                </p>
+              )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="isFullDay" className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isFullDay"
-                  checked={formData.isFullDay}
-                  onChange={(e) =>
-                    setFormData({ ...formData, isFullDay: e.target.checked })
-                  }
-                  className="rounded"
-                />
-                Full Day
-              </Label>
-            </div>
-
-            {!formData.isFullDay && (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="startTime">Start Time</Label>
-                  <Input
-                    id="startTime"
-                    type="time"
-                    value={formData.startTime}
-                    onChange={(e) =>
-                      setFormData({ ...formData, startTime: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endTime">End Time</Label>
-                  <Input
-                    id="endTime"
-                    type="time"
-                    value={formData.endTime}
-                    onChange={(e) =>
-                      setFormData({ ...formData, endTime: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-            )}
+            <p className="text-xs text-muted-foreground">
+              End date must be on or after the start date.
+            </p>
           </div>
           <DialogFooter>
             <Button
@@ -199,8 +196,11 @@ export function EditCashierModal({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Updating..." : "Update Cashier"}
+            <Button
+              type="submit"
+              disabled={loading || isEndDateMissing || hasDateRangeError}
+            >
+              {loading ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </form>
@@ -208,6 +208,3 @@ export function EditCashierModal({
     </Dialog>
   );
 }
-
-
-

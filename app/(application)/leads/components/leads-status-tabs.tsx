@@ -27,7 +27,6 @@ import {
   Target,
   Timer,
   ArrowRight,
-  Wallet,
 } from "lucide-react";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -292,12 +291,12 @@ export function LeadsStatusTabs() {
   const [pipelineProgress, setPipelineProgress] = useState<Record<string, any>>({});
 
   // Filter states for each tab
-  const [filters, setFilters] = useState<Record<string, { branch: string; loanProduct: string; submittedBy: string; stage: string }>>({
-    drafts: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
-    pending: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
-    approved: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
-    disbursed: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
-    rejected: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
+  const [filters, setFilters] = useState<Record<string, { branch: string; loanProduct: string; submittedBy: string }>>({
+    drafts: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    pending: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    approved: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    disbursed: { branch: "all", loanProduct: "all", submittedBy: "all" },
+    rejected: { branch: "all", loanProduct: "all", submittedBy: "all" },
   });
 
   // Extract unique filter options from data
@@ -316,25 +315,17 @@ export function LeadsStatusTabs() {
 
   // Get filter options for each tab
   const tabFilterOptions = useMemo(() => {
-    const options: Record<string, { branches: string[]; loanProducts: string[]; submittedBy: string[]; stages: string[] }> = {};
+    const options: Record<string, { branches: string[]; loanProducts: string[]; submittedBy: string[] }> = {};
     for (const tab of TABS) {
       const rawData = tabData[tab.report]?.data || [];
-      // Collect unique stage names from pipeline progress for rows in this tab
-      const stageSet = new Set<string>();
-      for (const row of rawData) {
-        const leadId = row.lead_id || row.external_id || row.client_external_id;
-        const prog = leadId ? pipelineProgress[leadId] : null;
-        if (prog?.stageName) stageSet.add(prog.stageName);
-      }
       options[tab.report] = {
         branches: getFilterOptions(rawData, "branch"),
         loanProducts: getFilterOptions(rawData, "loan_product"),
         submittedBy: getFilterOptions(rawData, "submitted_by") || getFilterOptions(rawData, "created_by"),
-        stages: Array.from(stageSet).sort(),
       };
     }
     return options;
-  }, [tabData, getFilterOptions, pipelineProgress]);
+  }, [tabData, getFilterOptions]);
 
   // Filter data based on selected filters
   const getFilteredData = useCallback((report: string, data: any[]): any[] => {
@@ -359,18 +350,10 @@ export function LeadsStatusTabs() {
         const submitter = row.submitted_by || row.created_by || row["Submitted By"] || row["Created By"] || "";
         if (String(submitter).toLowerCase() !== tabFilters.submittedBy.toLowerCase()) return false;
       }
-
-      // Pipeline stage filter
-      if (tabFilters.stage !== "all") {
-        const leadId = row.lead_id || row.external_id || row.client_external_id;
-        const prog = leadId ? pipelineProgress[leadId] : null;
-        const stageName = prog?.stageName || "";
-        if (stageName !== tabFilters.stage) return false;
-      }
       
       return true;
     });
-  }, [filters, pipelineProgress]);
+  }, [filters]);
 
   // Update filter for a specific tab
   const updateFilter = useCallback((report: string, filterKey: string, value: string) => {
@@ -446,14 +429,16 @@ export function LeadsStatusTabs() {
         setTabCounts((prev) => ({ ...prev, [report]: data.count }));
         setLastUpdated(new Date());
 
-        // Enrich with pipeline progress
-        if (data.data && data.data.length > 0) {
-          const ids = data.data
-            .map((row: any) => row.lead_id || row.external_id || row.client_external_id)
-            .filter(Boolean) as string[];
-          if (ids.length > 0) {
-            fetchPipelineProgress(ids);
-          }
+        const leadIds = Array.from(
+          new Set(
+            (data.data || [])
+              .map((row: any) => row.lead_id)
+              .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)
+          )
+        );
+
+        if (leadIds.length > 0) {
+          fetchPipelineProgress(leadIds);
         }
       } catch (error) {
         console.error(`Error fetching ${report} report:`, error);
@@ -976,7 +961,7 @@ export function LeadsStatusTabs() {
     }
 
     return columns;
-  }, [orgCurrency, tenantLocale.countryCode, pipelineProgress]);
+  }, [orgCurrency, pipelineProgress, tenantLocale.countryCode]);
 
   // Memoize columns for each tab
   const tabColumns = useMemo(() => {
@@ -1121,29 +1106,7 @@ export function LeadsStatusTabs() {
             </div>
           )}
 
-          {filterOpts.stages.length > 0 && report !== "drafts" && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs sm:text-sm font-medium text-muted-foreground whitespace-nowrap">Stage:</span>
-              <Select
-                value={tabFilters.stage}
-                onValueChange={(value) => updateFilter(report, "stage", value)}
-              >
-                <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs sm:text-sm">
-                  <SelectValue placeholder="All Stages" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Stages</SelectItem>
-                  {filterOpts.stages.map((stage) => (
-                    <SelectItem key={stage} value={stage}>
-                      {stage}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {(tabFilters.branch !== "all" || tabFilters.loanProduct !== "all" || tabFilters.submittedBy !== "all" || tabFilters.stage !== "all") && (
+          {(tabFilters.branch !== "all" || tabFilters.loanProduct !== "all" || tabFilters.submittedBy !== "all") && (
             <div className="flex items-center gap-2 sm:ml-auto">
               <Badge variant="secondary" className="text-xs">
                 {filteredData.length} of {roleScopedData.length} records
@@ -1154,7 +1117,7 @@ export function LeadsStatusTabs() {
                 className="h-8 px-2 text-xs"
                 onClick={() => setFilters((prev) => ({
                   ...prev,
-                  [report]: { branch: "all", loanProduct: "all", submittedBy: "all", stage: "all" },
+                  [report]: { branch: "all", loanProduct: "all", submittedBy: "all" },
                 }))}
               >
                 Clear filters
@@ -1381,10 +1344,10 @@ export function LeadsStatusTabs() {
             <div>
               <CardTitle className="text-base sm:text-lg">Loan Applications</CardTitle>
               <CardDescription className="text-xs sm:text-sm">
-                View loan applications by stage for the selected period
+                View loan applications by status for the selected period
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -1539,6 +1502,10 @@ export function LeadsStatusTabs() {
 
 // Helper to format column headers (snake_case to Title Case)
 function formatColumnHeader(col: string): string {
+  if (col === "created_by") {
+    return "Submitted By";
+  }
+
   return col
     .replaceAll("_", " ")
     .replaceAll(/\b\w/g, (l) => l.toUpperCase());
@@ -1576,7 +1543,7 @@ const CURRENCY_PATTERNS = [
   "overdue",
 ];
 const PERCENTAGE_PATTERNS = ["interest_rate", "rate_", "_rate", "percent", "%"];
-const SKIP_NUMBER_FORMAT_PATTERNS = ["id", "account", "phone", "mobile", "nrc", "external"];
+const SKIP_NUMBER_FORMAT_PATTERNS = ["id", "account", "phone", "mobile"];
 const PHONE_PATTERNS = ["phone", "mobile", "cell", "tel"];
 
 function isCurrencyColumn(colLower: string): boolean {

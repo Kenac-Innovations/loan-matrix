@@ -116,6 +116,7 @@ type FormDataState = {
 
 interface ClientEditFormProps {
   clientId: number;
+  canEditClient: boolean;
 }
 
 function ClientEditFormSkeleton() {
@@ -222,7 +223,7 @@ function isEmailInvalid(email: string) {
   return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export function ClientEditForm({ clientId }: ClientEditFormProps) {
+export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps) {
   const router = useRouter();
   const { success: showSuccessToast } = useToast();
   const [client, setClient] = useState<ClientTemplateData | null>(null);
@@ -353,6 +354,11 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!formData) return;
+
+    if (!canEditClient) {
+      setError("You do not have permission to update this client");
+      return;
+    }
 
     if (isEntity && !formData.fullname.trim()) {
       setError("Entity name is required");
@@ -933,7 +939,7 @@ export function ClientEditForm({ clientId }: ClientEditFormProps) {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={!canSubmit}>
+              <Button type="submit" disabled={!canEditClient || !canSubmit}>
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Submit
               </Button>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrency } from "@/contexts/currency-context";
 import useSWR from 'swr';
 import {
   CreditCard,
@@ -8,6 +9,7 @@ import {
   AlertCircle,
   TrendingUp,
   ChevronRight,
+  FileText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -26,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { getDisplayLoanStatus } from "@/lib/loan-status";
 
 interface FineractLoan {
@@ -176,11 +179,25 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       rawLoans = data.loanAccounts;
     }
     
-    // Transform the loan data to match the expected interface
-    return rawLoans.map((loan) => ({
+    const CUTOFF = new Date("2026-01-01T00:00:00Z");
+
+    const parseFineractDate = (d: any): Date | null => {
+      if (!d) return null;
+      if (Array.isArray(d) && d.length >= 3) return new Date(d[0], d[1] - 1, d[2]);
+      if (typeof d === "string") return new Date(d);
+      return null;
+    };
+
+    return rawLoans
+      .filter((loan: any) => {
+        const date = parseFineractDate(loan.timeline?.actualDisbursementDate)
+          ?? parseFineractDate(loan.timeline?.submittedOnDate);
+        return !date || date >= CUTOFF;
+      })
+      .map((loan) => ({
       id: loan.id,
       accountNo: loan.accountNo,
-      loanProductName: loan.productName || loan.loanProductName,
+      loanProductName: loan.productName || loan.loanProductName || "",
       principal:
         loan.originalLoan ||
         loan.principal ||
@@ -272,14 +289,14 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     );
   };
 
-  // Normalize currency code - converts deprecated ZMK to ZMW
+  const { currencyCode: orgCurrency } = useCurrency();
   const normalizeCurrencyCode = (code: string | undefined | null): string => {
-    if (!code) return "ZMW";
+    if (!code) return orgCurrency;
     if (code.toUpperCase() === "ZMK") return "ZMW";
     return code;
   };
 
-  const formatCurrency = (amount: number, currencyCode: string = "ZMW") => {
+  const formatCurrency = (amount: number, currencyCode: string = orgCurrency) => {
     // Return empty string if amount is undefined, null, NaN, or 0
     if (amount === undefined || amount === null || isNaN(amount) || amount === 0) {
       return "";

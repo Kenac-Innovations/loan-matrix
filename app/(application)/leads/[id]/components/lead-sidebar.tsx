@@ -29,8 +29,8 @@ interface ValidationResult {
 
 interface StageTime {
   stageName: string;
-  timeSpent: number; // in minutes
-  slaMins: number;
+  timeSpent: number; // in hours
+  slaHours: number;
   status: "completed" | "in_progress" | "pending";
 }
 
@@ -48,27 +48,17 @@ interface LoanActionInfo {
   loanStatus: string | null;
 }
 
-interface StageTeamMember {
-  id: string;
-  name: string;
-  role: string;
-  userId: string;
-}
-
 interface SidebarData {
   currentStage: string;
-  timeInCurrentStage: number;
-  totalTime: number;
-  currentStageSLA: number;
-  isFinalStageCompleted?: boolean;
+  timeInCurrentStage: number; // in hours
+  totalTime: number; // in hours
+  currentStageSLA: number; // in hours
   teamMembers: TeamMember[];
   validations: ValidationResult[];
   stageTimes: StageTime[];
   isSubmitted: boolean;
   assignment: AssignmentInfo;
   loanActionInfo?: LoanActionInfo;
-  isUserInStageTeam?: boolean;
-  stageTeamMembers?: StageTeamMember[];
 }
 
 export function LeadSidebar({ leadId }: LeadSidebarProps) {
@@ -105,11 +95,9 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
 
     window.addEventListener("assignment-change", handleRefresh);
     window.addEventListener("loan-action-complete", handleRefresh);
-    window.addEventListener("stage-transition-complete", handleRefresh);
     return () => {
       window.removeEventListener("assignment-change", handleRefresh);
       window.removeEventListener("loan-action-complete", handleRefresh);
-      window.removeEventListener("stage-transition-complete", handleRefresh);
     };
   }, [leadId]);
 
@@ -119,20 +107,17 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
     sessionUser?.userId ??
     (sessionUser?.id ? parseInt(sessionUser.id) : undefined);
 
-  const formatTime = (mins: number) => {
-    if (mins < 60) return `${mins}m`;
-    const hours = Math.floor(mins / 60);
-    const remainingMins = mins % 60;
-    if (hours < 24) {
-      return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
-    }
+  const formatTime = (hours: number) => {
     const days = Math.floor(hours / 24);
     const remainingHours = hours % 24;
-    return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
+    if (days > 0) {
+      return `${days}d ${remainingHours}h`;
+    }
+    return `${remainingHours}h`;
   };
 
-  const getSLAStatus = (timeSpent: number, slaMins: number) => {
-    const percentage = (timeSpent / slaMins) * 100;
+  const getSLAStatus = (timeSpent: number, slaHours: number) => {
+    const percentage = (timeSpent / slaHours) * 100;
     if (percentage <= 70) return "text-green-400";
     if (percentage <= 90) return "text-yellow-400";
     return "text-red-400";
@@ -170,8 +155,8 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
 
   return (
     <div className="space-y-6">
-      {/* Assignment Card - Only show for submitted leads that haven't completed all stages */}
-      {data.isSubmitted && !data.isFinalStageCompleted && (
+      {/* Assignment Card - Only show for submitted leads */}
+      {data.isSubmitted && (
         <LeadAssignment
           leadId={leadId}
           isSubmitted={data.isSubmitted}
@@ -179,8 +164,6 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
           currentUserId={currentMifosUserId}
           onAssignmentChange={fetchSidebarData}
           loanActionInfo={data.loanActionInfo}
-          isUserInStageTeam={data.isUserInStageTeam}
-          stageTeamMembers={data.stageTeamMembers}
         />
       )}
 
@@ -233,9 +216,9 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
                         <span
                           className={`text-xs ${
                             stage.status === "completed"
-                              ? getSLAStatus(stage.timeSpent, stage.slaMins)
+                              ? getSLAStatus(stage.timeSpent, stage.slaHours)
                               : stage.status === "in_progress"
-                              ? getSLAStatus(stage.timeSpent, stage.slaMins)
+                              ? getSLAStatus(stage.timeSpent, stage.slaHours)
                               : "text-muted-foreground"
                           }`}
                         >
@@ -243,7 +226,7 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
                             ? "Pending"
                             : `${formatTime(
                                 stage.timeSpent
-                              )} (SLA: ${formatTime(stage.slaMins)})`}
+                              )} (SLA: ${formatTime(stage.slaHours)})`}
                         </span>
                       </div>
                     </div>

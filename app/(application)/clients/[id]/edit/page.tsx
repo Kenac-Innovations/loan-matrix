@@ -1,8 +1,8 @@
-import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { hasSuperAdminServer } from "@/lib/authorization";
 import { ClientEditForm } from "./components/client-edit-form";
 
 interface PageProps {
@@ -18,6 +18,8 @@ export default async function ClientEditPage({ params }: PageProps) {
   if (isNaN(clientId)) {
     notFound();
   }
+
+  const canEditClient = await hasSuperAdminServer();
 
   return (
     <div className="space-y-6">
@@ -48,9 +50,7 @@ export default async function ClientEditPage({ params }: PageProps) {
       </div>
 
       {/* Client Edit Form */}
-      <Suspense fallback={<div>Loading client details...</div>}>
-        <ClientEditForm clientId={clientId} />
-      </Suspense>
+      <ClientEditForm clientId={clientId} canEditClient={canEditClient} />
     </div>
   );
 } 

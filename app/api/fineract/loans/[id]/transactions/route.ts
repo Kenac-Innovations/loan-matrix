@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
 import { getFineractServiceWithSession } from '@/lib/fineract-api';
 import { isPaymentTypeCash } from '@/lib/cash-repayment-teller';
+import { upsertRepaymentCashLink } from '@/lib/repayment-cash-link';
+import { getTenantFromHeaders } from '@/lib/tenant-service';
+import { getOrgRawCurrencyCode } from '@/lib/currency-utils';
+import { fetchLoanNotificationDetails, resolveLoanNotificationTarget } from '@/lib/loan-notification-target';
+import { sendLoanRepaymentSms } from '@/lib/notification-service';
 
 /** Ensure date is yyyy-MM-dd for Fineract allocate */
 function formatDateForAllocate(isoDate: string): string {
@@ -26,6 +31,7 @@ export async function POST(
   try {
     const { id } = await params;
     const loanId = parseInt(id, 10);
+    const tenant = await getTenantFromHeaders();
     const { searchParams } = new URL(request.url);
     const command = searchParams.get('command');
 
@@ -54,13 +60,20 @@ export async function POST(
       if (isNaN(cashierId)) cashierId = null;
     }
 
-    // Build repayment body for Fineract WITHOUT tellerId and cashierId
-    const { tellerId: _t, cashierId: _c, ...repaymentBody } = body;
+    // Build repayment body for Fineract WITHOUT local teller/cashier metadata
+    const repaymentBody = { ...body } as Record<string, unknown>;
+    delete repaymentBody.tellerId;
+    delete repaymentBody.cashierId;
+    delete repaymentBody.dbTellerId;
+    delete repaymentBody.dbCashierId;
 
     const data = await fetchFineractAPI(`/loans/${id}/transactions?command=${command}`, {
       method: 'POST',
       body: JSON.stringify(repaymentBody),
     });
+    const fineractTransactionId = Number(
+      data?.resourceId ?? data?.transactionId ?? data?.id
+    );
 
     let cashierAllocateResult: { success: boolean; error?: string; details?: unknown } | undefined;
 
@@ -72,6 +85,26 @@ export async function POST(
       body.transactionAmount > 0
     ) {
       const isCash = await isPaymentTypeCash(Number(body.paymentTypeId));
+      const rawCurrency = await getOrgRawCurrencyCode();
+      const currency = body.currencyCode ?? body.currency?.code ?? rawCurrency;
+      console.log("[CashRepayment]: ")
+
+      if (tenant && Number.isFinite(fineractTransactionId) && fineractTransactionId > 0) {
+        await upsertRepaymentCashLink({
+          tenantId: tenant.id,
+          fineractTransactionId,
+          loanId,
+          transactionType: command.toUpperCase(),
+          amount: Number(body.transactionAmount),
+          currency,
+          // These local foreign keys are enriched later by the allocate route after
+          // it resolves the selected teller/cashier to real Prisma records.
+          tellerId: null,
+          cashierId: null,
+          isCash,
+        });
+      }
+
       console.log('[CashRepayment] Repayment succeeded', {
         loanId,
         paymentTypeId: body.paymentTypeId,
@@ -86,10 +119,6 @@ export async function POST(
           typeof body.transactionDate === 'string'
             ? body.transactionDate
             : new Date().toISOString().split('T')[0];
-        const currency =
-          body.currencyCode ?? body.currency?.code ?? 'ZMW';
-        const normalizedCurrency =
-          String(currency).toUpperCase() === 'ZMK' ? 'ZMW' : currency;
 
         if (
           tellerId != null &&
@@ -106,7 +135,7 @@ export async function POST(
               {
                 txnDate: formatDateForAllocate(transactionDate),
                 txnAmount: String(body.transactionAmount),
-                currencyCode: normalizedCurrency,
+                currencyCode: currency,
                 txnNote: 'Loan repayment',
                 dateFormat: 'yyyy-MM-dd',
                 locale: 'en',
@@ -114,23 +143,34 @@ export async function POST(
             );
             cashierAllocateResult = { success: true };
             console.log(
-              `[CashRepayment] Allocated ${body.transactionAmount} ${normalizedCurrency} for loan ${loanId} to teller ${tellerId}/cashier ${cashierId}`
+              `[CashRepayment] Allocated ${body.transactionAmount} ${currency} for loan ${loanId} to teller ${tellerId}/cashier ${cashierId}`
             );
-          } catch (err: any) {
-            const fineractError = err?.response?.data;
+          } catch (err: unknown) {
+            type AllocationError = {
+              response?: {
+                data?: {
+                  defaultUserMessage?: string;
+                  errors?: Array<{ defaultUserMessage?: string }>;
+                };
+                status?: number;
+              };
+              message?: string;
+            };
+            const allocationError = err as AllocationError;
+            const fineractError = allocationError.response?.data;
             cashierAllocateResult = {
               success: false,
               error:
                 fineractError?.defaultUserMessage ||
                 fineractError?.errors?.[0]?.defaultUserMessage ||
-                err?.message ||
+                allocationError.message ||
                 'Allocate failed',
-              details: fineractError || { message: err?.message },
+              details: fineractError || { message: allocationError.message },
             };
             console.error('[CashRepayment] Allocate failed:', {
-              message: err?.message,
-              status: err?.response?.status,
-              data: err?.response?.data,
+              message: allocationError.message,
+              status: allocationError.response?.status,
+              data: allocationError.response?.data,
             });
           }
         } else {
@@ -146,6 +186,54 @@ export async function POST(
       }
     }
 
+    if (
+      command === "repayment" &&
+      tenant &&
+      Number.isFinite(loanId) &&
+      loanId > 0 &&
+      body.transactionAmount != null &&
+      Number(body.transactionAmount) > 0
+    ) {
+      void (async () => {
+        const loanDetails = await fetchLoanNotificationDetails(
+          loanId,
+          tenant.slug
+        );
+        const borrower = await resolveLoanNotificationTarget({
+          tenantId: tenant.id,
+          tenantSlug: tenant.slug,
+          loanId,
+          clientId: loanDetails?.clientId ?? null,
+        });
+
+        if (borrower) {
+          const rawCurrency =
+            loanDetails?.currencyCode ??
+            body.currencyCode ??
+            body.currency?.code ??
+            (await getOrgRawCurrencyCode());
+          const currency = String(rawCurrency || "ZMW").toUpperCase();
+
+          console.log("NOW SENDING REPAYMENT SMS...")
+          const smsSent = await sendLoanRepaymentSms({
+            clientName: borrower.clientName,
+            phone: borrower.phone,
+            countryCode: borrower.countryCode ?? undefined,
+            amount: Number(body.transactionAmount),
+            currency,
+            tenantId: tenant.slug,
+          });
+          if (smsSent) {
+            console.log("REPAYMENT SMS SEND!...")
+          } else {
+            console.warn("REPAYMENT SMS NOT SENT...")
+          }
+        }
+      })().catch((smsError) => {
+        console.error("Failed to send repayment SMS:", smsError);
+      });
+    }
+
     // Include allocate result in response so it's visible in network tab when debugging
     const responseData =
       cashierAllocateResult != null
@@ -153,23 +241,32 @@ export async function POST(
         : data;
 
     return NextResponse.json(responseData);
-  } catch (error: any) {
-    console.error('Error submitting loan transaction:', error);
+  } catch (error: unknown) {
+    type LoanTransactionError = {
+      status?: number;
+      errorData?: {
+        defaultUserMessage?: string;
+        errors?: Array<{ defaultUserMessage?: string }>;
+      };
+      message?: string;
+    };
+    const loanTransactionError = error as LoanTransactionError;
+    console.error('Error submitting loan transaction:', loanTransactionError);
     
     // Check if it's an API error with status and errorData
-    if (error.status && error.errorData) {
+    if (loanTransactionError.status && loanTransactionError.errorData) {
       return NextResponse.json(
         { 
-          error: error.message,
-          status: error.status,
-          details: error.errorData 
+          error: loanTransactionError.message,
+          status: loanTransactionError.status,
+          details: loanTransactionError.errorData 
         },
-        { status: error.status }
+        { status: loanTransactionError.status }
       );
     }
     
     return NextResponse.json(
-      { error: error.message || 'Unknown error' },
+      { error: loanTransactionError.message || 'Unknown error' },
       { status: 500 }
     );
   }

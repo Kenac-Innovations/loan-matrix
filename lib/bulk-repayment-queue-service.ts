@@ -1,5 +1,7 @@
+import https from "https";
 import amqp, { Connection, Channel, ConsumeMessage } from "amqplib";
 import prisma from "./prisma";
+import { refreshBulkRepaymentUploadStats } from "./bulk-repayment-upload-stats";
 
 export interface BulkRepaymentMessage {
   itemId: string;
@@ -19,16 +21,72 @@ export interface BulkRepaymentMessage {
   dateFormat: string;
 }
 
+type RepaymentBody = {
+  dateFormat: string;
+  locale: string;
+  transactionDate: string;
+  transactionAmount: number;
+  note: string;
+  paymentTypeId?: number;
+  accountNumber?: string;
+  chequeNumber?: string;
+  routingCode?: string;
+  receiptNumber?: string;
+  bankNumber?: string;
+};
+
+type FineractRepaymentResponse = {
+  resourceId?: string | number;
+  transactionId?: string | number;
+};
+
+type FineractQueueError = {
+  message?: string;
+  errorData?: {
+    defaultUserMessage?: string;
+    errors?: Array<{ defaultUserMessage?: string }>;
+  };
+};
+
+type FineractErrorPayload = {
+  errors?: Array<{ defaultUserMessage?: string }>;
+  defaultUserMessage?: string;
+};
+
+function getQueueErrorMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const queueError = error as FineractQueueError;
+    return (
+      queueError.errorData?.defaultUserMessage ||
+      queueError.errorData?.errors?.[0]?.defaultUserMessage ||
+      queueError.message ||
+      "Unknown error"
+    );
+  }
+
+  return "Unknown error";
+}
+
 declare global {
   var __bulkRepaymentConsumerActive: boolean | undefined;
 }
 
-const EXCHANGE_NAME =
-  process.env.BULK_REPAYMENT_EXCHANGE || "bulkrepayments.exchange";
-const QUEUE_NAME =
-  process.env.BULK_REPAYMENT_QUEUE || "bulkrepayments.queue";
-const ROUTING_KEY =
-  process.env.BULK_REPAYMENT_ROUTING_KEY || "bulkrepayments.routing.key";
+interface BulkRepaymentQueueConfig {
+  exchangeName: string;
+  queueName: string;
+  routingKey: string;
+}
+
+function getQueueConfig(): BulkRepaymentQueueConfig {
+  return {
+    exchangeName:
+      process.env.BULK_REPAYMENT_EXCHANGE || "bulkrepayments.prod.exchange",
+    queueName: process.env.BULK_REPAYMENT_QUEUE || "bulkrepayments.prod.queue",
+    routingKey:
+      process.env.BULK_REPAYMENT_ROUTING_KEY ||
+      "bulkrepayments.prod.routing.key",
+  };
+}
 
 export class BulkRepaymentQueueService {
   private connection: Connection | null = null;
@@ -88,22 +146,23 @@ export class BulkRepaymentQueueService {
 
   private async setupQueue(): Promise<void> {
     if (!this.channel) throw new Error("Channel not available");
+    const { exchangeName, queueName, routingKey } = getQueueConfig();
 
-    await this.channel.assertExchange(EXCHANGE_NAME, "direct", {
+    await this.channel.assertExchange(exchangeName, "direct", {
       durable: true,
     });
 
-    await this.channel.assertQueue(QUEUE_NAME, {
+    await this.channel.assertQueue(queueName, {
       durable: true,
       arguments: {
         "x-message-ttl": 86400000, // 24h TTL
       },
     });
 
-    await this.channel.bindQueue(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEY);
+    await this.channel.bindQueue(queueName, exchangeName, routingKey);
 
     console.log(
-      `[BulkRepayment] Queue: ${QUEUE_NAME} -> ${EXCHANGE_NAME} (${ROUTING_KEY})`
+      `[BulkRepayment] Queue: ${queueName} -> ${exchangeName} (${routingKey})`
     );
   }
 
@@ -122,6 +181,8 @@ export class BulkRepaymentQueueService {
   public async publishRepayment(
     message: BulkRepaymentMessage
   ): Promise<void> {
+    const { exchangeName, routingKey } = getQueueConfig();
+
     if (!this.channel || !this.isConnected) {
       await this.connect();
     }
@@ -132,8 +193,8 @@ export class BulkRepaymentQueueService {
 
     const messageBuffer = Buffer.from(JSON.stringify(message));
     const published = this.channel.publish(
-      EXCHANGE_NAME,
-      ROUTING_KEY,
+      exchangeName,
+      routingKey,
       messageBuffer,
       {
         persistent: true,
@@ -150,6 +211,8 @@ export class BulkRepaymentQueueService {
   }
 
   public async startConsuming(): Promise<void> {
+    const { queueName } = getQueueConfig();
+
     if (global.__bulkRepaymentConsumerActive) {
       console.log("[BulkRepayment] Consumer already active, skipping");
       return;
@@ -173,10 +236,10 @@ export class BulkRepaymentQueueService {
 
     await this.channel.prefetch(3);
 
-    console.log(`[BulkRepayment] Starting consumer on ${QUEUE_NAME}`);
+    console.log(`[BulkRepayment] Starting consumer on ${queueName}`);
 
     await this.channel.consume(
-      QUEUE_NAME,
+      queueName,
       async (msg: ConsumeMessage | null) => {
         if (!msg) return;
         try {
@@ -184,7 +247,23 @@ export class BulkRepaymentQueueService {
           this.channel?.ack(msg);
         } catch (error) {
           console.error("[BulkRepayment] Processing error:", error);
-          this.channel?.nack(msg, false, false); // Don't requeue, mark as failed
+          // Safety net: if processMessage threw (e.g. the inner FAILED update also
+          // failed), mark the item FAILED here so it never stays stuck as QUEUED.
+          try {
+            const message: BulkRepaymentMessage = JSON.parse(msg.content.toString());
+            await prisma.bulkRepaymentItem.update({
+              where: { id: message.itemId },
+              data: {
+                status: "FAILED",
+                errorMessage: "Unexpected processing error - please retry",
+                processedAt: new Date(),
+              },
+            });
+            await refreshBulkRepaymentUploadStats(message.uploadId);
+          } catch (fallbackError) {
+            console.error("[BulkRepayment] Fallback status update failed:", fallbackError);
+          }
+          this.channel?.nack(msg, false, false);
         }
       }
     );
@@ -203,14 +282,15 @@ export class BulkRepaymentQueueService {
       `[BulkRepayment] Processing: item=${message.itemId} loan=${message.loanId} amount=${message.amount}`
     );
 
-    // Mark as PROCESSING
-    await prisma.bulkRepaymentItem.update({
-      where: { id: message.itemId },
-      data: { status: "PROCESSING" },
-    });
-
     try {
-      const repaymentBody: any = {
+      // Mark as PROCESSING inside the try block so any DB failure is caught
+      // and the item gets marked FAILED instead of staying stuck as QUEUED
+      await prisma.bulkRepaymentItem.update({
+        where: { id: message.itemId },
+        data: { status: "PROCESSING" },
+      });
+
+      const repaymentBody: RepaymentBody = {
         dateFormat: message.dateFormat,
         locale: message.locale,
         transactionDate: message.transactionDate,
@@ -249,18 +329,13 @@ export class BulkRepaymentQueueService {
         },
       });
 
-      // Update upload counters
-      await this.updateUploadCounters(message.uploadId);
+      await refreshBulkRepaymentUploadStats(message.uploadId);
 
       console.log(
         `[BulkRepayment] Success: item=${message.itemId} txnId=${result.resourceId || result.transactionId}`
       );
-    } catch (error: any) {
-      const errorMsg =
-        error.errorData?.defaultUserMessage ||
-        error.errorData?.errors?.[0]?.defaultUserMessage ||
-        error.message ||
-        "Unknown error";
+    } catch (error: unknown) {
+      const errorMsg = getQueueErrorMessage(error);
 
       await prisma.bulkRepaymentItem.update({
         where: { id: message.itemId },
@@ -271,7 +346,7 @@ export class BulkRepaymentQueueService {
         },
       });
 
-      await this.updateUploadCounters(message.uploadId);
+      await refreshBulkRepaymentUploadStats(message.uploadId);
 
       console.error(
         `[BulkRepayment] Failed: item=${message.itemId} error=${errorMsg}`
@@ -282,8 +357,8 @@ export class BulkRepaymentQueueService {
   private async callFineractAPI(
     tenantSlug: string,
     endpoint: string,
-    body: any
-  ): Promise<any> {
+    body: RepaymentBody
+  ): Promise<FineractRepaymentResponse> {
     const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
     const serviceToken = process.env.FINERACT_SERVICE_TOKEN || "bWlmb3M6cGFzc3dvcmQ=";
     const fineractTenantId = tenantSlug || process.env.FINERACT_TENANT_ID || "goodfellow";
@@ -302,14 +377,17 @@ export class BulkRepaymentQueueService {
     if (url.startsWith("http://")) {
       response = await fetch(url, fetchOptions);
     } else {
-      const https = require("https");
       const agent = new https.Agent({ rejectUnauthorized: false });
-      response = await fetch(url, { ...fetchOptions, ...(({ agent } as any)) });
+      response = await fetch(url, { ...fetchOptions, ...({ agent } as { agent: unknown }) });
     }
 
     if (!response.ok) {
-      let errorData;
-      try { errorData = await response.json(); } catch { errorData = {}; }
+      let errorData: FineractErrorPayload = {};
+      try {
+        errorData = (await response.json()) as FineractErrorPayload;
+      } catch {
+        errorData = {};
+      }
 
       const msg =
         errorData?.errors?.[0]?.defaultUserMessage ||
@@ -317,51 +395,22 @@ export class BulkRepaymentQueueService {
         `HTTP ${response.status}: ${response.statusText}`;
 
       const error = new Error(`API error: ${response.status} ${response.statusText}`);
-      (error as any).status = response.status;
-      (error as any).errorData = { ...errorData, defaultUserMessage: msg };
+      (
+        error as Error & {
+          status: number;
+          errorData: FineractErrorPayload;
+        }
+      ).status = response.status;
+      (
+        error as Error & {
+          status: number;
+          errorData: FineractErrorPayload;
+        }
+      ).errorData = { ...errorData, defaultUserMessage: msg };
       throw error;
     }
 
-    return response.json();
-  }
-
-  private async updateUploadCounters(uploadId: string): Promise<void> {
-    try {
-      const counts = await prisma.bulkRepaymentItem.groupBy({
-        by: ["status"],
-        where: { uploadId },
-        _count: { status: true },
-      });
-
-      const countMap: Record<string, number> = {};
-      counts.forEach((c) => {
-        countMap[c.status] = c._count.status;
-      });
-
-      const successCount = countMap["SUCCESS"] || 0;
-      const failedCount = countMap["FAILED"] || 0;
-      const queuedCount = (countMap["QUEUED"] || 0) + (countMap["PROCESSING"] || 0);
-      const totalProcessed = successCount + failedCount;
-
-      const upload = await prisma.bulkRepaymentUpload.findUnique({
-        where: { id: uploadId },
-        select: { totalRows: true },
-      });
-
-      const isComplete = upload && totalProcessed >= upload.totalRows;
-
-      await prisma.bulkRepaymentUpload.update({
-        where: { id: uploadId },
-        data: {
-          successCount,
-          failedCount,
-          queuedCount,
-          status: isComplete ? "COMPLETED" : "PROCESSING",
-        },
-      });
-    } catch (err) {
-      console.error("[BulkRepayment] Failed to update counters:", err);
-    }
+    return (await response.json()) as FineractRepaymentResponse;
   }
 
   public async close(): Promise<void> {

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Users, CheckCircle, Building2, Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/format-date";
+import { TellersPageSkeleton } from "@/components/skeletons/tellers-list-skeleton";
 
 interface Teller {
   id: string;
@@ -233,7 +234,7 @@ export function TellersTable() {
   ];
 
   if (loading) {
-    return <div>Loading tellers...</div>;
+    return <TellersPageSkeleton />;
   }
 
   return (

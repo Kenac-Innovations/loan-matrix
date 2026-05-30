@@ -97,8 +97,7 @@ export async function GET(request: NextRequest) {
       });
       try {
         const options = await fineractService.getParameterOptions(
-          parameterName,
-          optionParams
+          parameterName
         );
         return NextResponse.json(options);
       } catch (error: any) {

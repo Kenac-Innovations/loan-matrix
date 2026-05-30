@@ -109,6 +109,28 @@ export async function hasRoleServer(roleName: string): Promise<boolean> {
 }
 
 /**
+ * Check if the current user is a SUPER_ADMIN.
+ * Keeps the legacy `mifos` system user fallback for compatibility.
+ */
+export async function hasSuperAdminServer(): Promise<boolean> {
+  const session = await getSession();
+
+  if (!session?.user) {
+    return false;
+  }
+
+  if (session.user.name === "mifos") {
+    return true;
+  }
+
+  return (
+    session.user.roles?.some(
+      (role) => role.name === "SUPER_ADMIN" && !role.disabled
+    ) ?? false
+  );
+}
+
+/**
  * Get the user's access level for a resource
  * @param resource - The resource to check access for
  * @returns Promise with the user's access level for the resource

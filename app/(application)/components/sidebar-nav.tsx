@@ -44,7 +44,8 @@ export function SidebarNav() {
   // Only add Configuration for admins/super admins AND if feature is enabled
   if (
     !rolesLoading &&
-    hasAnyRole(["ADMIN", "SUPER_ADMIN", "BRANCH_MANAGER"]) &&
+    // hasAnyRole(["ADMIN", "SUPER_ADMIN", "BRANCH_MANAGER"]) &&
+    hasAnyRole(["SUPER_ADMIN"]) &&
     isEnabled("leadConfig")
   ) {
     leadsSubMenuItems.push({ label: "Configuration", href: "/leads/config" });
@@ -90,6 +91,7 @@ export function SidebarNav() {
         subMenuItems={[
           { label: "Expected Payments", href: "/collections" },
           { label: "Bulk Receipting", href: "/collections/bulk-receipting" },
+          { label: "Loan Product Eligibility", href: "/collections/loan-product-eligibility" },
         ]}
       />
 

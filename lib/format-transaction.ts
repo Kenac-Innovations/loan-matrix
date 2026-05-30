@@ -84,6 +84,5 @@ export function getDisplayedTransactionType(
       return chargeNames.join(", ");
     }
   }
-
   return getTransactionTypeDisplayLabel(transaction.type);
 }
