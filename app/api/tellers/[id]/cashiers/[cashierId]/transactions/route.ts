@@ -14,6 +14,166 @@ import {
 
 type TellerRow = NonNullable<Awaited<ReturnType<typeof prisma.teller.findFirst>>>;
 type CashierRow = NonNullable<Awaited<ReturnType<typeof prisma.cashier.findFirst>>>;
+type RepaymentCashLinkDelegate = {
+  findMany: (args: {
+    where: {
+      tenantId: string;
+      fineractTransactionId: { in: number[] };
+    };
+    select: {
+      fineractTransactionId: true;
+      loanId: true;
+    };
+  }) => Promise<Array<{ fineractTransactionId: number; loanId: number }>>;
+};
+type CashierTransaction = {
+  id: number | string;
+  txnType?: string | { id?: number; code?: string; value?: string };
+  transactionType?: { id?: number; code?: string; value?: string };
+  txnAmount?: number;
+  amount?: number;
+  txnDate?: string | number[];
+  createdDate?: string | number[];
+  transactionDate?: string | number[];
+  txnNote?: string;
+  notes?: string;
+  currency?: { code?: string; name?: string };
+  currencyCode?: string;
+  _isReversal?: boolean;
+  [key: string]: unknown;
+};
+type CashierSummaryPayload = {
+  currency?: { code?: string };
+  currencyCode?: string;
+  netCash?: number;
+  sumCashAllocation?: number;
+  sumCashSettlement?: number;
+  sumOutwardCash?: number;
+  cashierTransactions?:
+    | {
+        totalFilteredRecords?: number;
+        pageItems?: CashierTransaction[];
+      }
+    | CashierTransaction[];
+  [key: string]: unknown;
+};
+
+const LOAN_REPAYMENT_NOTE_REGEX = /loan repayment\s*#\s*(\d+)/i;
+
+function extractLoanIdFromNotes(notes: string | null | undefined): number | null {
+  if (!notes) return null;
+  const match = notes.match(LOAN_REPAYMENT_NOTE_REGEX);
+  if (!match) return null;
+  const loanId = Number(match[1]);
+  return Number.isFinite(loanId) ? loanId : null;
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function getTransactionDate(value: unknown): Date | null {
+  if (Array.isArray(value) && value.length >= 3) {
+    const [year, month, day] = value;
+    if (
+      typeof year === "number" &&
+      typeof month === "number" &&
+      typeof day === "number"
+    ) {
+      return new Date(year, month - 1, day);
+    }
+  }
+
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function isSameCalendarDay(a: Date | null, b: Date | null): boolean {
+  if (!a || !b) return false;
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function buildLeadFullName(lead: {
+  fullname?: string | null;
+  firstname?: string | null;
+  middlename?: string | null;
+  lastname?: string | null;
+}) {
+  const explicit = lead.fullname?.trim();
+  if (explicit) return explicit;
+
+  const joined = [lead.firstname, lead.middlename, lead.lastname]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  return joined || null;
+}
+
+function matchLoanPayoutForTransaction(
+  tx: CashierTransaction,
+  payouts: Array<{
+    id: string;
+    fineractLoanId: number;
+    fineractClientId: number;
+    clientName: string;
+    loanAccountNo: string;
+    amount: number;
+    paidAt: Date | null;
+    voidedAt: Date | null;
+    createdAt: Date;
+  }>
+) {
+  const note = String(tx?.txnNote ?? tx?.notes ?? "");
+  const noteLower = normalizeText(note);
+  const looksLoanRelated =
+    noteLower.includes("loan disbursement") ||
+    noteLower.includes("payout") ||
+    noteLower.includes("credit balance refund");
+
+  if (!looksLoanRelated) {
+    return null;
+  }
+
+  const amount = Math.abs(Number(tx?.txnAmount ?? tx?.amount ?? 0));
+  const txDate = getTransactionDate(
+    tx?.txnDate ?? tx?.transactionDate ?? tx?.createdDate
+  );
+
+  let candidates = payouts.filter(
+    (payout) => Math.abs(Math.abs(payout.amount) - amount) < 0.01
+  );
+
+  if (txDate) {
+    const sameDay = candidates.filter((payout) =>
+      isSameCalendarDay(txDate, payout.paidAt ?? payout.voidedAt ?? payout.createdAt)
+    );
+    if (sameDay.length > 0) {
+      candidates = sameDay;
+    }
+  }
+
+  const byNarration = candidates.filter((payout) => {
+    const clientName = normalizeText(payout.clientName);
+    const accountNo = normalizeText(payout.loanAccountNo);
+    return (
+      (!!clientName && noteLower.includes(clientName)) ||
+      (!!accountNo && noteLower.includes(accountNo))
+    );
+  });
+
+  return byNarration[0] ?? candidates[0] ?? null;
+}
 
 function isDuplicateFineractAllocationError(error: unknown) {
   return (
@@ -220,22 +380,22 @@ export async function GET(
     ]);
 
     // Merge secondary result into primary
-    let summaryAndTransactions = primaryResult;
+    let summaryAndTransactions: CashierSummaryPayload = primaryResult;
     if (secondaryResult) {
-      const primaryItems: unknown[] = Array.isArray(primaryResult?.cashierTransactions?.pageItems)
+      const primaryItems: CashierTransaction[] = Array.isArray(primaryResult?.cashierTransactions?.pageItems)
         ? primaryResult.cashierTransactions.pageItems
         : Array.isArray(primaryResult?.cashierTransactions)
         ? primaryResult.cashierTransactions
         : [];
-      const secondaryItems: unknown[] = Array.isArray(secondaryResult?.cashierTransactions?.pageItems)
+      const secondaryItems: CashierTransaction[] = Array.isArray(secondaryResult?.cashierTransactions?.pageItems)
         ? secondaryResult.cashierTransactions.pageItems
         : Array.isArray(secondaryResult?.cashierTransactions)
         ? secondaryResult.cashierTransactions
         : [];
 
       // Deduplicate by id — primary takes precedence
-      const seen = new Set(primaryItems.map((t: any) => t.id));
-      const merged = [...primaryItems, ...secondaryItems.filter((t: any) => !seen.has(t.id))];
+      const seen = new Set(primaryItems.map((t) => t.id));
+      const merged = [...primaryItems, ...secondaryItems.filter((t) => !seen.has(t.id))];
 
       summaryAndTransactions = {
         ...primaryResult,
@@ -301,27 +461,173 @@ export async function GET(
         return tsB - tsA;
       });
       if (Array.isArray(base)) {
-        (summaryAndTransactions as any).cashierTransactions = merged;
+        summaryAndTransactions.cashierTransactions = merged;
       } else {
-        (summaryAndTransactions as any).cashierTransactions = { ...base, pageItems: merged };
+        summaryAndTransactions.cashierTransactions = { ...base, pageItems: merged };
       }
     }
 
-    const cashierTransactions = (summaryAndTransactions as any)?.cashierTransactions;
+    const cashierTransactions = summaryAndTransactions?.cashierTransactions;
     const responseCurrencyCode =
-      (summaryAndTransactions as any)?.currency?.code ||
-      (summaryAndTransactions as any)?.currencyCode ||
+      summaryAndTransactions?.currency?.code ||
+      summaryAndTransactions?.currencyCode ||
       currencyCode;
+
+    const pageItems = Array.isArray(cashierTransactions?.pageItems)
+      ? cashierTransactions.pageItems
+      : Array.isArray(cashierTransactions)
+      ? cashierTransactions
+      : [];
+
+    const normalizedItems: CashierTransaction[] = pageItems.map((tx) => ({
+      ...tx,
+      currencyCode: tx?.currency?.code || tx?.currencyCode || responseCurrencyCode,
+    }));
+
+    const numericTransactionIds = normalizedItems
+      .map((tx) => (typeof tx?.id === "number" ? tx.id : null))
+      .filter((id: number | null): id is number => id != null);
+
+    const repaymentCashLinkDelegate = (
+      prisma as typeof prisma & {
+        repaymentCashLink?: RepaymentCashLinkDelegate;
+      }
+    ).repaymentCashLink;
+
+    const [repaymentLinks, loanPayouts] = await Promise.all([
+      numericTransactionIds.length > 0 && repaymentCashLinkDelegate
+        ? repaymentCashLinkDelegate.findMany({
+            where: {
+              tenantId: tenant.id,
+              fineractTransactionId: { in: numericTransactionIds },
+            },
+            select: {
+              fineractTransactionId: true,
+              loanId: true,
+            },
+          })
+        : Promise.resolve([]),
+      dbCashierId
+        ? prisma.loanPayout.findMany({
+            where: {
+              tenantId: tenant.id,
+              cashierId: dbCashierId,
+            },
+            select: {
+              id: true,
+              fineractLoanId: true,
+              fineractClientId: true,
+              clientName: true,
+              loanAccountNo: true,
+              amount: true,
+              paidAt: true,
+              voidedAt: true,
+              createdAt: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const repaymentLinkByTxId = new Map(
+      repaymentLinks.map((link) => [link.fineractTransactionId, link.loanId])
+    );
+    const payoutById = new Map(loanPayouts.map((payout) => [payout.id, payout]));
+
+    const candidateLoanIds = new Set<number>();
+    for (const tx of normalizedItems) {
+      const noteLoanId = extractLoanIdFromNotes(tx?.txnNote ?? tx?.notes);
+      if (noteLoanId != null) {
+        candidateLoanIds.add(noteLoanId);
+      }
+
+      if (typeof tx?.id === "number") {
+        const linkedLoanId = repaymentLinkByTxId.get(tx.id);
+        if (linkedLoanId != null) {
+          candidateLoanIds.add(linkedLoanId);
+        }
+      }
+
+      if (typeof tx?.id === "string" && tx.id.startsWith("reversal-")) {
+        const payout = payoutById.get(tx.id.replace("reversal-", ""));
+        if (payout?.fineractLoanId != null) {
+          candidateLoanIds.add(payout.fineractLoanId);
+        }
+      }
+
+      const payoutMatch = matchLoanPayoutForTransaction(tx, loanPayouts);
+      if (payoutMatch?.fineractLoanId != null) {
+        candidateLoanIds.add(payoutMatch.fineractLoanId);
+      }
+    }
+
+    const leads = candidateLoanIds.size
+      ? await prisma.lead.findMany({
+          where: {
+            tenantId: tenant.id,
+            fineractLoanId: { in: Array.from(candidateLoanIds) },
+          },
+          select: {
+            id: true,
+            fineractLoanId: true,
+            fineractClientId: true,
+            externalId: true,
+            fullname: true,
+            firstname: true,
+            middlename: true,
+            lastname: true,
+          },
+        })
+      : [];
+
+    const leadByLoanId = new Map(
+      leads
+        .filter((lead) => lead.fineractLoanId != null)
+        .map((lead) => [lead.fineractLoanId as number, lead])
+    );
+
+    const enrichedItems = normalizedItems.map((tx) => {
+      const noteLoanId = extractLoanIdFromNotes(tx?.txnNote ?? tx?.notes);
+      const repaymentLoanId =
+        typeof tx?.id === "number" ? repaymentLinkByTxId.get(tx.id) ?? null : null;
+
+      let payoutMatch =
+        typeof tx?.id === "string" && tx.id.startsWith("reversal-")
+          ? payoutById.get(tx.id.replace("reversal-", "")) ?? null
+          : null;
+
+      if (!payoutMatch) {
+        payoutMatch = matchLoanPayoutForTransaction(tx, loanPayouts);
+      }
+
+      const linkedLoanId =
+        noteLoanId ?? repaymentLoanId ?? payoutMatch?.fineractLoanId ?? null;
+      const lead = linkedLoanId != null ? leadByLoanId.get(linkedLoanId) ?? null : null;
+      const linkedClientId =
+        lead?.fineractClientId ?? payoutMatch?.fineractClientId ?? null;
+      const linkedFullName =
+        buildLeadFullName(lead ?? {}) ?? payoutMatch?.clientName ?? null;
+      const loanDetailHref =
+        linkedLoanId != null && linkedClientId != null
+          ? `/clients/${linkedClientId}/loans/${linkedLoanId}`
+          : lead?.id
+          ? `/leads/${lead.id}`
+          : null;
+
+      return {
+        ...tx,
+        linkedLoanId,
+        linkedClientId,
+        linkedLeadId: lead?.id ?? null,
+        linkedNrc: lead?.externalId ?? null,
+        linkedFullName,
+        loanDetailHref,
+      };
+    });
+
     if (Array.isArray(cashierTransactions?.pageItems)) {
-      cashierTransactions.pageItems = cashierTransactions.pageItems.map((tx: any) => ({
-        ...tx,
-        currencyCode: tx?.currency?.code || tx?.currencyCode || responseCurrencyCode,
-      }));
+      cashierTransactions.pageItems = enrichedItems;
     } else if (Array.isArray(cashierTransactions)) {
-      (summaryAndTransactions as any).cashierTransactions = cashierTransactions.map((tx: any) => ({
-        ...tx,
-        currencyCode: tx?.currency?.code || tx?.currencyCode || responseCurrencyCode,
-      }));
+      summaryAndTransactions.cashierTransactions = enrichedItems;
     }
 
     return NextResponse.json(summaryAndTransactions);

@@ -49,6 +49,12 @@ interface Transaction {
   };
   currencyCode?: string;
   notes?: string;
+  linkedLoanId?: number | null;
+  linkedClientId?: number | null;
+  linkedLeadId?: string | null;
+  linkedNrc?: string | null;
+  linkedFullName?: string | null;
+  loanDetailHref?: string | null;
 }
 
 interface Currency {
@@ -129,23 +135,7 @@ export default function CashierTransactionsPage({
   const [reverseModalInitial, setReverseModalInitial] =
     useState<ReverseCashierEntryInitial | null>(null);
 
-  useEffect(() => {
-    async function loadParams() {
-      const resolvedParams = await params;
-      setTellerId(resolvedParams.id);
-      setCashierId(resolvedParams.cashierId);
-      fetchCurrencies();
-    }
-    loadParams();
-  }, [params]);
-
-  useEffect(() => {
-    if (tellerId && cashierId && currencyCode) {
-      fetchTransactions();
-    }
-  }, [tellerId, cashierId, currencyCode]);
-
-  const fetchCurrencies = async () => {
+  const fetchCurrencies = useCallback(async () => {
     setLoadingCurrencies(true);
     try {
       const response = await fetch("/api/fineract/currencies");
@@ -159,18 +149,37 @@ export default function CashierTransactionsPage({
 
         setCurrencies(currencyList);
 
-        if (!currencyCode && currencyList.length > 0) {
-          setCurrencyCode(currencyList[0].code);
-        }
+        setCurrencyCode((current) =>
+          !current && currencyList.length > 0 ? currencyList[0].code : current
+        );
       }
     } catch (error) {
       console.error("Error fetching currencies:", error);
     } finally {
       setLoadingCurrencies(false);
     }
-  };
+  }, []);
 
-  const fetchTransactions = async () => {
+  const toTimestamp = useCallback((date: string | number[] | undefined): number => {
+    if (!date) return 0;
+    if (Array.isArray(date) && date.length >= 3) {
+      return new Date(date[0], date[1] - 1, date[2]).getTime();
+    }
+    if (typeof date === "string") {
+      const d = new Date(date);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+    return 0;
+  }, []);
+
+  const sortByDateDesc = useCallback((txns: Transaction[]) =>
+    [...txns].sort((a, b) => {
+      const dateA = a.txnDate || a.transactionDate || a.createdDate;
+      const dateB = b.txnDate || b.transactionDate || b.createdDate;
+      return toTimestamp(dateB) - toTimestamp(dateA);
+    }), [toTimestamp]);
+
+  const fetchTransactions = useCallback(async () => {
     setLoading(true);
     try {
       const url = `/api/tellers/${tellerId}/cashiers/${cashierId}/transactions?currencyCode=${currencyCode}`;
@@ -178,6 +187,23 @@ export default function CashierTransactionsPage({
 
       if (response.ok) {
         const data = await response.json();
+        console.log("[CashierTransactionsPage] fetchTransactions payload:", {
+          tellerId,
+          cashierId,
+          currencyCode,
+          responseOk: response.ok,
+          hasPageItems: Array.isArray(data?.cashierTransactions?.pageItems),
+          pageItemsLength: Array.isArray(data?.cashierTransactions?.pageItems)
+            ? data.cashierTransactions.pageItems.length
+            : null,
+          isArrayTransactions:
+            data?.cashierTransactions && Array.isArray(data.cashierTransactions),
+          arrayTransactionsLength:
+            data?.cashierTransactions && Array.isArray(data.cashierTransactions)
+              ? data.cashierTransactions.length
+              : null,
+          isRootArray: Array.isArray(data),
+        });
         setSummary(data);
 
         if (
@@ -207,26 +233,23 @@ export default function CashierTransactionsPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [cashierId, currencyCode, sortByDateDesc, tellerId]);
 
-  const toTimestamp = (date: string | number[] | undefined): number => {
-    if (!date) return 0;
-    if (Array.isArray(date) && date.length >= 3) {
-      return new Date(date[0], date[1] - 1, date[2]).getTime();
+  useEffect(() => {
+    async function loadParams() {
+      const resolvedParams = await params;
+      setTellerId(resolvedParams.id);
+      setCashierId(resolvedParams.cashierId);
+      fetchCurrencies();
     }
-    if (typeof date === "string") {
-      const d = new Date(date);
-      if (!isNaN(d.getTime())) return d.getTime();
-    }
-    return 0;
-  };
+    loadParams();
+  }, [fetchCurrencies, params]);
 
-  const sortByDateDesc = (txns: Transaction[]) =>
-    [...txns].sort((a, b) => {
-      const dateA = a.txnDate || a.transactionDate || a.createdDate;
-      const dateB = b.txnDate || b.transactionDate || b.createdDate;
-      return toTimestamp(dateB) - toTimestamp(dateA);
-    });
+  useEffect(() => {
+    if (tellerId && cashierId && currencyCode) {
+      fetchTransactions();
+    }
+  }, [tellerId, cashierId, currencyCode, fetchTransactions]);
 
   const formatTransactionDate = (date: string | number[] | undefined) => {
     if (!date) return "—";
@@ -248,7 +271,7 @@ export default function CashierTransactionsPage({
     return "—";
   };
 
-  const formatAmount = (amount: number, currency?: string) => {
+  const formatAmount = useCallback((amount: number, currency?: string) => {
     // Normalize ZMK to ZMW (Fineract uses legacy ZMK code)
     const normalizedCurrency = currency === "ZMK" ? "ZMW" : (currency || orgCurrency);
     try {
@@ -259,9 +282,9 @@ export default function CashierTransactionsPage({
     } catch {
       return `${normalizedCurrency} ${amount.toFixed(2)}`;
     }
-  };
+  }, [orgCurrency]);
 
-  const getTransactionTypeLabel = (tx: Transaction): string => {
+  const getTransactionTypeLabel = useCallback((tx: Transaction): string => {
     const txnTypeValue =
       typeof tx.txnType === "object"
         ? (tx.txnType as { value?: string })?.value || ""
@@ -283,9 +306,9 @@ export default function CashierTransactionsPage({
     if (isAllocate) return "Cash In";
     if (isSettle) return "Cash Out";
     return txnTypeValue || "Unknown";
-  };
+  }, []);
 
-  const getTransactionTypeBadge = (tx: Transaction) => {
+  const getTransactionTypeBadge = useCallback((tx: Transaction) => {
     const label = getTransactionTypeLabel(tx);
     if (label === "Reversal (Cash In)") {
       return <Badge className="bg-green-600 text-white">Reversal (Cash In)</Badge>;
@@ -297,11 +320,34 @@ export default function CashierTransactionsPage({
       return <Badge variant="destructive">Cash Out</Badge>;
     }
     return <Badge variant="outline">{label}</Badge>;
-  };
+  }, [getTransactionTypeLabel]);
 
   const getTransactionNotes = (tx: Transaction) => {
     return tx.txnNote || tx.notes || "—";
   };
+
+  const renderLoanLink = useCallback((
+    tx: Transaction,
+    value: string | number | null | undefined,
+    className?: string
+  ) => {
+    if (value == null || value === "") {
+      return <span className="text-sm text-muted-foreground">—</span>;
+    }
+
+    if (!tx.loanDetailHref) {
+      return <span className={className}>{String(value)}</span>;
+    }
+
+    return (
+      <Link
+        href={tx.loanDetailHref}
+        className={`text-primary hover:text-primary/80 hover:underline transition-colors ${className ?? ""}`}
+      >
+        {String(value)}
+      </Link>
+    );
+  }, []);
 
   const openReverseForRow = useCallback((tx: Transaction) => {
     const direction = getOriginalCashDirectionForCounterEntry(tx);
@@ -345,6 +391,41 @@ export default function CashierTransactionsPage({
         enableSorting: true,
         getExportValue: (row) => getTransactionTypeLabel(row),
         cell: ({ row }) => getTransactionTypeBadge(row.original),
+      },
+      {
+        id: "fullname",
+        header: "Fullname",
+        accessorKey: "linkedFullName" as keyof Transaction,
+        enableSorting: true,
+        cell: ({ row }) =>
+          renderLoanLink(
+            row.original,
+            row.original.linkedFullName,
+            "text-sm font-medium"
+          ),
+      },
+      {
+        id: "nrc",
+        header: "NRC",
+        accessorKey: "linkedNrc" as keyof Transaction,
+        enableSorting: true,
+        cell: ({ row }) => (
+          <span className="text-sm font-mono">
+            {row.original.linkedNrc || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "loanId",
+        header: "Loan ID",
+        accessorKey: "linkedLoanId" as keyof Transaction,
+        enableSorting: true,
+        cell: ({ row }) =>
+          renderLoanLink(
+            row.original,
+            row.original.linkedLoanId,
+            "text-sm font-mono font-medium"
+          ),
       },
       {
         id: "amount",
@@ -409,7 +490,14 @@ export default function CashierTransactionsPage({
         },
       },
     ],
-    [currencyCode, openReverseForRow]
+    [
+      currencyCode,
+      formatAmount,
+      getTransactionTypeBadge,
+      getTransactionTypeLabel,
+      openReverseForRow,
+      renderLoanLink,
+    ]
   );
 
   return (
