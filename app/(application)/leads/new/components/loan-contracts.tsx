@@ -39,6 +39,7 @@ import {
   generateKeyFactsStatementHTML,
   KeyFactsData,
 } from "./key-facts-statement-template";
+import { getMySignature } from "@/app/actions/user-signature-actions";
 
 interface LoanContractsProps {
   leadId?: string;
@@ -78,6 +79,9 @@ export function LoanContracts({
   const [loanOfficerSignature, setLoanOfficerSignature] = useState<
     string | null
   >(null);
+  const [officerSignatureIsFromProfile, setOfficerSignatureIsFromProfile] =
+    useState(false);
+  const [profileSignature, setProfileSignature] = useState<string | null>(null);
   const [uploadingBorrower, setUploadingBorrower] = useState(false);
   const [uploadingGuarantor, setUploadingGuarantor] = useState(false);
   const [uploadingOfficer, setUploadingOfficer] = useState(false);
@@ -136,6 +140,26 @@ export function LoanContracts({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Pre-populate loan officer signature from user's saved profile signature
+  useEffect(() => {
+    let cancelled = false;
+    getMySignature()
+      .then(({ signatureData }) => {
+        if (!cancelled && signatureData) {
+          setProfileSignature(signatureData);
+          if (!loanOfficerSignature) {
+            setLoanOfficerSignature(signatureData);
+            setOfficerSignatureIsFromProfile(true);
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Transform contract data to Key Facts Statement format
@@ -2374,28 +2398,10 @@ export function LoanContracts({
               <Label htmlFor="officer-signature">
                 Loan Officer Signature *
               </Label>
-              {availableSignatures.length > 0 && !loanOfficerSignature && (
-                <Select
-                  onValueChange={(value) => {
-                    const selected = availableSignatures.find(
-                      (sig) => sig.id.toString() === value,
-                    );
-                    if (selected) {
-                      setLoanOfficerSignature(selected.url);
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select existing signature" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSignatures.map((sig) => (
-                      <SelectItem key={sig.id} value={sig.id.toString()}>
-                        {sig.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {officerSignatureIsFromProfile && loanOfficerSignature && (
+                <p className="text-xs text-green-600 dark:text-green-400">
+                  Pre-filled from your profile signature
+                </p>
               )}
               <div className="border-2 border-dashed rounded-lg p-4 text-center">
                 {loanOfficerSignature ? (
@@ -2409,31 +2415,70 @@ export function LoanContracts({
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setLoanOfficerSignature(null)}
+                      onClick={() => {
+                        setLoanOfficerSignature(null);
+                        setOfficerSignatureIsFromProfile(false);
+                      }}
                     >
                       Remove
                     </Button>
                   </div>
                 ) : (
-                  <div>
-                    <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                    <Label
-                      htmlFor="officer-signature"
-                      className="cursor-pointer text-sm text-blue-600 hover:underline"
-                    >
-                      {uploadingOfficer ? "Uploading..." : "Upload signature"}
-                    </Label>
-                    <Input
-                      id="officer-signature"
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={uploadingOfficer}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleSignatureUpload(file, "officer");
-                      }}
-                    />
+                  <div className="space-y-3">
+                    {profileSignature && (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          Use your profile signature:
+                        </p>
+                        <button
+                          type="button"
+                          className="mx-auto flex flex-col items-center gap-1 border rounded-lg p-3 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setLoanOfficerSignature(profileSignature);
+                            setOfficerSignatureIsFromProfile(true);
+                          }}
+                        >
+                          <img
+                            src={profileSignature}
+                            alt="Profile signature"
+                            className="max-h-16 max-w-[140px] object-contain"
+                          />
+                          <span className="text-xs text-blue-600">
+                            Click to use this signature
+                          </span>
+                        </button>
+                        <div className="relative">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                          </div>
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-background px-2 text-muted-foreground">
+                              or upload a different one
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    <div>
+                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                      <Label
+                        htmlFor="officer-signature"
+                        className="cursor-pointer text-sm text-blue-600 hover:underline"
+                      >
+                        {uploadingOfficer ? "Uploading..." : "Upload signature"}
+                      </Label>
+                      <Input
+                        id="officer-signature"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingOfficer}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSignatureUpload(file, "officer");
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
