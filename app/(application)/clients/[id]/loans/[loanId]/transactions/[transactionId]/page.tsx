@@ -203,7 +203,10 @@ export default function TransactionDetailsPage() {
           */}
           <Button
             variant="destructive"
-            disabled={!(isDisbursementTransaction || isRepaymentTransaction) || transaction?.manuallyReversed}
+            disabled={
+              !(isDisbursementTransaction || isRepaymentTransaction) ||
+              transaction?.manuallyReversed
+            }
             onClick={() => {
               setUndoError(null);
               setShowUndo(true);
@@ -334,11 +337,11 @@ export default function TransactionDetailsPage() {
                 <div className="text-muted-foreground">Transaction Date</div>
                 <div className="font-medium">{formatDate(transaction?.date)}</div>
               </div>
-              <div className="space-y-1">
-                <div className="text-muted-foreground">Amount</div>
-                <div className="font-medium">{formatMoney(transaction?.amount)}</div>
-              </div>
+            <div className="space-y-1">
+              <div className="text-muted-foreground">Amount</div>
+              <div className="font-medium">{formatMoney(transaction?.amount)}</div>
             </div>
+          </div>
             {undoError ? <div className="text-red-600">{undoError}</div> : null}
             {isCashRepaymentUndo ? (
               <div className="space-y-3 border rounded-md p-3">
