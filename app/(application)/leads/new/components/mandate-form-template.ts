@@ -1,8 +1,12 @@
-import { format } from "date-fns";
+import { addYears, format } from "date-fns";
 import { ContractData } from "./contract-types";
 
 interface MandateSignatures {
   borrower?: string | null;
+  organization?: {
+    name?: string | null;
+    logoUrl?: string | null;
+  };
 }
 
 function frequencyCode(paymentFrequency: string): string {
@@ -25,8 +29,13 @@ function fmtDate(dateStr: string | null | undefined): string {
   }
 }
 
-function fmtAmount(n: number): string {
-  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function escapeHtml(value: string | null | undefined): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function freqBoxes(activeCode: string): string {
@@ -46,18 +55,24 @@ export function generateMandateFormHTML(
   contractData: ContractData | null,
   signatures: MandateSignatures = {}
 ): string {
+  const currentDate = new Date();
   const gflNo = contractData?.gflNo ?? "";
   const paymentDate = fmtDate(contractData?.firstPaymentDate);
-  const lastSchedule = contractData?.repaymentSchedule?.slice(-1)[0];
-  const expiryDate = lastSchedule ? fmtDate(lastSchedule.dueDate) : "";
+  const expiryDate = format(addYears(currentDate, 5), "dd/MM/yyyy");
   const freqCode = frequencyCode(contractData?.paymentFrequency ?? "Monthly");
-  const fixedAmount = contractData ? `K&nbsp;&nbsp;${fmtAmount(contractData.paymentPerPeriod)}` : "K";
+  const fixedAmount = "K 1";
+  const variableAmount = "K 75,000";
   const clientName = contractData?.clientName ?? "";
   const mobileNo = contractData?.mobileNo ?? "";
   const address = contractData?.residentialAddress ?? "";
   const bankName = contractData?.bankName ?? "";
+  const branchName = contractData?.branchName ?? "";
+  const sortCode = contractData?.sortCode ?? "";
   const accountNumber = contractData?.accountNumber ?? "";
-  const today = format(new Date(), "dd/MM/yyyy");
+  const organizationName =
+    signatures.organization?.name?.trim() || "Goodfellow Finance Limited";
+  const organizationLogoUrl = signatures.organization?.logoUrl ?? null;
+  const today = format(currentDate, "dd/MM/yyyy");
   const borrowerSig = signatures.borrower ?? null;
 
   return `<!DOCTYPE html>
@@ -72,9 +87,11 @@ export function generateMandateFormHTML(
     .page { max-width: 740px; margin: 0 auto; }
     h1 { text-align: center; font-size: 13px; font-weight: bold; margin: 0 0 12px; letter-spacing: 1px; }
     .header-row { display: flex; border: 1px solid #666; margin-bottom: 8px; }
-    .logo-box { padding: 10px 14px; border-right: 1px solid #666; min-width: 140px; }
-    .logo-gfl { font-size: 30px; font-weight: 900; color: #2d7a27; line-height: 1; }
-    .logo-sub { font-size: 7px; color: #2d7a27; letter-spacing: 0.5px; margin-top: 2px; }
+    .logo-box { padding: 10px 14px; border-right: 1px solid #666; min-width: 180px; display: flex; align-items: center; }
+    .logo-stack { display: flex; flex-direction: column; gap: 6px; }
+    .logo-image { max-width: 130px; max-height: 42px; width: auto; height: auto; object-fit: contain; }
+    .logo-fallback { font-size: 30px; font-weight: 900; color: #2d7a27; line-height: 1; }
+    .logo-name { font-size: 8px; color: #2d7a27; font-weight: 700; letter-spacing: 0.4px; line-height: 1.25; }
     .address-box { padding: 10px 14px; font-size: 10px; line-height: 1.6; }
     .section-wrap { border: 1px solid #666; margin-bottom: 8px; display: flex; }
     .section-sidebar { writing-mode: vertical-rl; transform: rotate(180deg); background: #e0e0e0; border-right: 1px solid #666; padding: 6px 3px; font-size: 7.5px; font-weight: bold; letter-spacing: 0.8px; white-space: nowrap; text-align: center; }
@@ -102,11 +119,17 @@ export function generateMandateFormHTML(
   <!-- Header -->
   <div class="header-row">
     <div class="logo-box">
-      <div class="logo-gfl">GFL</div>
-      <div class="logo-sub">GOODFELLOW FINANCE LIMITED</div>
+      <div class="logo-stack">
+        ${
+          organizationLogoUrl
+            ? `<img src="${escapeHtml(organizationLogoUrl)}" alt="${escapeHtml(organizationName)} logo" class="logo-image" onerror="this.style.display='none'" />`
+            : `<div class="logo-fallback">GFL</div>`
+        }
+        <div class="logo-name">${escapeHtml(organizationName)}</div>
+      </div>
     </div>
     <div class="address-box">
-      <strong>Goodfellow Finance Limited</strong><br/>
+      <strong>${escapeHtml(organizationName)}</strong><br/>
       Plot 8 Chaholi Rd, Rhodespark<br/>
       P.O.Box 50644<br/>
       LUSAKA
@@ -123,17 +146,17 @@ export function generateMandateFormHTML(
       </div>
       <div class="field">
         <div class="field-label">Payer's Account Number with Service Provider:</div>
-        <div class="field-input" style="width:260px;">${gflNo}</div>
+        <div class="field-input" style="width:260px;">${escapeHtml(gflNo)}</div>
       </div>
       <div class="row" style="align-items:flex-start;margin-top:4px;">
         <div class="col">
           <div class="field">
             <div class="field-label">Payment Date (DD/MM/YYYY):</div>
-            <div class="field-input" style="width:140px;">${paymentDate}</div>
+            <div class="field-input" style="width:140px;">${escapeHtml(paymentDate)}</div>
           </div>
           <div class="field">
             <div class="field-label">Expiry Date (DD/MM/YYYY):</div>
-            <div class="field-input" style="width:140px;">${expiryDate}</div>
+            <div class="field-input" style="width:140px;">${escapeHtml(expiryDate)}</div>
           </div>
           <div class="field">
             <div class="field-label">Payment Frequency* (Tick as applicable):</div>
@@ -152,11 +175,11 @@ export function generateMandateFormHTML(
           </div>
           <div class="field">
             <div class="field-label">Fixed amount to be debited:</div>
-            <div class="field-input field-input-full">${fixedAmount}</div>
+            <div class="field-input field-input-full">${escapeHtml(fixedAmount)}</div>
           </div>
           <div class="field">
             <div class="field-label">Variable amount to be debited subject to maximum of:</div>
-            <div class="field-input field-input-full">K</div>
+            <div class="field-input field-input-full">${escapeHtml(variableAmount)}</div>
           </div>
         </div>
       </div>
@@ -169,13 +192,13 @@ export function generateMandateFormHTML(
     <div class="section-body">
       <div class="field">
         <div class="field-label">Name:</div>
-        <div class="field-input field-input-full">${clientName}</div>
+        <div class="field-input field-input-full">${escapeHtml(clientName)}</div>
       </div>
       <div class="row">
         <div class="col">
           <div class="field">
             <div class="field-label">Telephone Number:</div>
-            <div class="field-input field-input-full">${mobileNo}</div>
+            <div class="field-input field-input-full">${escapeHtml(mobileNo)}</div>
           </div>
         </div>
         <div class="col">
@@ -187,7 +210,7 @@ export function generateMandateFormHTML(
       </div>
       <div class="field">
         <div class="field-label">Address:</div>
-        <div class="field-input field-input-full">${address}</div>
+        <div class="field-input field-input-full">${escapeHtml(address)}</div>
       </div>
     </div>
   </div>
@@ -198,25 +221,25 @@ export function generateMandateFormHTML(
     <div class="section-body">
       <div class="field">
         <div class="field-label">Bank Name:</div>
-        <div class="field-input field-input-full">${bankName}</div>
+        <div class="field-input field-input-full">${escapeHtml(bankName)}</div>
       </div>
       <div class="row">
         <div class="col">
           <div class="field">
             <div class="field-label">Branch Name:</div>
-            <div class="field-input field-input-full">&nbsp;</div>
+            <div class="field-input field-input-full">${escapeHtml(branchName)}</div>
           </div>
         </div>
         <div class="col">
           <div class="field">
             <div class="field-label">Sortcode:</div>
-            <div class="field-input field-input-full">&nbsp;</div>
+            <div class="field-input field-input-full">${escapeHtml(sortCode)}</div>
           </div>
         </div>
       </div>
       <div class="field">
         <div class="field-label">Bank Account Number:</div>
-        <div class="field-input field-input-full">${accountNumber}</div>
+        <div class="field-input field-input-full">${escapeHtml(accountNumber)}</div>
       </div>
     </div>
   </div>
@@ -226,14 +249,14 @@ export function generateMandateFormHTML(
     <div class="section-sidebar">Instruction to your Bank/NBFI</div>
     <div class="section-body">
       <p style="font-size:9px;margin:0 0 2px;">To: The Manager</p>
-      <div style="border-bottom:1px solid #999;height:18px;margin-bottom:3px;font-size:9px;padding:2px 0;">${bankName}</div>
+      <div style="border-bottom:1px solid #999;height:18px;margin-bottom:3px;font-size:9px;padding:2px 0;">${escapeHtml(bankName)}</div>
       <div style="border-bottom:1px solid #999;height:18px;margin-bottom:3px;">&nbsp;</div>
       <div style="border-bottom:1px solid #999;height:18px;margin-bottom:10px;">&nbsp;</div>
 
       <p style="font-weight:bold;font-size:10px;margin:0 0 4px;">INSTRUCTION TO DEBIT MY ACCOUNT</p>
       <p class="instruction-text">
-        Please pay Goodfellow Finance Limited Direct Debits from my account detailed in this mandate subject to safeguards
-        assured by the Direct Debits Guarantee. I/we understand that this mandate may remain with Goodfellow Finance Limited
+        Please pay ${escapeHtml(organizationName)} Direct Debits from my account detailed in this mandate subject to safeguards
+        assured by the Direct Debits Guarantee. I/we understand that this mandate may remain with ${escapeHtml(organizationName)}
         and, if so, details will be passed electronically to my Bank/NBFI.
       </p>
 
@@ -244,12 +267,12 @@ export function generateMandateFormHTML(
       <div class="row">
         <div class="col">
           <div class="sig-line">
-            ${borrowerSig ? `<img src="${borrowerSig}" style="max-height:36px;max-width:160px;object-fit:contain;" alt="Signature" />` : ""}
+            ${borrowerSig ? `<img src="${escapeHtml(borrowerSig)}" style="max-height:36px;max-width:160px;object-fit:contain;" alt="Signature" />` : ""}
           </div>
           <div class="sig-label">Signatures</div>
         </div>
         <div class="col">
-          <div class="sig-line" style="padding:4px 0;font-size:9px;">${today}</div>
+          <div class="sig-line" style="padding:4px 0;font-size:9px;">${escapeHtml(today)}</div>
           <div class="sig-label">Date</div>
         </div>
       </div>
@@ -261,8 +284,8 @@ export function generateMandateFormHTML(
     <div class="guarantee-title">The Direct Debit Guarantee</div>
     <ol class="guarantee-list">
       <li>This Guarantee is offered by all Banks/NBFI that take part in the DDACC System. The efficiency and security of the Direct Debit is monitored and protected by your own Bank/NBFI.</li>
-      <li>If the amounts to be paid or the payment dates change, Goodfellow Finance Limited will notify you 14 working days in advance of your account being debited or as otherwise agreed.</li>
-      <li>If an error is made by Goodfellow Finance Limited, you are guaranteed a full and immediate refund of the amount paid from Goodfellow Finance Limited.</li>
+      <li>If the amounts to be paid or the payment dates change, ${escapeHtml(organizationName)} will notify you 14 working days in advance of your account being debited or as otherwise agreed.</li>
+      <li>If an error is made by ${escapeHtml(organizationName)}, you are guaranteed a full and immediate refund of the amount paid from ${escapeHtml(organizationName)}.</li>
       <li>If an error is made by your bank/NBFI, you are guaranteed a full and immediate refund from your branch of the amount paid.</li>
       <li>You can cancel a Direct Debit at any time by writing to your Bank/NBFI. Please also send a copy of your letter to us.</li>
     </ol>

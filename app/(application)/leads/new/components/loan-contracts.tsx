@@ -68,6 +68,160 @@ function parseFineractErrorResponse(responseText: string): string {
   return responseText || "Fineract request failed";
 }
 
+function normalizeDatatableColumnName(name: string | undefined | null): string {
+  if (!name) return "";
+  return name
+    .toLowerCase()
+    .replace(/[_\s-]+/g, "")
+    .replace(/cd.*$/i, "");
+}
+
+function cleanDatatableLookupValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const duplicateMatch = trimmed.match(/^(.+?)\s+cd[\s-]+\1$/i);
+  if (duplicateMatch?.[1]) {
+    return duplicateMatch[1].trim();
+  }
+
+  const cdMatch = trimmed.match(/^(.+?)\s+cd_[a-z_]+\s+/i);
+  if (cdMatch?.[1]) {
+    return cdMatch[1].trim();
+  }
+
+  const prefixMatch = trimmed.match(/^cd_[a-z_]+\s+(.+)$/i);
+  if (prefixMatch?.[1]) {
+    return prefixMatch[1].trim();
+  }
+
+  return trimmed;
+}
+
+function isBankNameColumn(normalizedColumnName: string): boolean {
+  return normalizedColumnName === "bank" || normalizedColumnName === "bankname";
+}
+
+function isBankBranchCodeColumn(normalizedColumnName: string): boolean {
+  return (
+    normalizedColumnName === "bankbranchcode" ||
+    normalizedColumnName.includes("bankbranchcode")
+  );
+}
+
+function isBranchCodeOnlyColumn(normalizedColumnName: string): boolean {
+  return (
+    (normalizedColumnName === "branchcode" ||
+      normalizedColumnName.includes("branchcode")) &&
+    !normalizedColumnName.includes("bankbranchcode")
+  );
+}
+
+function isBranchNameColumn(normalizedColumnName: string): boolean {
+  return (
+    normalizedColumnName === "branchname" ||
+    normalizedColumnName === "bankbranchname" ||
+    normalizedColumnName.includes("branchname")
+  );
+}
+
+function isAccountNumberColumn(normalizedColumnName: string): boolean {
+  return (
+    normalizedColumnName === "accountnumber" ||
+    normalizedColumnName === "bankaccountnumber" ||
+    normalizedColumnName.includes("accountnumber") ||
+    normalizedColumnName.includes("accountno")
+  );
+}
+
+function resolveDatatableCellValue(header: any, rawValue: unknown): string {
+  if (rawValue == null) return "";
+
+  if (
+    header?.columnDisplayType === "CODELOOKUP" &&
+    Array.isArray(header?.columnValues)
+  ) {
+    const match = header.columnValues.find(
+      (columnValue: any) =>
+        columnValue.id === rawValue || columnValue.id === Number(rawValue),
+    );
+
+    if (match) {
+      return cleanDatatableLookupValue(
+        String(match.name || match.value || rawValue),
+      );
+    }
+  }
+
+  return cleanDatatableLookupValue(String(rawValue));
+}
+
+function extractClientBankDetailsFromRow(
+  headers: any[],
+  row: any[],
+  tableName: string,
+): {
+  bankName?: string;
+  branchName?: string;
+  sortCode?: string;
+  accountNumber?: string;
+} | null {
+  const bankNameIndex = headers.findIndex((header: any) =>
+    isBankNameColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+  const bankBranchCodeIndex = headers.findIndex((header: any) =>
+    isBankBranchCodeColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+  const branchCodeIndex = headers.findIndex((header: any) =>
+    isBranchCodeOnlyColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+  const branchNameIndex = headers.findIndex((header: any) =>
+    isBranchNameColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+  const accountNumberIndex = headers.findIndex((header: any) =>
+    isAccountNumberColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+
+  const resolvedBranchCodeIndex =
+    bankBranchCodeIndex >= 0 ? bankBranchCodeIndex : branchCodeIndex;
+  const hasBankShape =
+    bankNameIndex >= 0 ||
+    branchNameIndex >= 0 ||
+    resolvedBranchCodeIndex >= 0 ||
+    (accountNumberIndex >= 0 && tableName.includes("bank"));
+
+  if (!hasBankShape) {
+    return null;
+  }
+
+  const getValue = (index: number): string | undefined => {
+    if (index < 0) return undefined;
+    const value = resolveDatatableCellValue(headers[index], row[index]);
+    return value || undefined;
+  };
+
+  return {
+    bankName: getValue(bankNameIndex),
+    branchName: getValue(branchNameIndex),
+    sortCode: getValue(resolvedBranchCodeIndex),
+    accountNumber: getValue(accountNumberIndex),
+  };
+}
+
+function normalizeTenantAssetUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+
+  try {
+    if (typeof window === "undefined") {
+      return url;
+    }
+
+    return new URL(url, window.location.origin).toString();
+  } catch {
+    return url;
+  }
+}
+
 function isOverdueChargeLike(charge?: any): boolean {
   const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
   const code = String(timeType?.code || "").toLowerCase();
@@ -172,6 +326,7 @@ export function LoanContracts({
   const [activeDoc, setActiveDoc] = useState<"kfs" | "contract" | "mandate">("contract");
   const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null);
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
+  const [tenantName, setTenantName] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
   const isInvoiceDiscountingLoan =
@@ -215,15 +370,27 @@ export function LoanContracts({
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/tenant/contract-template?slug=full-loan")
-      .then((res) => res.json())
-      .then((data: { html?: string | null; logoUrl?: string | null }) => {
-        if (!cancelled) {
-          if (data.html) setTenantContractHtml(data.html);
-          if (data.logoUrl) setTenantLogoUrl(data.logoUrl);
-        }
-      })
-      .catch(() => {});
+    Promise.all([
+      fetch("/api/tenant/contract-template?slug=full-loan")
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null),
+      fetch("/api/tenant")
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null),
+    ]).then(([templateData, tenantData]) => {
+      if (cancelled) return;
+
+      if (templateData?.html) {
+        setTenantContractHtml(templateData.html);
+      }
+
+      setTenantLogoUrl(
+        normalizeTenantAssetUrl(templateData?.logoUrl) ||
+          normalizeTenantAssetUrl(tenantData?.logoFileUrl),
+      );
+      setTenantName(tenantData?.name ?? null);
+    });
+
     return () => {
       cancelled = true;
     };
@@ -443,6 +610,10 @@ export function LoanContracts({
       let dtClosestRelativeRelationship: string | undefined;
       let dtBusinessSector: string | undefined;
       let dtBusinessAddress: string | undefined;
+      let dtBankName: string | undefined;
+      let dtBranchName: string | undefined;
+      let dtSortCode: string | undefined;
+      let dtAccountNumber: string | undefined;
       let dtCollaterals: Array<{ description?: string }> = [];
       let dtReferees: Array<{
         name?: string;
@@ -580,6 +751,32 @@ export function LoanContracts({
                   if (idx < 0) return "";
                   return resolveCodeValue(headers[idx], row[idx]);
                 };
+
+                for (const rowObj of rows) {
+                  const bankDetails = extractClientBankDetailsFromRow(
+                    headers,
+                    rowObj?.row || [],
+                    lowerName,
+                  );
+
+                  if (!bankDetails) continue;
+                  if (!dtBankName && bankDetails.bankName) {
+                    dtBankName = bankDetails.bankName;
+                  }
+                  if (!dtBranchName && bankDetails.branchName) {
+                    dtBranchName = bankDetails.branchName;
+                  }
+                  if (!dtSortCode && bankDetails.sortCode) {
+                    dtSortCode = bankDetails.sortCode;
+                  }
+                  if (!dtAccountNumber && bankDetails.accountNumber) {
+                    dtAccountNumber = bankDetails.accountNumber;
+                  }
+
+                  if (dtBankName && dtBranchName && dtSortCode && dtAccountNumber) {
+                    break;
+                  }
+                }
 
                 if (
                   lowerName.includes("employment") ||
@@ -860,7 +1057,34 @@ export function LoanContracts({
         ? format(new Date(loanDateValue), "dd/MM/yyyy")
         : undefined;
       const accountNumber =
-        lead.fineractAccountNo || lead.accountNumber || undefined;
+        dtAccountNumber ||
+        lead.accountNumber ||
+        lead.stateContext?.bankAccountNumber ||
+        lead.stateContext?.accountNumber ||
+        lead.stateMetadata?.bankAccountNumber ||
+        lead.stateMetadata?.accountNumber ||
+        lead.fineractAccountNo ||
+        undefined;
+      const branchName =
+        dtBranchName ||
+        lead.stateContext?.branchName ||
+        lead.stateContext?.bankBranchName ||
+        lead.stateMetadata?.branchName ||
+        lead.stateMetadata?.bankBranchName ||
+        undefined;
+      const sortCode =
+        dtSortCode ||
+        lead.stateContext?.sortCode ||
+        lead.stateContext?.bankBranchCode ||
+        lead.stateMetadata?.sortCode ||
+        lead.stateMetadata?.bankBranchCode ||
+        undefined;
+      const bankName =
+        dtBankName ||
+        lead.bankName ||
+        lead.stateContext?.bankName ||
+        lead.stateMetadata?.bankName ||
+        undefined;
 
       const builtContractData: ContractData = {
         clientName,
@@ -903,6 +1127,8 @@ export function LoanContracts({
         mobileNo: lead.mobileNo || undefined,
         countryCode: lead.countryCode || undefined,
         accountNumber,
+        branchName,
+        sortCode,
         loanDate,
         requestedAmount: lead.requestedAmount ?? undefined,
         annualIncome: lead.annualIncome ?? undefined,
@@ -917,7 +1143,7 @@ export function LoanContracts({
         businessOwnership: lead.businessOwnership ?? undefined,
         collateralType: lead.collateralType || undefined,
         collateralValue: lead.collateralValue ?? undefined,
-        bankName: lead.bankName || undefined,
+        bankName,
         existingLoans: lead.existingLoans ?? undefined,
         hasExistingLoans: lead.hasExistingLoans ?? undefined,
         nationality: lead.nationality || undefined,
@@ -1174,10 +1400,18 @@ export function LoanContracts({
   const refreshContract = async () => {
     setIsRefreshing(true);
     try {
-      const templateRes = await fetch("/api/tenant/contract-template?slug=full-loan");
-      const templateData = await templateRes.json();
-      if (templateData.html) setTenantContractHtml(templateData.html);
-      if (templateData.logoUrl) setTenantLogoUrl(templateData.logoUrl);
+      const [templateRes, tenantRes] = await Promise.all([
+        fetch("/api/tenant/contract-template?slug=full-loan"),
+        fetch("/api/tenant"),
+      ]);
+      const templateData = templateRes.ok ? await templateRes.json() : null;
+      const tenantData = tenantRes.ok ? await tenantRes.json() : null;
+      if (templateData?.html) setTenantContractHtml(templateData.html);
+      setTenantLogoUrl(
+        normalizeTenantAssetUrl(templateData?.logoUrl) ||
+          normalizeTenantAssetUrl(tenantData?.logoFileUrl),
+      );
+      setTenantName(tenantData?.name ?? null);
 
       let dataRefreshed = false;
       if (leadId) {
@@ -1358,6 +1592,10 @@ export function LoanContracts({
     } else if (printType === "mandate") {
       const mandateHTML = generateMandateFormHTML(contractData, {
         borrower: borrowerSignature,
+        organization: {
+          name: tenantName,
+          logoUrl: tenantLogoUrl,
+        },
       });
       printWindow.document.write(mandateHTML);
     } else {
@@ -1389,6 +1627,10 @@ export function LoanContracts({
 
       const mandateHTML = generateMandateFormHTML(contractData, {
         borrower: borrowerSignature,
+        organization: {
+          name: tenantName,
+          logoUrl: tenantLogoUrl,
+        },
       });
 
       const kfsStyles = keyFactsData
@@ -2786,7 +3028,13 @@ export function LoanContracts({
               <iframe
                 srcDoc={
                   contractData
-                    ? generateMandateFormHTML(contractData, { borrower: borrowerSignature })
+                    ? generateMandateFormHTML(contractData, {
+                        borrower: borrowerSignature,
+                        organization: {
+                          name: tenantName,
+                          logoUrl: tenantLogoUrl,
+                        },
+                      })
                     : "<p>Loading...</p>"
                 }
                 className="w-full border rounded bg-white"

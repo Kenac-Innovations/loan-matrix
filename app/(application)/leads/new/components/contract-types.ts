@@ -78,6 +78,8 @@ export interface ContractData {
   mobileNo?: string | null;
   countryCode?: string | null;
   accountNumber?: string | null;
+  branchName?: string | null;
+  sortCode?: string | null;
   loanDate?: string | null;
   requestedAmount?: number | null;
   annualIncome?: number | null;
