@@ -13,6 +13,8 @@ import { SidebarNav } from "./components/sidebar-nav";
 import { ChatProvider } from "@/contexts/chat-context";
 import { TenantDisplay } from "@/components/tenant-display";
 import { MobileMenuProvider } from "./components/mobile-menu-context";
+import { hasPermissionServer } from "@/lib/authorization";
+import { SpecificPermission } from "@/shared/types/auth";
 
 export default async function DashboardLayout({
   children,
@@ -23,6 +25,7 @@ export default async function DashboardLayout({
     getUserProfileData(),
     getTenantFromHeaders(),
   ]);
+  const canReadUsers = await hasPermissionServer(SpecificPermission.READ_USER);
   const tenantLogoUrl = tenant?.logoFileUrl ?? null;
 
   return (
@@ -65,12 +68,15 @@ export default async function DashboardLayout({
             </div>
             <TenantDisplay />
             <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
-              <SidebarNav />
+              <SidebarNav canReadUsers={canReadUsers} />
             </div>
           </div>
 
           {/* Mobile Sidebar */}
-          <MobileSidebarWrapper userProfileData={userProfileData} tenantLogoUrl={tenantLogoUrl} />
+          <MobileSidebarWrapper
+            tenantLogoUrl={tenantLogoUrl}
+            canReadUsers={canReadUsers}
+          />
 
           {/* Main Content */}
           <div className="relative flex-1 h-screen overflow-y-auto">

@@ -117,6 +117,146 @@ function hasMeaningfulValue(value: unknown): boolean {
   return true;
 }
 
+function normalizeDatatableColumnName(name: string | undefined | null): string {
+  if (!name) return "";
+  return name
+    .toLowerCase()
+    .replace(/[_\s-]+/g, "")
+    .replace(/cd.*$/i, "");
+}
+
+function cleanDatatableLookupValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const duplicateMatch = trimmed.match(/^(.+?)\s+cd[\s-]+\1$/i);
+  if (duplicateMatch?.[1]) {
+    return duplicateMatch[1].trim();
+  }
+
+  const cdMatch = trimmed.match(/^(.+?)\s+cd_[a-z_]+\s+/i);
+  if (cdMatch?.[1]) {
+    return cdMatch[1].trim();
+  }
+
+  const prefixMatch = trimmed.match(/^cd_[a-z_]+\s+(.+)$/i);
+  if (prefixMatch?.[1]) {
+    return prefixMatch[1].trim();
+  }
+
+  return trimmed;
+}
+
+function isBankNameColumn(normalizedColumnName: string): boolean {
+  return normalizedColumnName === "bank" || normalizedColumnName === "bankname";
+}
+
+function isBankBranchCodeColumn(normalizedColumnName: string): boolean {
+  return (
+    normalizedColumnName === "bankbranchcode" ||
+    normalizedColumnName.includes("bankbranchcode")
+  );
+}
+
+function isBranchCodeOnlyColumn(normalizedColumnName: string): boolean {
+  return (
+    (normalizedColumnName === "branchcode" ||
+      normalizedColumnName.includes("branchcode")) &&
+    !normalizedColumnName.includes("bankbranchcode")
+  );
+}
+
+function isBranchNameColumn(normalizedColumnName: string): boolean {
+  return (
+    normalizedColumnName === "branchname" ||
+    normalizedColumnName === "bankbranchname" ||
+    normalizedColumnName.includes("branchname")
+  );
+}
+
+function isAccountNumberColumn(normalizedColumnName: string): boolean {
+  return (
+    normalizedColumnName === "accountnumber" ||
+    normalizedColumnName === "bankaccountnumber" ||
+    normalizedColumnName.includes("accountnumber") ||
+    normalizedColumnName.includes("accountno")
+  );
+}
+
+function resolveDatatableCellValue(header: any, rawValue: unknown): string {
+  if (rawValue == null) return "";
+
+  if (
+    header?.columnDisplayType === "CODELOOKUP" &&
+    Array.isArray(header?.columnValues)
+  ) {
+    const match = header.columnValues.find(
+      (columnValue: any) =>
+        columnValue.id === rawValue || columnValue.id === Number(rawValue),
+    );
+
+    if (match) {
+      return cleanDatatableLookupValue(
+        String(match.name || match.value || rawValue),
+      );
+    }
+  }
+
+  return cleanDatatableLookupValue(String(rawValue));
+}
+
+function extractClientBankDetailsFromRow(
+  headers: any[],
+  row: any[],
+  tableName: string,
+): {
+  bankName?: string;
+  branchName?: string;
+  sortCode?: string;
+  accountNumber?: string;
+} | null {
+  const bankNameIndex = headers.findIndex((header: any) =>
+    isBankNameColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+  const bankBranchCodeIndex = headers.findIndex((header: any) =>
+    isBankBranchCodeColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+  const branchCodeIndex = headers.findIndex((header: any) =>
+    isBranchCodeOnlyColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+  const branchNameIndex = headers.findIndex((header: any) =>
+    isBranchNameColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+  const accountNumberIndex = headers.findIndex((header: any) =>
+    isAccountNumberColumn(normalizeDatatableColumnName(header?.columnName)),
+  );
+
+  const resolvedBranchCodeIndex =
+    bankBranchCodeIndex >= 0 ? bankBranchCodeIndex : branchCodeIndex;
+  const hasBankShape =
+    bankNameIndex >= 0 ||
+    branchNameIndex >= 0 ||
+    resolvedBranchCodeIndex >= 0 ||
+    (accountNumberIndex >= 0 && tableName.includes("bank"));
+
+  if (!hasBankShape) {
+    return null;
+  }
+
+  const getValue = (index: number): string | undefined => {
+    if (index < 0) return undefined;
+    const value = resolveDatatableCellValue(headers[index], row[index]);
+    return value || undefined;
+  };
+
+  return {
+    bankName: getValue(bankNameIndex),
+    branchName: getValue(branchNameIndex),
+    sortCode: getValue(resolvedBranchCodeIndex),
+    accountNumber: getValue(accountNumberIndex),
+  };
+}
+
 function normalizeDateValue(value: string | number[] | null | undefined): string | null {
   if (!value) return null;
   if (Array.isArray(value) && value.length >= 3) {
@@ -1134,6 +1274,10 @@ export async function GET(
     let dtClosestRelativeRelationship: string | undefined = undefined;
     let dtBusinessSector: string | undefined = undefined;
     let dtBusinessAddress: string | undefined = undefined;
+    let dtBankName: string | undefined = undefined;
+    let dtBranchName: string | undefined = undefined;
+    let dtSortCode: string | undefined = undefined;
+    let dtAccountNumber: string | undefined = undefined;
     let dtCollaterals: Array<{ description?: string }> = [];
     let dtReferees: Array<{
       name?: string;
@@ -1196,6 +1340,32 @@ export async function GET(
               if (idx < 0) return "";
               return resolveCodeValue(headers[idx], row[idx]);
             };
+
+            for (const rowObj of rows) {
+              const bankDetails = extractClientBankDetailsFromRow(
+                headers,
+                rowObj?.row || [],
+                lowerName,
+              );
+
+              if (!bankDetails) continue;
+              if (!dtBankName && bankDetails.bankName) {
+                dtBankName = bankDetails.bankName;
+              }
+              if (!dtBranchName && bankDetails.branchName) {
+                dtBranchName = bankDetails.branchName;
+              }
+              if (!dtSortCode && bankDetails.sortCode) {
+                dtSortCode = bankDetails.sortCode;
+              }
+              if (!dtAccountNumber && bankDetails.accountNumber) {
+                dtAccountNumber = bankDetails.accountNumber;
+              }
+
+              if (dtBankName && dtBranchName && dtSortCode && dtAccountNumber) {
+                break;
+              }
+            }
 
             // --- Employment Information ---
             if (
@@ -1321,6 +1491,10 @@ export async function GET(
           dtMaritalStatus,
           dtSpouseName,
           dtClosestRelativeName,
+          dtBankName,
+          dtBranchName,
+          dtSortCode,
+          dtAccountNumber,
           dtCollaterals: dtCollaterals.length,
           dtReferees: dtReferees.length,
         });
@@ -1458,7 +1632,29 @@ export async function GET(
       lastname: lead.lastname || null,
       mobileNo: lead.mobileNo || null,
       countryCode: lead.countryCode || null,
-      accountNumber: lead.fineractAccountNo || lead.accountNumber || null,
+      accountNumber:
+        dtAccountNumber ||
+        lead.accountNumber ||
+        (lead.stateContext as any)?.bankAccountNumber ||
+        (lead.stateContext as any)?.accountNumber ||
+        (lead.stateMetadata as any)?.bankAccountNumber ||
+        (lead.stateMetadata as any)?.accountNumber ||
+        lead.fineractAccountNo ||
+        null,
+      branchName:
+        dtBranchName ||
+        (lead.stateContext as any)?.branchName ||
+        (lead.stateContext as any)?.bankBranchName ||
+        (lead.stateMetadata as any)?.branchName ||
+        (lead.stateMetadata as any)?.bankBranchName ||
+        null,
+      sortCode:
+        dtSortCode ||
+        (lead.stateContext as any)?.sortCode ||
+        (lead.stateContext as any)?.bankBranchCode ||
+        (lead.stateMetadata as any)?.sortCode ||
+        (lead.stateMetadata as any)?.bankBranchCode ||
+        null,
       loanDate: loanDateFormatted,
       requestedAmount: lead.requestedAmount ?? null,
       annualIncome: lead.annualIncome ?? null,
@@ -1473,7 +1669,12 @@ export async function GET(
       businessOwnership: lead.businessOwnership ?? null,
       collateralType: lead.collateralType || null,
       collateralValue: lead.collateralValue ?? null,
-      bankName: lead.bankName || null,
+      bankName:
+        dtBankName ||
+        lead.bankName ||
+        (lead.stateContext as any)?.bankName ||
+        (lead.stateMetadata as any)?.bankName ||
+        null,
       existingLoans: lead.existingLoans ?? null,
       hasExistingLoans: lead.hasExistingLoans ?? null,
       nationality: lead.nationality || null,

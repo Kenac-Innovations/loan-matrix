@@ -5,10 +5,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { UserProfileData } from "./user-profile-data";
 import {
   BarChart3,
   Bot,
+  Building2,
   CreditCard,
   FileText,
   Receipt,
@@ -23,21 +23,21 @@ import { useMobileMenu } from "./mobile-menu-context";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 
 interface MobileSidebarProps {
-  userProfileData: UserProfileData;
   /** Organization logo URL from document service (when set) */
   tenantLogoUrl?: string | null;
+  canReadUsers: boolean;
 }
 
-export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarProps) {
+export function MobileSidebar({
+  tenantLogoUrl,
+  canReadUsers,
+}: MobileSidebarProps) {
   const pathname = usePathname();
   const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const { isEnabled } = useFeatureFlags();
-
-  // Get login status and tenant
-  const { isLoggedIn, tenantId } = userProfileData;
 
   // Avoid hydration mismatch
   useEffect(() => {
@@ -449,6 +449,53 @@ export function MobileSidebar({ userProfileData, tenantLogoUrl }: MobileSidebarP
                 )}
               </div>
             )}
+
+            <div className="space-y-1">
+              <Link
+                href={canReadUsers ? "/organization/users" : "/organization/payment-types"}
+                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                  pathname.startsWith("/organization")
+                    ? `${activeBgColor} ${textColor}`
+                    : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+                }`}
+              >
+                <Building2
+                  className={`h-5 w-5 ${
+                    pathname.startsWith("/organization")
+                      ? iconColorActive
+                      : iconColor
+                  }`}
+                />
+                Organization
+              </Link>
+
+              {pathname.startsWith("/organization") && (
+                <div className="pl-10 space-y-1">
+                  {canReadUsers && (
+                    <Link
+                      href="/organization/users"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname.startsWith("/organization/users")
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Users
+                    </Link>
+                  )}
+                  <Link
+                    href="/organization/payment-types"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/organization/payment-types")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Payment Types
+                  </Link>
+                </div>
+              )}
+            </div>
 
             {isEnabled("reports") && (
               <Link
