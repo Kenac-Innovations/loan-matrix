@@ -182,6 +182,11 @@ export default function ReportDetailPage() {
     const fallbackValue = getInitialParameterValue(parentParam);
     if (fallbackValue) {
       fetchParams[parentParam.parameter_variable] = fallbackValue;
+      return;
+    }
+
+    if (parentParam.parameter_variable === "officeId") {
+      fetchParams[parentParam.parameter_variable] = "1";
     }
   };
   useEffect(() => {
@@ -284,7 +289,10 @@ export default function ReportDetailPage() {
     }
   };
 
-  const loadParameterOptions = async (params: ReportParameter[]) => {
+  const loadParameterOptions = async (
+    params: ReportParameter[],
+    currentParamValues: Record<string, string> = {}
+  ) => {
     const options: Record<string, ParameterOption[]> = {};
 
     for (const param of params) {
@@ -295,16 +303,11 @@ export default function ReportDetailPage() {
           const fetchParams: Record<string, string> = normalizeParameterValues(
             currentParamValues
           );
-          if (param.parentparametername) {
-            const parentParam = params.find(
-              (p) => p.parameter_name === param.parentparametername
-            );
-            if (parentParam && !fetchParams[parentParam.parameter_variable]) {
-              // Fallback: officeId=1 when parent Office has no selection yet
-              fetchParams[parentParam.parameter_variable] =
-                parentParam.parameter_variable === "officeId" ? "1" : "";
-            }
-          }
+          applyParentParameterFallback(
+            fetchParams,
+            params,
+            param.parentparametername
+          );
 
           const searchParams = new URLSearchParams({
             action: "parameterOptions",
@@ -312,9 +315,7 @@ export default function ReportDetailPage() {
             ...fetchParams,
           });
           const response = await fetch(
-            `/api/fineract/reports?action=parameterOptions&parameterName=${encodeURIComponent(
-              param.parameter_name
-            )}`
+            `/api/fineract/reports?${searchParams.toString()}`
           );
           if (response.ok) {
             const optionData = await response.json();
@@ -499,15 +500,11 @@ export default function ReportDetailPage() {
           const fetchParams: Record<string, string> = normalizeParameterValues(
             newParams
           );
-          if (param.parentparametername) {
-            const parent = reportParameters.find(
-              (p) => p.parameter_name === param.parentparametername
-            );
-            if (parent && !fetchParams[parent.parameter_variable]) {
-              fetchParams[parent.parameter_variable] =
-                parent.parameter_variable === "officeId" ? "1" : "";
-            }
-          }
+          applyParentParameterFallback(
+            fetchParams,
+            reportParameters,
+            param.parentparametername
+          );
           const searchParams = new URLSearchParams({
             action: "parameterOptions",
             parameterName: param.parameter_name,
