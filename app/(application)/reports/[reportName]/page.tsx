@@ -73,6 +73,12 @@ interface ReportData {
   }>;
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
 export default function ReportDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -468,7 +474,7 @@ export default function ReportDetailPage() {
                 <div key={index} className="space-y-2">
                   <Label htmlFor={param.parameter_variable} className="text-sm">
                     {param.parameter_label}
-                    {param.parameter_name
+                    {safeText(param.parameter_name)
                       .toLowerCase()
                       .includes("mandatory") && (
                       <span className="text-red-500 ml-1">*</span>
