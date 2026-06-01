@@ -4,6 +4,7 @@ import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -312,12 +313,13 @@ export function LoanContracts({
   const [loanOfficerSignature, setLoanOfficerSignature] = useState<
     string | null
   >(null);
-  const [officerSignatureIsFromProfile, setOfficerSignatureIsFromProfile] =
-    useState(false);
-  const [profileSignature, setProfileSignature] = useState<string | null>(null);
   const [uploadingBorrower, setUploadingBorrower] = useState(false);
   const [uploadingGuarantor, setUploadingGuarantor] = useState(false);
-  const [uploadingOfficer, setUploadingOfficer] = useState(false);
+  const [isLoadingOfficerSignature, setIsLoadingOfficerSignature] =
+    useState(true);
+  const [officerSignatureError, setOfficerSignatureError] = useState<
+    string | null
+  >(null);
   const [isCompleting, setIsCompleting] = useState(false);
   const [availableSignatures, setAvailableSignatures] = useState<
     Array<{ id: number; name: string; url: string }>
@@ -399,21 +401,28 @@ export function LoanContracts({
   // Pre-populate loan officer signature from user's saved profile signature
   useEffect(() => {
     let cancelled = false;
+    setIsLoadingOfficerSignature(true);
+    setOfficerSignatureError(null);
     getMySignature()
       .then(({ signatureData }) => {
-        if (!cancelled && signatureData) {
-          setProfileSignature(signatureData);
-          if (!loanOfficerSignature) {
-            setLoanOfficerSignature(signatureData);
-            setOfficerSignatureIsFromProfile(true);
-          }
+        if (!cancelled) {
+          setLoanOfficerSignature(signatureData ?? null);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) {
+          setLoanOfficerSignature(null);
+          setOfficerSignatureError("Failed to load your saved signature.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingOfficerSignature(false);
+        }
+      });
     return () => {
       cancelled = true;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Transform contract data to Key Facts Statement format
@@ -539,10 +548,6 @@ export function LoanContracts({
         const guarantorSig = documents.find(
           (doc: any) => doc.name === "guarantorSignature",
         );
-        const officerSig = documents.find(
-          (doc: any) => doc.name === "loanOfficerSignature",
-        );
-
         if (borrowerSig) {
           const imgUrl = `/api/fineract/clients/${clientId}/documents/${borrowerSig.id}/attachment`;
           setBorrowerSignature(imgUrl);
@@ -550,10 +555,6 @@ export function LoanContracts({
         if (guarantorSig) {
           const imgUrl = `/api/fineract/clients/${clientId}/documents/${guarantorSig.id}/attachment`;
           setGuarantorSignature(imgUrl);
-        }
-        if (officerSig) {
-          const imgUrl = `/api/fineract/clients/${clientId}/documents/${officerSig.id}/attachment`;
-          setLoanOfficerSignature(imgUrl);
         }
       } catch (err) {
         console.error("Error loading signatures:", err);
@@ -1439,7 +1440,7 @@ export function LoanContracts({
 
   const handleSignatureUpload = async (
     file: File,
-    signatureType: "borrower" | "guarantor" | "officer",
+    signatureType: "borrower" | "guarantor",
   ) => {
     if (!file) return;
 
@@ -1476,16 +1477,12 @@ export function LoanContracts({
     const setUploading =
       signatureType === "borrower"
         ? setUploadingBorrower
-        : signatureType === "guarantor"
-          ? setUploadingGuarantor
-          : setUploadingOfficer;
+        : setUploadingGuarantor;
 
     const setSignature =
       signatureType === "borrower"
         ? setBorrowerSignature
-        : signatureType === "guarantor"
-          ? setGuarantorSignature
-          : setLoanOfficerSignature;
+        : setGuarantorSignature;
 
     try {
       setUploading(true);
@@ -1501,10 +1498,6 @@ export function LoanContracts({
         guarantor: {
           name: "guarantorSignature",
           description: "Guarantor signature for loan contract",
-        },
-        officer: {
-          name: "loanOfficerSignature",
-          description: "Loan officer signature for loan contract",
         },
       };
 
@@ -2228,7 +2221,7 @@ export function LoanContracts({
       toast({
         title: "Signature required",
         description:
-          "Please upload the loan officer's signature before completing",
+          "No saved loan officer signature was found for your account. Contact an administrator to add or correct it before completing.",
         variant: "destructive",
       });
       return;
@@ -2679,10 +2672,10 @@ export function LoanContracts({
       {/* Signature Upload Section */}
       <Card className="print:hidden">
         <CardHeader>
-          <CardTitle>Upload Signatures</CardTitle>
+          <CardTitle>Signatures</CardTitle>
           <CardDescription>
-            Upload signature images for the borrower, guarantor (if applicable),
-            and loan officer
+            Upload borrower and guarantor signatures here. The loan officer
+            signature is pulled automatically from your profile.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -2827,89 +2820,54 @@ export function LoanContracts({
 
             {/* Loan Officer Signature */}
             <div className="space-y-2">
-              <Label htmlFor="officer-signature">
-                Loan Officer Signature *
+              <Label>
+                Loan Officer Signature{!signaturesOptional ? " *" : ""}
               </Label>
-              {officerSignatureIsFromProfile && loanOfficerSignature && (
-                <p className="text-xs text-green-600 dark:text-green-400">
-                  Pre-filled from your profile signature
-                </p>
-              )}
-              <div className="border-2 border-dashed rounded-lg p-4 text-center">
-                {loanOfficerSignature ? (
-                  <div className="space-y-2">
+              <div className="border-2 border-dashed rounded-lg p-4">
+                {isLoadingOfficerSignature ? (
+                  <div className="py-4 text-center">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Loading your saved signature...
+                    </p>
+                  </div>
+                ) : loanOfficerSignature ? (
+                  <div className="space-y-4 text-center">
                     <img
                       src={loanOfficerSignature}
                       alt="Loan officer signature"
                       className="max-h-24 mx-auto"
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setLoanOfficerSignature(null);
-                        setOfficerSignatureIsFromProfile(false);
-                      }}
-                    >
-                      Remove
-                    </Button>
+                    <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription className="text-amber-900 dark:text-amber-100">
+                        This signature comes from your profile. If it is not
+                        correct, contact your administrator to update it.
+                      </AlertDescription>
+                    </Alert>
+                    {officerSignatureError && (
+                      <p className="text-sm text-destructive">
+                        {officerSignatureError}
+                      </p>
+                    )}
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {profileSignature && (
-                      <>
-                        <p className="text-xs text-muted-foreground">
-                          Use your profile signature:
-                        </p>
-                        <button
-                          type="button"
-                          className="mx-auto flex flex-col items-center gap-1 border rounded-lg p-3 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors cursor-pointer"
-                          onClick={() => {
-                            setLoanOfficerSignature(profileSignature);
-                            setOfficerSignatureIsFromProfile(true);
-                          }}
-                        >
-                          <img
-                            src={profileSignature}
-                            alt="Profile signature"
-                            className="max-h-16 max-w-[140px] object-contain"
-                          />
-                          <span className="text-xs text-blue-600">
-                            Click to use this signature
-                          </span>
-                        </button>
-                        <div className="relative">
-                          <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t" />
-                          </div>
-                          <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-background px-2 text-muted-foreground">
-                              or upload a different one
-                            </span>
-                          </div>
-                        </div>
-                      </>
+                  <div className="space-y-4">
+                    <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription className="text-amber-900 dark:text-amber-100">
+                        No saved signature was found for your account. Contact
+                        your administrator to add or correct it.
+                      </AlertDescription>
+                    </Alert>
+                    {officerSignatureError && (
+                      <p className="text-sm text-destructive text-center">
+                        {officerSignatureError}
+                      </p>
                     )}
-                    <div>
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                      <Label
-                        htmlFor="officer-signature"
-                        className="cursor-pointer text-sm text-blue-600 hover:underline"
-                      >
-                        {uploadingOfficer ? "Uploading..." : "Upload signature"}
-                      </Label>
-                      <Input
-                        id="officer-signature"
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        disabled={uploadingOfficer}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleSignatureUpload(file, "officer");
-                        }}
-                      />
+                    <div className="text-center text-sm text-muted-foreground">
+                      Loan contracts use only the signature saved on your
+                      profile.
                     </div>
                   </div>
                 )}

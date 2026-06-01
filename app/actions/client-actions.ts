@@ -58,6 +58,15 @@ const familyMemberSchema = z.object({
   isDependent: z.boolean().default(false),
 });
 
+async function getInitialStageId(tenantId: string): Promise<string | null> {
+  const initialStage = await prisma.pipelineStage.findFirst({
+    where: { tenantId, isInitialState: true, isActive: true },
+    select: { id: true },
+  });
+
+  return initialStage?.id ?? null;
+}
+
 // Save draft action
 export async function saveDraft(
   data: z.infer<typeof clientFormSchema>,
@@ -119,12 +128,21 @@ export async function saveDraft(
     const tenant = await getTenantFromHeaders() || await getOrCreateDefaultTenant();
     const tenantId = tenant.id;
     console.log("==========> Tenant ID:", tenantId);
+    const initialStageId = await getInitialStageId(tenantId);
 
     if (leadId) {
+      const existingLead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { currentStageId: true },
+      });
+
       // Update existing lead
       await prisma.lead.update({
         where: { id: leadId },
         data: {
+          ...(existingLead?.currentStageId == null && {
+            currentStageId: initialStageId,
+          }),
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,
@@ -178,12 +196,12 @@ export async function saveDraft(
       return { success: true, leadId };
     } else {
       console.log("==========> Creating new lead...");
-      // Create new lead
       const lead = await prisma.lead.create({
         data: {
           userId,
           createdByUserName,
           tenantId,
+          currentStageId: initialStageId,
           officeId: validatedData.officeId,
           officeName: validatedData.officeName,
           legalFormId: validatedData.legalFormId,

@@ -51,6 +51,15 @@ const clientFormSchema = z.object({
   fineractAccountNo: z.string().optional(),
 });
 
+async function getInitialStageId(tenantId: string): Promise<string | null> {
+  const initialStage = await prisma.pipelineStage.findFirst({
+    where: { tenantId, isInitialState: true, isActive: true },
+    select: { id: true },
+  });
+
+  return initialStage?.id ?? null;
+}
+
 // Auto-save action
 export async function autoSaveField(
   data: z.infer<typeof clientFormSchema>,
@@ -103,17 +112,25 @@ export async function autoSaveField(
       }
       tenantId = fallbackTenant.id;
     }
+    const initialStageId = await getInitialStageId(tenantId);
 
     // Current timestamp for tracking
     const now = new Date();
 
     if (leadId) {
       console.log("Updating existing lead:", leadId);
+      const existingLead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { currentStageId: true },
+      });
 
       // Update existing lead
       const updatedLead = await prisma.lead.update({
         where: { id: leadId },
         data: {
+          ...(existingLead?.currentStageId == null && {
+            currentStageId: initialStageId,
+          }),
           ...(validatedData.officeId !== undefined && {
             officeId: validatedData.officeId,
           }),
@@ -228,14 +245,14 @@ export async function autoSaveField(
       console.log("Lead updated successfully:", updatedLead.id);
       return { success: true, leadId };
     } else {
-      console.log("Creating new lead with PROSPECT stage");
+      console.log("Creating new lead with initial stage");
 
       try {
-        // Create new lead with prospect stage
         const lead = await prisma.lead.create({
           data: {
             userId,
             tenantId,
+            currentStageId: initialStageId,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,
@@ -291,6 +308,7 @@ export async function autoSaveField(
           const leadData = {
             userId,
             tenantId,
+            currentStageId: initialStageId,
             officeId: validatedData.officeId || null,
             officeName: validatedData.officeName || null,
             legalFormId: validatedData.legalFormId || null,
