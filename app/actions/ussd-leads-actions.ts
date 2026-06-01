@@ -375,7 +375,7 @@ export async function updateUssdApplicationStatus(
           );
           const reason =
             notes || application.rejectionReason || "No reason provided";
-          const message = `Sorry ${application.userFullName}, your loan request of ZMW ${amountFormatted} was not approved. Reason: ${reason}. Contact us on +2609558985 /774 or visit our offices.`;
+          const message = `Sorry ${application.userFullName}, your loan request of ZMW ${amountFormatted} was not approved. Reason: ${reason}. Contact us on +260957224792 /774 or visit our offices.`;
 
           const payload = {
             tenantId,
