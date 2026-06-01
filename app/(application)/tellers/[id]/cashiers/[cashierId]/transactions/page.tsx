@@ -2,7 +2,7 @@
 
 import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { ArrowLeft, RefreshCw, Undo2 } from "lucide-react";
+import { ArrowLeft, Calendar, RefreshCw, Undo2, X } from "lucide-react";
 import {
   ReverseCashierEntryModal,
   type ReverseCashierEntryInitial,
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { formatDate } from "@/lib/format-date";
@@ -46,6 +47,12 @@ interface Transaction {
   currency?: {
     code: string;
     name: string;
+  };
+  paymentDetailData?: {
+    paymentType?: {
+      id: number;
+      name: string;
+    };
   };
   currencyCode?: string;
   notes?: string;
@@ -125,6 +132,8 @@ export default function CashierTransactionsPage({
   const [currencyCode, setCurrencyCode] = useState("");
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [reverseModalOpen, setReverseModalOpen] = useState(false);
   const [reverseModalInitial, setReverseModalInitial] =
     useState<ReverseCashierEntryInitial | null>(null);
@@ -228,6 +237,11 @@ export default function CashierTransactionsPage({
       return toTimestamp(dateB) - toTimestamp(dateA);
     });
 
+  const getTransactionTimestamp = (tx: Transaction) => {
+    const date = tx.txnDate || tx.transactionDate || tx.createdDate;
+    return toTimestamp(date);
+  };
+
   const formatTransactionDate = (date: string | number[] | undefined) => {
     if (!date) return "—";
     if (Array.isArray(date) && date.length === 3) {
@@ -303,6 +317,50 @@ export default function CashierTransactionsPage({
     return tx.txnNote || tx.notes || "—";
   };
 
+  const getPaymentTypeLabel = (tx: Transaction) => {
+    return tx.paymentDetailData?.paymentType?.name || "Cash";
+  };
+
+  const filteredTransactions = useMemo(() => {
+    const fromTimestamp = fromDate
+      ? new Date(`${fromDate}T00:00:00`).getTime()
+      : null;
+    const toTimestampLimit = toDate
+      ? new Date(`${toDate}T23:59:59.999`).getTime()
+      : null;
+
+    return transactions.filter((tx) => {
+      const transactionTimestamp = getTransactionTimestamp(tx);
+      if (fromTimestamp !== null && transactionTimestamp < fromTimestamp) {
+        return false;
+      }
+      if (toTimestampLimit !== null && transactionTimestamp > toTimestampLimit) {
+        return false;
+      }
+      return true;
+    });
+  }, [transactions, fromDate, toDate]);
+
+  const filteredSummary = useMemo(() => {
+    return filteredTransactions.reduce(
+      (acc, tx) => {
+        const amount = tx.txnAmount || tx.amount || 0;
+        const typeLabel = getTransactionTypeLabel(tx);
+
+        if (typeLabel === "Cash In" || typeLabel === "Reversal (Cash In)") {
+          acc.cashIn += amount;
+        } else if (typeLabel === "Cash Out") {
+          acc.cashOut += amount;
+        }
+
+        return acc;
+      },
+      { cashIn: 0, cashOut: 0 }
+    );
+  }, [filteredTransactions]);
+
+  const hasDateFilter = Boolean(fromDate || toDate);
+
   const openReverseForRow = useCallback((tx: Transaction) => {
     const direction = getOriginalCashDirectionForCounterEntry(tx);
     if (!direction) return;
@@ -358,6 +416,18 @@ export default function CashierTransactionsPage({
               row.original.txnAmount || row.original.amount || 0,
               getTransactionCurrencyCode(row.original, currencyCode)
             )}
+          </span>
+        ),
+      },
+      {
+        id: "paymentType",
+        header: "Payment Type",
+        accessorKey: "paymentDetailData" as keyof Transaction,
+        enableSorting: false,
+        getExportValue: (row) => getPaymentTypeLabel(row),
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {getPaymentTypeLabel(row.original)}
           </span>
         ),
       },
@@ -472,29 +542,74 @@ export default function CashierTransactionsPage({
       {/* Currency Selector */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <Label htmlFor="currencyCode" className="shrink-0">
-              Currency:
-            </Label>
-            <select
-              id="currencyCode"
-              value={currencyCode}
-              onChange={(e) => setCurrencyCode(e.target.value)}
-              disabled={loadingCurrencies}
-              className="flex h-10 w-[200px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              {loadingCurrencies ? (
-                <option value="">Loading...</option>
-              ) : currencies.length === 0 ? (
-                <option value="">No currencies</option>
-              ) : (
-                currencies.map((currency) => (
-                  <option key={currency.code} value={currency.code}>
-                    {currency.code} - {currency.name}
-                  </option>
-                ))
-              )}
-            </select>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_200px_200px_auto] lg:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="currencyCode">Currency</Label>
+              <select
+                id="currencyCode"
+                value={currencyCode}
+                onChange={(e) => setCurrencyCode(e.target.value)}
+                disabled={loadingCurrencies}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {loadingCurrencies ? (
+                  <option value="">Loading...</option>
+                ) : currencies.length === 0 ? (
+                  <option value="">No currencies</option>
+                ) : (
+                  currencies.map((currency) => (
+                    <option key={currency.code} value={currency.code}>
+                      {currency.code} - {currency.name}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="fromDate">From date</Label>
+              <div className="relative">
+                <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="fromDate"
+                  type="date"
+                  value={fromDate}
+                  max={toDate || undefined}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="toDate">To date</Label>
+              <div className="relative">
+                <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="toDate"
+                  type="date"
+                  value={toDate}
+                  min={fromDate || undefined}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setFromDate("");
+                  setToDate("");
+                }}
+                disabled={!hasDateFilter}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Clear dates
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -506,7 +621,10 @@ export default function CashierTransactionsPage({
             <CardHeader className="pb-2">
               <CardDescription>Cash In</CardDescription>
               <CardTitle className="text-2xl text-green-600">
-                {formatAmount(summary.sumCashAllocation || 0, currencyCode)}
+                {formatAmount(
+                  hasDateFilter ? filteredSummary.cashIn : summary.sumCashAllocation || 0,
+                  currencyCode
+                )}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -515,7 +633,9 @@ export default function CashierTransactionsPage({
               <CardDescription>Cash Out</CardDescription>
               <CardTitle className="text-2xl text-red-600">
                 {formatAmount(
-                  (summary.sumCashSettlement || 0) + (summary.sumOutwardCash || 0),
+                  hasDateFilter
+                    ? filteredSummary.cashOut
+                    : (summary.sumCashSettlement || 0) + (summary.sumOutwardCash || 0),
                   currencyCode
                 )}
               </CardTitle>
@@ -525,7 +645,12 @@ export default function CashierTransactionsPage({
             <CardHeader className="pb-2">
               <CardDescription>Balance</CardDescription>
               <CardTitle className="text-2xl">
-                {formatAmount(summary.netCash || 0, currencyCode)}
+                {formatAmount(
+                  hasDateFilter
+                    ? filteredSummary.cashIn - filteredSummary.cashOut
+                    : summary.netCash || 0,
+                  currencyCode
+                )}
               </CardTitle>
             </CardHeader>
           </Card>
@@ -537,12 +662,13 @@ export default function CashierTransactionsPage({
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
           <CardDescription>
-            {summary?.cashierTransactions?.totalFilteredRecords ?? transactions.length} transactions
+            {filteredTransactions.length} transactions
+            {hasDateFilter ? " in selected date range" : ""}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <GenericDataTable<Transaction>
-            data={transactions}
+            data={filteredTransactions}
             columns={columns}
             enablePagination={true}
             pageSize={25}
@@ -553,7 +679,11 @@ export default function CashierTransactionsPage({
             enableFilters={false}
             enableColumnVisibility={true}
             isLoading={loading}
-            emptyMessage="No transactions found for this currency"
+            emptyMessage={
+              hasDateFilter
+                ? "No transactions found for the selected date range"
+                : "No transactions found for this currency"
+            }
             defaultSorting={[{ id: "date", desc: true }]}
             tableId={`cashier-transactions-${tellerId}-${cashierId}`}
           />
@@ -561,17 +691,22 @@ export default function CashierTransactionsPage({
       </Card>
 
       {/* Footer Summary */}
-      {transactions.length > 0 && (
+      {filteredTransactions.length > 0 && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium">Total Transactions:</span>
-              <span className="text-sm font-bold">{transactions.length}</span>
+              <span className="text-sm font-bold">{filteredTransactions.length}</span>
             </div>
             <div className="flex justify-between items-center mt-2">
               <span className="text-sm font-medium">Balance:</span>
               <span className="text-sm font-bold">
-                {formatAmount(summary?.netCash || 0, currencyCode)}
+                {formatAmount(
+                  hasDateFilter
+                    ? filteredSummary.cashIn - filteredSummary.cashOut
+                    : summary?.netCash || 0,
+                  currencyCode
+                )}
               </span>
             </div>
           </CardContent>
