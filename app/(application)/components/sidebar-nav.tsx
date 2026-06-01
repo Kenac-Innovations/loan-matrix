@@ -23,11 +23,15 @@ interface SubMenuItem {
   allowedRoles?: string[];
 }
 
+interface SidebarNavProps {
+  canReadUsers: boolean;
+}
+
 /**
  * Sidebar Navigation Component
  * Handles role-based and feature-based visibility of menu items
  */
-export function SidebarNav() {
+export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
   const { hasAnyRole, isLoading: rolesLoading } = useUserRoles();
   const { isEnabled } = useFeatureFlags();
 
@@ -50,6 +54,17 @@ export function SidebarNav() {
   ) {
     leadsSubMenuItems.push({ label: "Configuration", href: "/leads/config" });
   }
+
+  const organizationSubMenuItems: SubMenuItem[] = [];
+
+  if (canReadUsers) {
+    organizationSubMenuItems.push({ label: "Users", href: "/organization/users" });
+  }
+
+  organizationSubMenuItems.push({
+    label: "Payment Types",
+    href: "/organization/payment-types",
+  });
 
   return (
     <nav className="space-y-1 px-2">
@@ -146,10 +161,8 @@ export function SidebarNav() {
       <MenuItemWithSubmenu
         icon={<Building2 />}
         label="Organization"
-        href="/organization/payment-types"
-        subMenuItems={[
-          { label: "Payment Types", href: "/organization/payment-types" },
-        ]}
+        href={organizationSubMenuItems[0]?.href || "/organization/payment-types"}
+        subMenuItems={organizationSubMenuItems}
       />
 
       {isEnabled("reports") && (

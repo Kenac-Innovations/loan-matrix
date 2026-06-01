@@ -1,7 +1,68 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { hasPermissionServer } from "@/lib/authorization";
+import { SpecificPermission } from "@/shared/types/auth";
+
+const maxSignatureSizeBytes = 2 * 1024 * 1024;
+const allowedSignaturePrefixes = [
+  "data:image/jpeg;base64,",
+  "data:image/jpg;base64,",
+  "data:image/png;base64,",
+  "data:image/gif;base64,",
+];
+
+const managedUserSignatureSchema = z.object({
+  userId: z.coerce.number().int().positive("User id is required"),
+});
+
+function getSignaturePayloadSize(signatureData: string) {
+  const separatorIndex = signatureData.indexOf(",");
+  if (separatorIndex === -1) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const encodedPayload = signatureData.slice(separatorIndex + 1);
+  const paddingLength = (encodedPayload.match(/=*$/)?.[0].length ?? 0);
+
+  return Math.floor((encodedPayload.length * 3) / 4) - paddingLength;
+}
+
+function validateSignatureData(signatureData: string) {
+  if (
+    !signatureData ||
+    !allowedSignaturePrefixes.some((prefix) => signatureData.startsWith(prefix))
+  ) {
+    return "Please upload a JPG, PNG, or GIF image";
+  }
+
+  if (getSignaturePayloadSize(signatureData) > maxSignatureSizeBytes) {
+    return "Please upload an image smaller than 2MB";
+  }
+
+  return null;
+}
+
+async function ensureAnyPermission(
+  permissions: SpecificPermission[],
+  message = "You do not have permission to perform this action"
+) {
+  for (const permission of permissions) {
+    if (await hasPermissionServer(permission)) {
+      return;
+    }
+  }
+
+  throw new Error(message);
+}
+
+function revalidateSignaturePaths(userId: number) {
+  revalidatePath(`/organization/users/${userId}`);
+  revalidatePath(`/organization/users/${userId}/edit`);
+}
 
 async function resolveUserId(): Promise<number> {
   const session = await getSession();
@@ -22,9 +83,11 @@ export async function getMySignature(): Promise<{ signatureData: string | null }
 export async function saveMySignature(
   signatureData: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!signatureData || !signatureData.startsWith("data:image/")) {
-    return { success: false, error: "Invalid image data" };
+  const validationError = validateSignatureData(signatureData);
+  if (validationError) {
+    return { success: false, error: validationError };
   }
+
   const fineractUserId = await resolveUserId();
   await prisma.userSignature.upsert({
     where: { fineractUserId },
@@ -38,4 +101,92 @@ export async function deleteMySignature(): Promise<{ success: boolean }> {
   const fineractUserId = await resolveUserId();
   await prisma.userSignature.deleteMany({ where: { fineractUserId } });
   return { success: true };
+}
+
+export async function getUserSignatureAction(
+  userId: number | string
+): Promise<{ signatureData: string | null }> {
+  await ensureAnyPermission(
+    [SpecificPermission.READ_USER, SpecificPermission.UPDATE_USER],
+    "You do not have permission to view user signatures"
+  );
+
+  const parsed = managedUserSignatureSchema.parse({ userId });
+  const record = await prisma.userSignature.findUnique({
+    where: { fineractUserId: parsed.userId },
+    select: { signatureData: true },
+  });
+
+  return { signatureData: record?.signatureData ?? null };
+}
+
+export async function saveUserSignatureAction(input: {
+  userId: number | string;
+  signatureData: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    await ensureAnyPermission(
+      [SpecificPermission.CREATE_USER, SpecificPermission.UPDATE_USER],
+      "You do not have permission to manage user signatures"
+    );
+
+    const parsed = managedUserSignatureSchema.parse(input);
+    const validationError = validateSignatureData(input.signatureData);
+
+    if (validationError) {
+      return { success: false, error: validationError };
+    }
+
+    await prisma.userSignature.upsert({
+      where: { fineractUserId: parsed.userId },
+      create: {
+        fineractUserId: parsed.userId,
+        signatureData: input.signatureData,
+      },
+      update: {
+        signatureData: input.signatureData,
+      },
+    });
+
+    revalidateSignaturePaths(parsed.userId);
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to save user signature",
+    };
+  }
+}
+
+export async function deleteUserSignatureAction(input: {
+  userId: number | string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    await ensureAnyPermission(
+      [SpecificPermission.CREATE_USER, SpecificPermission.UPDATE_USER],
+      "You do not have permission to manage user signatures"
+    );
+
+    const parsed = managedUserSignatureSchema.parse(input);
+
+    await prisma.userSignature.deleteMany({
+      where: { fineractUserId: parsed.userId },
+    });
+
+    revalidateSignaturePaths(parsed.userId);
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to remove user signature",
+    };
+  }
 }
