@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/popover";
 import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
-import { extractTenantSlug } from "@/lib/tenant-service";
+import { extractTenantSlug, getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import {
@@ -319,95 +319,133 @@ async function getClientDatatables(
 }
 
 async function getLeadData(leadId: string) {
+  const headersList = await headers();
+  const host = headersList.get("host") || "localhost:3000";
+  const tenantSlug = extractTenantSlug(host);
+
+  const emptyResult = {
+    lead: null,
+    fineractLoanStatus: null,
+    fineractLoanId: null,
+    fineractLoanPrincipal: null,
+    fineractLoanAccountNo: null,
+    fineractLoanCurrency: null,
+    cdeResult: null,
+    clientDatatables: [],
+    datatableData: {},
+    clientDocuments: [],
+    loanDocuments: [],
+    tenantSlug,
+    hasCreditFacility: false,
+  };
+
+  let lead: Awaited<ReturnType<typeof prisma.lead.findUnique>>;
   try {
-    // Get tenant from headers
-    const headersList = await headers();
-    const tenantId = headersList.get("x-tenant-id") || "default-tenant";
-    const host = headersList.get("host") || "localhost:3000";
-
-    // Extract tenant slug from host for Fineract API calls
-    const tenantSlug = extractTenantSlug(host);
-
-    // Fetch lead data
-    const lead = await prisma.lead.findUnique({
+    lead = await prisma.lead.findUnique({
       where: { id: leadId },
       include: {
         currentStage: true,
-        revolving: { select: { id: true, fineractSavingsAccountId: true } },
       },
     });
+  } catch (error) {
+    console.error("Error fetching base lead record:", error);
+    return emptyResult;
+  }
 
-    // Fetch pipeline stages and tenant settings in parallel
-    const [stages, tenant] = await Promise.all([
-      prisma.pipelineStage.findMany({
-        where: { tenantId, isActive: true },
-        orderBy: { order: "asc" },
-      }),
-      prisma.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
-    ]);
-    const hasCreditFacility = isCreditFacilityEnabled(tenant?.settings);
+  if (!lead) {
+    return emptyResult;
+  }
 
-    // Fetch Fineract loan info directly from Fineract API
-    // No need for internal HTTP calls - we call Fineract directly from this Server Component
-    // Note: fineractLoanId doesn't exist in schema, so we always fetch by external ID (leadId)
-    const fineractLoanInfo = await getFineractLoanInfo(null, leadId);
+  let revolving: { id: string; fineractSavingsAccountId: number } | null = null;
+  try {
+    revolving = await prisma.revolvingCreditFacility.findUnique({
+      where: { leadId },
+      select: { id: true, fineractSavingsAccountId: true },
+    });
+  } catch (error) {
+    console.error("Error fetching revolving facility info:", error);
+  }
 
-    // Extract CDE result from stateMetadata
-    const stateMetadata = (lead as any)?.stateMetadata as any;
-    const cdeResult = stateMetadata?.cdeResult || null;
+  const leadWithRelations = {
+    ...lead,
+    revolving,
+  };
 
-    // Fetch client datatables if client is linked
-    let clientDatatables: any[] = [];
-    let datatableData: Record<string, any> = {};
-    const clientId = lead?.fineractClientId;
-    if (clientId) {
+  let hasCreditFacility = false;
+  try {
+    const tenant = await getTenantFromHeaders();
+    const resolvedTenantId = tenant?.id || lead.tenantId;
+
+    const tenantRow = await prisma.tenant.findUnique({
+      where: { id: resolvedTenantId },
+      select: { settings: true },
+    });
+    hasCreditFacility = isCreditFacilityEnabled(tenantRow?.settings);
+  } catch (error) {
+    console.error("Error fetching tenant-specific lead data:", error);
+  }
+
+  let fineractLoanInfo: FineractLoanInfo = {
+    status: null,
+    loanId: null,
+    principal: null,
+    accountNo: null,
+    currency: null,
+  };
+  try {
+    fineractLoanInfo = await getFineractLoanInfo(
+      lead.fineractLoanId ?? null,
+      leadId
+    );
+  } catch (error) {
+    console.error("Error fetching Fineract loan info for lead page:", error);
+  }
+
+  const stateMetadata = ((lead as any).stateMetadata as any) || {};
+  const cdeResult = stateMetadata.cdeResult || null;
+
+  let clientDatatables: any[] = [];
+  let datatableData: Record<string, any> = {};
+  const clientId = lead.fineractClientId;
+  if (clientId) {
+    try {
       const result = await getClientDatatables(clientId, tenantSlug);
       clientDatatables = result.datatables;
       datatableData = result.datatableData;
+    } catch (error) {
+      console.error("Error fetching client datatables for lead page:", error);
     }
+  }
 
-    // Fetch Fineract documents (client and loan)
+  let clientDocuments: any[] = [];
+  let loanDocuments: any[] = [];
+  try {
     const fineractDocs = await getFineractDocuments(
       clientId || null,
-      fineractLoanInfo.loanId || null,
+      fineractLoanInfo.loanId || lead.fineractLoanId || null,
       tenantSlug
     );
-
-    return {
-      lead,
-      stages,
-      fineractLoanStatus: fineractLoanInfo.status,
-      fineractLoanId: fineractLoanInfo.loanId,
-      fineractLoanPrincipal: fineractLoanInfo.principal,
-      fineractLoanAccountNo: fineractLoanInfo.accountNo,
-      fineractLoanCurrency: fineractLoanInfo.currency,
-      cdeResult,
-      clientDatatables,
-      clientDocuments: fineractDocs.clientDocuments,
-      loanDocuments: fineractDocs.loanDocuments,
-      datatableData,
-      tenantSlug,
-      hasCreditFacility,
-    };
+    clientDocuments = fineractDocs.clientDocuments;
+    loanDocuments = fineractDocs.loanDocuments;
   } catch (error) {
-    console.error("Error fetching lead data:", error);
-    return {
-      lead: null,
-      stages: [],
-      fineractLoanStatus: null,
-      fineractLoanId: null,
-      fineractLoanPrincipal: null,
-      fineractLoanAccountNo: null,
-      fineractLoanCurrency: null,
-      cdeResult: null,
-      clientDatatables: [],
-      datatableData: {},
-      clientDocuments: [],
-      loanDocuments: [],
-      tenantSlug: null,
-      hasCreditFacility: false,
-    };
+    console.error("Error fetching Fineract documents for lead page:", error);
   }
+
+  return {
+    lead: leadWithRelations,
+    fineractLoanStatus: fineractLoanInfo.status,
+    fineractLoanId: fineractLoanInfo.loanId,
+    fineractLoanPrincipal: fineractLoanInfo.principal,
+    fineractLoanAccountNo: fineractLoanInfo.accountNo,
+    fineractLoanCurrency: fineractLoanInfo.currency,
+    cdeResult,
+    clientDatatables,
+    clientDocuments,
+    loanDocuments,
+    datatableData,
+    tenantSlug,
+    hasCreditFacility,
+  };
 }
 
 export default async function LeadDetailPage({
@@ -418,7 +456,6 @@ export default async function LeadDetailPage({
   const { id } = await params;
   const {
     lead,
-    stages,
     fineractLoanStatus,
     fineractLoanId,
     fineractLoanPrincipal,
@@ -658,90 +695,6 @@ export default async function LeadDetailPage({
           </div>
         </div>
       </div>
-
-      {/* Pipeline Stage Progress */}
-      {stages.length > 0 && (
-        <div className="mt-3 sm:mt-4 px-1 sm:px-2 overflow-x-auto scrollbar-thin">
-          <div className="flex items-center w-full min-w-[400px]">
-            {(() => {
-              const isRejected = lead.currentStage?.fineractAction === "reject";
-              const normalStages = stages.filter((s) => s.fineractAction !== "reject");
-              const visibleStages = isRejected
-                ? [...normalStages, ...stages.filter((s) => s.fineractAction === "reject")]
-                : normalStages;
-              const currentOrder = lead.currentStage?.order ?? -1;
-              const isOnFinalStage = lead.currentStage?.isFinalState === true && !isRejected;
-              return visibleStages.map((stage, idx) => {
-                const isCurrent = stage.id === lead.currentStage?.id;
-                const isRejectStage = stage.fineractAction === "reject";
-                const isCompleted = isRejected
-                  ? (!isRejectStage && stage.order < currentOrder)
-                  : isOnFinalStage
-                  ? stage.order <= currentOrder
-                  : stage.order < currentOrder;
-                const isFuture = !isCompleted && !isCurrent;
-                const isLast = idx === visibleStages.length - 1;
-
-                return (
-                  <div key={stage.id} className="flex items-center flex-1 min-w-0">
-                    <div className="flex flex-col items-center shrink-0">
-                      <div
-                        className={`
-                          flex items-center justify-center rounded-full transition-all
-                          ${isCurrent && !isOnFinalStage && !isRejected ? "w-8 h-8 ring-2 ring-offset-2 ring-offset-background" : "w-5 h-5"}
-                          ${isCompleted && !isCurrent ? "opacity-70" : ""}
-                          ${isCurrent && isRejected ? "w-7 h-7" : ""}
-                        `}
-                        style={{
-                          backgroundColor: isCompleted || isCurrent ? (stage.color || "#6b7280") : "transparent",
-                          borderColor: stage.color || "#6b7280",
-                          borderWidth: isFuture ? "2px" : "0px",
-                          borderStyle: "solid",
-                          ...(isCurrent && !isOnFinalStage && !isRejected ? { ringColor: stage.color || "#6b7280" } : {}),
-                        }}
-                      >
-                        {isCompleted && (
-                          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                        {isCurrent && isRejected && (
-                          <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        )}
-                        {isCurrent && !isOnFinalStage && !isRejected && (
-                          <div className="w-2.5 h-2.5 rounded-full bg-white" />
-                        )}
-                      </div>
-                      <span
-                        className={`
-                          text-[10px] mt-1 text-center leading-tight max-w-[72px] truncate
-                          ${isCurrent && !isOnFinalStage && !isRejected ? "font-semibold" : isCompleted ? "font-medium text-foreground" : isCurrent && isRejected ? "font-semibold" : "text-muted-foreground/60"}
-                        `}
-                        style={isCompleted || isCurrent ? { color: stage.color || undefined } : undefined}
-                        title={stage.name}
-                      >
-                        {stage.name}
-                      </span>
-                    </div>
-                    {!isLast && (
-                      <div className="flex-1 mx-1 h-0.5 rounded-full self-start mt-[10px]"
-                        style={{
-                          backgroundColor: isRejected && isCompleted && visibleStages[idx + 1]?.fineractAction === "reject"
-                            ? "#ef4444"
-                            : isCompleted ? (stage.color || "#6b7280") : "hsl(var(--border))",
-                          opacity: isCompleted ? 0.5 : 0.3,
-                        }}
-                      />
-                    )}
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        </div>
-      )}
 
       <div className="mt-4 sm:mt-6 grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-3">
         <div className="lg:col-span-2 min-w-0">
