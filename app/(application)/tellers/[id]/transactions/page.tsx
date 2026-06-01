@@ -183,7 +183,7 @@ export default function TellerTransactionsPage({
         By: tx.allocatedByName || "",
         Amount: tx.amount,
         Currency: tx.currency,
-        Balance: tx.runningBalance,
+        "Running Balance": tx.runningBalance,
         Status: tx.status,
       }));
 
@@ -377,7 +377,7 @@ export default function TellerTransactionsPage({
                     <TableHead>Notes</TableHead>
                     <TableHead className="w-[120px]">By</TableHead>
                     <TableHead className="text-right w-[140px]">Amount</TableHead>
-                    <TableHead className="text-right w-[140px]">Balance</TableHead>
+                    <TableHead className="text-right w-[160px]">Running Balance</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
