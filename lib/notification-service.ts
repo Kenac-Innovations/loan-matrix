@@ -3,7 +3,7 @@
  * Uses NOTIFICATION_SERVICE_URL and POST /api/v1/notifications/sms.
  */
 
-const CONTACT_LINE = "Contact us on +2609558985 /774 or visit our offices.";
+const CONTACT_LINE = "Contact us on +260957224792 /774 or visit our offices.";
 const DEFAULT_SMS_COUNTRY_CODE =
   process.env.SMS_DEFAULT_COUNTRY_CODE || "+260";
 
