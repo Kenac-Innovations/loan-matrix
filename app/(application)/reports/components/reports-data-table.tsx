@@ -20,6 +20,12 @@ interface ReportsDataTableProps {
   selectedReport?: string;
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
 export function ReportsDataTable({
   reports,
   onReportSelect,
@@ -35,20 +41,20 @@ export function ReportsDataTable({
   // Get unique values for filters
   const categories = useMemo(() => {
     const uniqueCategories = Array.from(
-      new Set(reports.map((report) => report.reportCategory))
+      new Set(reports.map((report) => safeText(report.reportCategory, "Uncategorized")))
     );
     return uniqueCategories.sort();
   }, [reports]);
 
   const types = useMemo(() => {
     const uniqueTypes = Array.from(
-      new Set(reports.map((report) => report.reportType))
+      new Set(reports.map((report) => safeText(report.reportType, "Other")))
     );
     return uniqueTypes.sort();
   }, [reports]);
 
-  const getCategoryIcon = (category: string) => {
-    switch (category.toLowerCase()) {
+  const getCategoryIcon = (category?: string) => {
+    switch (safeText(category).toLowerCase()) {
       case "client":
         return Users;
       case "loan":
@@ -60,8 +66,8 @@ export function ReportsDataTable({
     }
   };
 
-  const getCategoryColor = (category: string) => {
-    switch (category.toLowerCase()) {
+  const getCategoryColor = (category?: string) => {
+    switch (safeText(category).toLowerCase()) {
       case "client":
         return "bg-blue-500/20 text-blue-500";
       case "loan":
@@ -101,7 +107,7 @@ export function ReportsDataTable({
             <div className={`rounded-full p-1 ${colorClass}`}>
               <IconComponent className="h-3 w-3" />
             </div>
-            <span className="font-medium text-sm">{reportName}</span>
+            <span className="font-medium text-sm">{safeText(reportName, "Unnamed Report")}</span>
           </div>
         );
       },
