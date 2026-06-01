@@ -51,6 +51,7 @@ interface Transaction {
   amount: number;
   currency: string;
   type: string;
+  paymentType?: string;
   notes: string | null;
   allocatedBy: string;
   allocatedByName: string;
@@ -179,6 +180,7 @@ export default function TellerTransactionsPage({
       const exportRows = transactions.map((tx) => ({
         Date: formatDate(tx.date),
         Type: getTransactionTypeInfo(tx.type).label,
+        "Payment Type": tx.paymentType || "Cash",
         Notes: tx.notes || "",
         By: tx.allocatedByName || "",
         Amount: tx.amount,
@@ -374,6 +376,7 @@ export default function TellerTransactionsPage({
                   <TableRow>
                     <TableHead className="w-[180px]">Date</TableHead>
                     <TableHead className="w-[160px]">Type</TableHead>
+                    <TableHead className="w-[120px]">Payment Type</TableHead>
                     <TableHead>Notes</TableHead>
                     <TableHead className="w-[120px]">By</TableHead>
                     <TableHead className="text-right w-[140px]">Amount</TableHead>
@@ -396,6 +399,9 @@ export default function TellerTransactionsPage({
                             <Icon className="h-3 w-3" />
                             {typeInfo.label}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {tx.paymentType || "Cash"}
                         </TableCell>
                         <TableCell className="max-w-[300px]">
                           <span className="truncate block" title={tx.notes || undefined}>

@@ -3,6 +3,13 @@ export interface Transaction {
     officeName: string;
     externalId?: string;
     date?: number[];
+    paymentDetailData?: {
+      id?: number;
+      paymentType?: {
+        id: number;
+        name: string;
+      };
+    };
     manuallyReversed?: boolean;
     type?: {
       value: string;

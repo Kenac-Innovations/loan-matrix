@@ -40,6 +40,12 @@ interface Transaction {
     code: string;
     name: string;
   };
+  paymentDetailData?: {
+    paymentType?: {
+      id: number;
+      name: string;
+    };
+  };
   notes?: string;
 }
 
@@ -213,6 +219,10 @@ export function TransactionsModal({
     return tx.txnNote || tx.notes || "—";
   };
 
+  const getPaymentTypeLabel = (tx: Transaction) => {
+    return tx.paymentDetailData?.paymentType?.name || "Cash";
+  };
+
   const columns: DataTableColumn<Transaction>[] = useMemo(
     () => [
       {
@@ -249,6 +259,17 @@ export function TransactionsModal({
               row.original.txnAmount || row.original.amount || 0,
               currencyCode
             )}
+          </span>
+        ),
+      },
+      {
+        id: "paymentType",
+        header: "Payment Type",
+        accessorKey: "paymentDetailData" as keyof Transaction,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {getPaymentTypeLabel(row.original)}
           </span>
         ),
       },
@@ -381,5 +402,4 @@ export function TransactionsModal({
     </Dialog>
   );
 }
-
 

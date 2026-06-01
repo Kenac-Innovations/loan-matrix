@@ -48,6 +48,12 @@ interface Transaction {
     code: string;
     name: string;
   };
+  paymentDetailData?: {
+    paymentType?: {
+      id: number;
+      name: string;
+    };
+  };
   currencyCode?: string;
   notes?: string;
 }
@@ -311,6 +317,10 @@ export default function CashierTransactionsPage({
     return tx.txnNote || tx.notes || "—";
   };
 
+  const getPaymentTypeLabel = (tx: Transaction) => {
+    return tx.paymentDetailData?.paymentType?.name || "Cash";
+  };
+
   const filteredTransactions = useMemo(() => {
     const fromTimestamp = fromDate
       ? new Date(`${fromDate}T00:00:00`).getTime()
@@ -406,6 +416,18 @@ export default function CashierTransactionsPage({
               row.original.txnAmount || row.original.amount || 0,
               getTransactionCurrencyCode(row.original, currencyCode)
             )}
+          </span>
+        ),
+      },
+      {
+        id: "paymentType",
+        header: "Payment Type",
+        accessorKey: "paymentDetailData" as keyof Transaction,
+        enableSorting: false,
+        getExportValue: (row) => getPaymentTypeLabel(row),
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
+            {getPaymentTypeLabel(row.original)}
           </span>
         ),
       },

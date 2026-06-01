@@ -682,6 +682,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Payment Type</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Principal</TableHead>
                   <TableHead>Interest</TableHead>
@@ -710,6 +711,9 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
                           {transaction.type?.value || "Unknown"}
                         </Badge>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {transaction.paymentDetailData?.paymentType?.name || "—"}
                     </TableCell>
                     <TableCell>
                       <div className="font-medium">
