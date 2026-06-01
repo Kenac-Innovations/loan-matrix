@@ -103,6 +103,12 @@ interface ReportData {
   }>;
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
 export default function ReportsPage() {
   const [availableReports, setAvailableReports] = useState<FineractReport[]>(
     []
@@ -151,7 +157,14 @@ export default function ReportsPage() {
       }
       const reports = await response.json();
       setAvailableReports(
-        reports.filter((report: FineractReport) => report.useReport)
+        reports
+          .filter((report: FineractReport) => report.useReport)
+          .map((report: FineractReport) => ({
+            ...report,
+            reportName: safeText(report.reportName, "Unnamed Report"),
+            reportType: safeText(report.reportType, "Other"),
+            reportCategory: safeText(report.reportCategory, "Uncategorized"),
+          }))
       );
     } catch (error) {
       console.error("Error fetching reports:", error);
@@ -429,10 +442,11 @@ export default function ReportsPage() {
 
   const getReportsByCategory = () => {
     const categories = availableReports.reduce((acc, report) => {
-      if (!acc[report.reportCategory]) {
-        acc[report.reportCategory] = [];
+      const category = safeText(report.reportCategory, "Uncategorized");
+      if (!acc[category]) {
+        acc[category] = [];
       }
-      acc[report.reportCategory].push(report);
+      acc[category].push(report);
       return acc;
     }, {} as Record<string, FineractReport[]>);
     return categories;
@@ -441,8 +455,12 @@ export default function ReportsPage() {
   const reportCategories = getReportsByCategory();
   const filteredReports = availableReports.filter(
     (report) =>
-      report.reportName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.reportCategory.toLowerCase().includes(searchTerm.toLowerCase())
+      safeText(report.reportName)
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      safeText(report.reportCategory)
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
   );
 
   // Pagination calculations
