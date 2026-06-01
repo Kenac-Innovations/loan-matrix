@@ -4,16 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn } from "@/components/tables/generic-data-table";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, DollarSign, Building2 } from "lucide-react";
+import { DollarSign, Building2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format-currency";
 import { AllocateFundsModal } from "./allocate-funds-modal";
 import { BanksPageSkeleton } from "@/components/skeletons/banks-skeleton";
@@ -175,41 +167,41 @@ export function BanksTable() {
         );
       },
     },
-    {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }) => {
-        const bank = row.original;
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => router.push(`/banks/${bank.id}`)}
-              >
-                View Details
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => router.push(`/banks/${bank.id}`)}
-              >
-                <Building2 className="h-4 w-4 mr-2" />
-                Manage Tellers
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleOpenAllocate(bank)}>
-                <DollarSign className="h-4 w-4 mr-2" />
-                Allocate Funds
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
-      enableSorting: false,
-    },
+    // {
+    //   id: "actions",
+    //   header: "Actions",
+    //   cell: ({ row }) => {
+    //     const bank = row.original;
+    //     return (
+    //       <DropdownMenu>
+    //         <DropdownMenuTrigger asChild>
+    //           <Button variant="ghost" size="sm">
+    //             <MoreHorizontal className="h-4 w-4" />
+    //           </Button>
+    //         </DropdownMenuTrigger>
+    //         <DropdownMenuContent align="end">
+    //           <DropdownMenuItem
+    //             onClick={() => router.push(`/banks/${bank.id}`)}
+    //           >
+    //             View Details
+    //           </DropdownMenuItem>
+    //           <DropdownMenuItem
+    //             onClick={() => router.push(`/banks/${bank.id}/tellers`)}
+    //           >
+    //             <Building2 className="h-4 w-4 mr-2" />
+    //             Manage Tellers
+    //           </DropdownMenuItem>
+    //           <DropdownMenuSeparator />
+    //           <DropdownMenuItem onClick={() => handleOpenAllocate(bank)}>
+    //             <DollarSign className="h-4 w-4 mr-2" />
+    //             Allocate Funds
+    //           </DropdownMenuItem>
+    //         </DropdownMenuContent>
+    //       </DropdownMenu>
+    //     );
+    //   },
+    //   enableSorting: false,
+    // },
   ];
 
   if (loading) {
