@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, DollarSign, Building2, Users } from "lucide-react";
+import { MoreHorizontal, DollarSign, Building2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format-currency";
 import { AllocateFundsModal } from "./allocate-funds-modal";
 import { BanksPageSkeleton } from "@/components/skeletons/banks-skeleton";
@@ -194,7 +194,7 @@ export function BanksTable() {
                 View Details
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => router.push(`/banks/${bank.id}/tellers`)}
+                onClick={() => router.push(`/banks/${bank.id}`)}
               >
                 <Building2 className="h-4 w-4 mr-2" />
                 Manage Tellers

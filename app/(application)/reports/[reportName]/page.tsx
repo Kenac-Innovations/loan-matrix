@@ -75,6 +75,12 @@ interface ReportData {
   }>;
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
 export default function ReportDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -197,7 +203,7 @@ export default function ReportDetailPage() {
 
   const isOfficeParameter = (param: ReportParameter) =>
     param.parameter_variable === "officeId" ||
-    param.parameter_label.trim().toLowerCase() === "office";
+    safeText(param.parameter_label).trim().toLowerCase() === "office";
 
   const getParameterLabel = (param: ReportParameter) =>
     isOmamaTenant && isOfficeParameter(param)
@@ -209,12 +215,12 @@ export default function ReportDetailPage() {
       isOmamaTenant &&
       isOfficeParameter(param) &&
       (option.id?.toString() === "-1" ||
-        option.tc.trim().toLowerCase() === "all")
+        safeText(option.tc).trim().toLowerCase() === "all")
     ) {
       return "All branches";
     }
 
-    return option.tc;
+    return safeText(option.tc);
   };
 
   const fetchReportParameters = async (reportName: string) => {
