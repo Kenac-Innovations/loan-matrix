@@ -55,6 +55,7 @@ interface Transaction {
   linkedNrc?: string | null;
   linkedFullName?: string | null;
   loanDetailHref?: string | null;
+  runningBalance?: number;
 }
 
 interface Currency {
@@ -102,6 +103,39 @@ function getTransactionCurrencyCode(
   fallbackCurrencyCode?: string
 ): string | undefined {
   return tx.currency?.code || tx.currencyCode || fallbackCurrencyCode;
+}
+
+function getPrimaryTransactionDate(tx: Transaction): string | number[] | undefined {
+  return tx.createdDate || tx.transactionDate || tx.txnDate;
+}
+
+function getSignedTransactionAmount(tx: Transaction): number {
+  const rawAmount = Number(tx.txnAmount ?? tx.amount ?? 0);
+  const amount = Math.abs(rawAmount);
+
+  const txnTypeValue =
+    typeof tx.txnType === "object"
+      ? (tx.txnType as { value?: string })?.value || ""
+      : (tx.txnType as string) || tx.transactionType?.value || tx.transactionType?.code || "";
+
+  const txnTypeLower = txnTypeValue.toLowerCase();
+  const isReversal =
+    txnTypeLower.includes("reversal") ||
+    Boolean((tx as { _isReversal?: boolean })._isReversal);
+  const isAllocate =
+    txnTypeLower.includes("allocate") ||
+    txnTypeLower.includes("credit") ||
+    txnTypeLower.includes("deposit");
+  const isSettle =
+    txnTypeLower.includes("settle") ||
+    txnTypeLower.includes("debit") ||
+    txnTypeLower.includes("withdrawal") ||
+    txnTypeLower.includes("expense");
+
+  if (isReversal || isAllocate) return amount;
+  if (isSettle) return -amount;
+
+  return rawAmount;
 }
 
 interface Summary {
@@ -174,8 +208,8 @@ export default function CashierTransactionsPage({
 
   const sortByDateDesc = useCallback((txns: Transaction[]) =>
     [...txns].sort((a, b) => {
-      const dateA = a.txnDate || a.transactionDate || a.createdDate;
-      const dateB = b.txnDate || b.transactionDate || b.createdDate;
+      const dateA = getPrimaryTransactionDate(a);
+      const dateB = getPrimaryTransactionDate(b);
       return toTimestamp(dateB) - toTimestamp(dateA);
     }), [toTimestamp]);
 
@@ -367,6 +401,36 @@ export default function CashierTransactionsPage({
     setReverseModalOpen(true);
   }, [currencyCode]);
 
+  const transactionsWithRunningBalance = useMemo(() => {
+    const chronological = [...transactions].sort((a, b) => {
+      const dateA = getPrimaryTransactionDate(a);
+      const dateB = getPrimaryTransactionDate(b);
+      const delta = toTimestamp(dateA) - toTimestamp(dateB);
+      if (delta !== 0) return delta;
+
+      const numericA = Number(a.id);
+      const numericB = Number(b.id);
+      if (Number.isFinite(numericA) && Number.isFinite(numericB)) {
+        return numericA - numericB;
+      }
+
+      return String(a.id).localeCompare(String(b.id));
+    });
+
+    let runningBalance = 0;
+    const runningBalanceById = new Map<string, number>();
+
+    for (const tx of chronological) {
+      runningBalance += getSignedTransactionAmount(tx);
+      runningBalanceById.set(String(tx.id), runningBalance);
+    }
+
+    return transactions.map((tx) => ({
+      ...tx,
+      runningBalance: runningBalanceById.get(String(tx.id)) ?? 0,
+    }));
+  }, [toTimestamp, transactions]);
+
   const columns: DataTableColumn<Transaction>[] = useMemo(
     () => [
       {
@@ -437,6 +501,21 @@ export default function CashierTransactionsPage({
           <span className="text-sm font-medium text-right block">
             {formatAmount(
               row.original.txnAmount || row.original.amount || 0,
+              getTransactionCurrencyCode(row.original, currencyCode)
+            )}
+          </span>
+        ),
+      },
+      {
+        id: "runningBalance",
+        header: "Running Balance",
+        accessorKey: "runningBalance" as keyof Transaction,
+        enableSorting: true,
+        meta: { align: "right" },
+        cell: ({ row }) => (
+          <span className="text-sm font-medium text-right block">
+            {formatAmount(
+              row.original.runningBalance || 0,
               getTransactionCurrencyCode(row.original, currencyCode)
             )}
           </span>
@@ -625,12 +704,12 @@ export default function CashierTransactionsPage({
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
           <CardDescription>
-            {summary?.cashierTransactions?.totalFilteredRecords ?? transactions.length} transactions
+            {summary?.cashierTransactions?.totalFilteredRecords ?? transactionsWithRunningBalance.length} transactions
           </CardDescription>
         </CardHeader>
         <CardContent>
           <GenericDataTable<Transaction>
-            data={transactions}
+            data={transactionsWithRunningBalance}
             columns={columns}
             enablePagination={true}
             pageSize={25}
@@ -649,12 +728,12 @@ export default function CashierTransactionsPage({
       </Card>
 
       {/* Footer Summary */}
-      {transactions.length > 0 && (
+      {transactionsWithRunningBalance.length > 0 && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium">Total Transactions:</span>
-              <span className="text-sm font-bold">{transactions.length}</span>
+              <span className="text-sm font-bold">{transactionsWithRunningBalance.length}</span>
             </div>
             <div className="flex justify-between items-center mt-2">
               <span className="text-sm font-medium">Balance:</span>
