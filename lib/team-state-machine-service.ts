@@ -60,6 +60,197 @@ export interface TeamPermissionCheck {
 }
 
 export class TeamAwareStateMachineService {
+  private static normalizeRoleName(roleName: string | null | undefined): string {
+    return (roleName || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, "_");
+  }
+
+  private static normalizeOfficeName(officeName: string | null | undefined): string {
+    return (officeName || "").trim().toLowerCase();
+  }
+
+  private static getLeadDisplayName(lead: any): string {
+    return lead.firstname
+      ? [lead.firstname, lead.middlename, lead.lastname].filter(Boolean).join(" ")
+      : lead.fullname || lead.tradingName || lead.externalId || "Unknown Client";
+  }
+
+  private static getUserRoleNames(user: any): string[] {
+    const roles = Array.isArray(user?.selectedRoles)
+      ? user.selectedRoles
+      : Array.isArray(user?.roles)
+        ? user.roles
+        : [];
+
+    return roles
+      .map((role: any) =>
+        typeof role === "string" ? role : role?.name
+      )
+      .filter(Boolean)
+      .map((roleName: string) => this.normalizeRoleName(roleName));
+  }
+
+  private static userMatchesLeadOffice(user: any, lead: any): boolean {
+    if (lead.officeId != null && user?.officeId != null) {
+      return Number(user.officeId) === Number(lead.officeId);
+    }
+
+    return (
+      this.normalizeOfficeName(user?.officeName) !== "" &&
+      this.normalizeOfficeName(user?.officeName) ===
+        this.normalizeOfficeName(lead.officeName)
+    );
+  }
+
+  private static async getPreDisbursementStage(
+    tenantId: string
+  ): Promise<any | null> {
+    const disbursementStage = await prisma.pipelineStage.findFirst({
+      where: {
+        tenantId,
+        isActive: true,
+        OR: [
+          { fineractAction: "disburse" },
+          { fineractStatus: { contains: "disburs", mode: "insensitive" } },
+          { name: { contains: "disburs", mode: "insensitive" } },
+        ],
+      },
+      orderBy: { order: "asc" },
+    });
+
+    if (!disbursementStage) {
+      return null;
+    }
+
+    return prisma.pipelineStage.findFirst({
+      where: {
+        tenantId,
+        isActive: true,
+        order: { lt: disbursementStage.order },
+      },
+      orderBy: { order: "desc" },
+    });
+  }
+
+  private static isRejectedStage(stage: any | null | undefined): boolean {
+    if (!stage) return false;
+
+    const fineractAction = this.normalizeRoleName(stage.fineractAction);
+    const fineractStatus = this.normalizeRoleName(stage.fineractStatus);
+    const stageName = this.normalizeRoleName(stage.name);
+
+    return (
+      fineractAction === "REJECT" ||
+      fineractStatus.includes("REJECT") ||
+      stageName.includes("REJECT")
+    );
+  }
+
+  private static async notifyLoanOfficersAndBranchManagers(
+    tenantId: string,
+    lead: any,
+    targetStage: any,
+    triggeredBy: string
+  ): Promise<void> {
+    const preDisbursementStage = await this.getPreDisbursementStage(tenantId);
+    const isApprovalReadyStage =
+      preDisbursementStage && preDisbursementStage.id === targetStage?.id;
+    const isRejectedStage = this.isRejectedStage(targetStage);
+
+    if (!isApprovalReadyStage && !isRejectedStage) {
+      return;
+    }
+
+    const fineractService = await getFineractServiceWithSession();
+    const users = await fineractService.getUsers();
+    const numericTriggeredBy = Number(triggeredBy);
+    const clientName = this.getLeadDisplayName(lead);
+
+    const recipients = new Map<number, any>();
+
+    for (const user of users) {
+      const userId = Number(user?.id);
+      if (!Number.isFinite(userId) || userId === numericTriggeredBy) {
+        continue;
+      }
+
+      const roleNames = this.getUserRoleNames(user);
+      const isBranchManager = roleNames.includes("BRANCH_MANAGER");
+      const isLoanOfficer = roleNames.includes("LOAN_OFFICER");
+
+      if (!isBranchManager && !isLoanOfficer) {
+        continue;
+      }
+
+      if (isBranchManager && this.userMatchesLeadOffice(user, lead)) {
+        recipients.set(userId, user);
+        continue;
+      }
+
+      if (isLoanOfficer) {
+        const primaryLoanOfficerId =
+          lead.loanOfficerId != null
+            ? Number(lead.loanOfficerId)
+            : lead.assignedToUserId != null
+              ? Number(lead.assignedToUserId)
+              : null;
+
+        if (primaryLoanOfficerId != null && userId === primaryLoanOfficerId) {
+          recipients.set(userId, user);
+          continue;
+        }
+
+        if (primaryLoanOfficerId == null && this.userMatchesLeadOffice(user, lead)) {
+          recipients.set(userId, user);
+        }
+      }
+    }
+
+    if (recipients.size === 0) {
+      return;
+    }
+
+    const title = isRejectedStage
+      ? "Lead Rejected"
+      : "Lead Ready for Disbursement";
+    const message = isRejectedStage
+      ? `${clientName} has been rejected.`
+      : `${clientName} has been ${targetStage?.name || "approved"} and is ready for disbursement.`;
+    const type = isRejectedStage ? "WARNING" : "SUCCESS";
+
+    await prisma.alert.createMany({
+      data: Array.from(recipients.values()).map((user) => ({
+        tenantId,
+        mifosUserId: Number(user.id),
+        type,
+        title,
+        message,
+        actionUrl: `/leads/${lead.id}`,
+        actionLabel: "View Lead",
+        metadata: {
+          leadId: lead.id,
+          leadOfficeId: lead.officeId ?? null,
+          leadOfficeName: lead.officeName ?? null,
+          loanOfficerId: lead.loanOfficerId ?? null,
+          assignedToUserId: lead.assignedToUserId ?? null,
+          targetStageId: targetStage?.id ?? null,
+          targetStageName: targetStage?.name ?? null,
+          notificationType: isRejectedStage
+            ? "LEAD_REJECTED"
+            : "LEAD_READY_FOR_DISBURSEMENT",
+        },
+        createdBy: "system",
+      })),
+      skipDuplicates: false,
+    });
+
+    console.log(
+      `[StateTransition] Sent ${recipients.size} loan-officer/branch-manager notification(s) for lead ${lead.id} entering ${targetStage?.name}`
+    );
+  }
+
   private static async derivePayoutMethod(
     paymentTypeId?: number
   ): Promise<"CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | undefined> {
@@ -603,6 +794,18 @@ export class TeamAwareStateMachineService {
         targetStage?.name || "Unknown Stage",
         request.triggeredBy
       ).catch((err) => console.error("[StateTransition] Failed to send notifications:", err));
+
+      this.notifyLoanOfficersAndBranchManagers(
+        lead.tenantId,
+        updatedLead,
+        targetStage,
+        request.triggeredBy
+      ).catch((err) =>
+        console.error(
+          "[StateTransition] Failed to send loan officer/branch manager notifications:",
+          err
+        )
+      );
 
       return {
         success: true,
