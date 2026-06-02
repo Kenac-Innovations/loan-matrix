@@ -49,6 +49,7 @@ import {
   getLoanInterestRateDisplay,
   resolveInterestRateDisplayMode,
 } from "@/lib/interest-rate-display";
+import { normalizeTenantSlug } from "@/lib/omama-tenant";
 import { FacilityBanner } from "@/components/credit-facility/facility-banner";
 
 interface ClientLoanDetailsProps {
@@ -1195,6 +1196,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   };
 
   const loanCurrencyCode = loan?.currency?.code || orgCurrency;
+  const isOmamaTenant = normalizeTenantSlug(tenantSlug) === "omama";
   const interestRateDisplay = getLoanInterestRateDisplay(
     loan,
     resolveInterestRateDisplayMode(tenantSlug)
@@ -1219,6 +1221,71 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       return `${normalizedCode} ${amount.toFixed(2)}`;
     }
   };
+
+  const toDate = (value: unknown): Date | null => {
+    if (!value) return null;
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value === "string" || typeof value === "number") {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    if (Array.isArray(value) && value.length >= 3) {
+      const [year, month, day] = value;
+      const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    return null;
+  };
+
+  const getDifferenceInDays = (from: Date, to: Date): number => {
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const start = new Date(from.getFullYear(), from.getMonth(), from.getDate()).getTime();
+    const end = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime();
+    return Math.max(0, Math.floor((end - start) / msPerDay));
+  };
+
+  const formatDayCount = (days: number | null): string => {
+    if (days === null) return "Current";
+    if (days === 1) return "1 day";
+    return `${days} days`;
+  };
+
+  const repaymentPeriods = loan?.repaymentSchedule?.periods || [];
+  const overdueSinceDate = toDate((loan?.summary as any)?.overdueSinceDate);
+  const overdueDays =
+    overdueSinceDate && (loan?.summary?.totalOverdue ?? 0) > 0
+      ? getDifferenceInDays(overdueSinceDate, new Date())
+      : null;
+  const allReschedules = (reschedules.length > 0 ? reschedules : loan?.reschedules || []) as any[];
+  const hasRescheduleHistory =
+    Boolean(loan?.status?.closedRescheduled) || allReschedules.length > 0;
+  const latestReschedule =
+    allReschedules
+      .slice()
+      .sort((a, b) => {
+        const aTime = toDate(a?.rescheduleFromDate || a?.fromDate)?.getTime() ?? 0;
+        const bTime = toDate(b?.rescheduleFromDate || b?.fromDate)?.getTime() ?? 0;
+        return bTime - aTime;
+      })[0] || null;
+  const closedObligationsPaidOnTime = loan?.status?.closedObligationsMet
+    ? repaymentPeriods
+        .filter((period: any) => Number(period?.period ?? 0) > 0)
+        .every((period: any) => {
+          const dueDate = toDate(period?.dueDate);
+          const settledDate = toDate(period?.obligationsMetOnDate);
+
+          if ((period?.totalOverdue ?? 0) > 0) return false;
+          if (!dueDate || !settledDate) return true;
+
+          return settledDate.getTime() <= dueDate.getTime();
+        })
+    : null;
 
   // Fetch collaterals for the loan
   const fetchCollaterals = async () => {
@@ -3020,6 +3087,14 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </>
               )}
             </div>
+            {isOmamaTenant && loan.status?.closedObligationsMet && closedObligationsPaidOnTime !== null && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Repayment discipline:{" "}
+                {closedObligationsPaidOnTime
+                  ? "Closed with all payments on time"
+                  : "Closed after late payments"}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -3036,7 +3111,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       {hasCreditFacility && <FacilityBanner fineractLoanId={loanId} fineractClientId={clientId} />}
 
       {/* Quick Stats Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid gap-6 md:grid-cols-2 ${isOmamaTenant ? "xl:grid-cols-5" : "lg:grid-cols-4"}`}>
         <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -3108,6 +3183,24 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             </div>
           </CardContent>
         </Card>
+
+        {isOmamaTenant && (
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-cyan-50 to-cyan-100 dark:from-cyan-950 dark:to-cyan-900">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-cyan-600 dark:text-cyan-400">Amount Paid</p>
+                  <p className="text-2xl font-bold text-cyan-900 dark:text-cyan-100">
+                    {formatCurrency(loan.summary?.totalRepayment ?? loan.amountPaid ?? 0)}
+                  </p>
+                </div>
+                <div className="h-12 w-12 rounded-lg bg-cyan-500 flex items-center justify-center">
+                  <Coins className="h-6 w-6 text-white" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Client Information */}
@@ -3273,6 +3366,20 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <p className="text-xs font-medium text-muted-foreground">Maturity Date</p>
                   <p className="text-sm font-medium">{loan.timeline.expectedMaturityDate ? formatDate(loan.timeline.expectedMaturityDate) : "Not set"}</p>
                 </div>
+                {isOmamaTenant && (
+                  <>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Overdue By</p>
+                      <p className="text-sm font-medium">{formatDayCount(overdueDays)}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Amount Paid So Far</p>
+                      <p className="text-sm font-medium">
+                        {formatCurrency(loan.summary?.totalRepayment ?? loan.amountPaid ?? 0)}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -3413,6 +3520,30 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <p className="text-xs font-medium text-muted-foreground">Approved Amount</p>
                   <p className="text-sm font-medium">{formatCurrency(loan.approvedPrincipal ?? 0)}</p>
                 </div>
+                {isOmamaTenant && (
+                  <>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Original Schedule Reference</p>
+                      <p className="text-sm font-medium">
+                        {hasRescheduleHistory
+                          ? latestReschedule
+                            ? `Before reschedule from ${formatDate(latestReschedule.rescheduleFromDate || latestReschedule.fromDate)}`
+                            : "See Loan Reschedules for the original payment schedule"
+                          : "Not rescheduled"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Closed Obligations Met</p>
+                      <p className="text-sm font-medium">
+                        {loan.status?.closedObligationsMet
+                          ? closedObligationsPaidOnTime
+                            ? "Paid in full and on time"
+                            : "Paid in full, but not all on time"
+                          : "Not closed with obligations met"}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -3539,6 +3670,16 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         </TabsContent>
 
         <TabsContent value="schedule" className="space-y-6">
+          {isOmamaTenant && hasRescheduleHistory && (
+            <Alert>
+              <AlertDescription>
+                This loan has been rescheduled. Use the Loan Reschedules tab as the reference point for the previous payment schedule
+                {latestReschedule
+                  ? ` from ${formatDate(latestReschedule.rescheduleFromDate || latestReschedule.fromDate)}`
+                  : ""}.
+              </AlertDescription>
+            </Alert>
+          )}
           <ClientTransactions clientId={clientId} loanId={loanId} />
         </TabsContent>
 
@@ -3848,6 +3989,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     <TableRow>
                       <TableHead>#</TableHead>
                       <TableHead>From Date</TableHead>
+                      {isOmamaTenant && <TableHead>Original Schedule Reference</TableHead>}
                       <TableHead>Reason</TableHead>
                       <TableHead>Status</TableHead>
                       {hasPendingRescheduleActions && <TableHead>Actions</TableHead>}
@@ -3864,6 +4006,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableRow key={reschedule.id || index}>
                             <TableCell>{index + 1}</TableCell>
                             <TableCell>{formatDate(reschedule.rescheduleFromDate || reschedule.fromDate)}</TableCell>
+                            {isOmamaTenant && (
+                              <TableCell>
+                                {`Before ${formatDate(reschedule.rescheduleFromDate || reschedule.fromDate)}`}
+                              </TableCell>
+                            )}
                             <TableCell>
                               {reschedule.rescheduleReasonCodeValue?.name ||
                                 reschedule.rescheduleReason?.name ||
@@ -3921,7 +4068,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={hasPendingRescheduleActions ? 5 : 4}
+                          colSpan={
+                            hasPendingRescheduleActions
+                              ? isOmamaTenant
+                                ? 6
+                                : 5
+                              : isOmamaTenant
+                                ? 5
+                                : 4
+                          }
                           className="text-center py-8 text-muted-foreground"
                         >
                           <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
