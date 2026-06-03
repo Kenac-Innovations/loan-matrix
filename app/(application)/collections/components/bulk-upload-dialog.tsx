@@ -91,6 +91,7 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
   const [headers, setHeaders] = useState<string[]>([]);
   const [previewRows, setPreviewRows] = useState<Record<string, string>[]>([]);
   const [allRows, setAllRows] = useState<Record<string, string>[]>([]);
+  const [warning, setWarning] = useState<string | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping>({
     loanId: "",
     amount: "",
@@ -114,6 +115,7 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
     setHeaders([]);
     setPreviewRows([]);
     setAllRows([]);
+    setWarning(null);
     setMapping({
       loanId: "", amount: "", paymentTypeId: "", transactionDate: "",
       loanAccountNo: "", clientName: "", accountNumber: "", chequeNumber: "",
@@ -139,16 +141,37 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
           return;
         }
 
-        const parsedHeaders = results.meta.fields || [];
-        const parsedData = results.data as Record<string, string>[];
+        const parsedHeaders = (results.meta.fields || []).map((header) => header.trim());
+        const blankHeaderCount = parsedHeaders.filter((header) => header === "").length;
+        const usableHeaders = parsedHeaders.filter((header) => header !== "");
+        const parsedData = (results.data as Record<string, unknown>[]).map((row) => {
+          const normalizedRow: Record<string, string> = {};
+          for (const [key, value] of Object.entries(row)) {
+            const normalizedKey = key.trim();
+            if (!normalizedKey) continue;
+            normalizedRow[normalizedKey] =
+              typeof value === "string" ? value : value == null ? "" : String(value);
+          }
+          return normalizedRow;
+        });
 
-        setHeaders(parsedHeaders);
+        if (usableHeaders.length === 0) {
+          setError("No usable CSV headers were found.");
+          return;
+        }
+
+        setHeaders(usableHeaders);
         setPreviewRows(parsedData.slice(0, 5));
         setAllRows(parsedData);
+        setWarning(
+          blankHeaderCount > 0
+            ? `Ignored ${blankHeaderCount} blank column${blankHeaderCount === 1 ? "" : "s"} from the CSV header row. This usually means the file has trailing commas.`
+            : null
+        );
 
         const autoMapping = { ...mapping };
         for (const [field, pattern] of Object.entries(AUTO_DETECT_PATTERNS)) {
-          const match = parsedHeaders.find((h) => pattern.test(h.trim()));
+          const match = usableHeaders.find((h) => pattern.test(h));
           if (match) {
             autoMapping[field as keyof ColumnMapping] = match;
           }
@@ -175,12 +198,14 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
 
     try {
       const items = allRows.map((row, idx) => ({
+        paymentTypeValue: mapping.paymentTypeId
+          ? row[mapping.paymentTypeId]?.trim() || ""
+          : "",
         rowNumber: idx + 1,
         loanId: parseInt(row[mapping.loanId], 10) || 0,
         amount: parseFloat(row[mapping.amount]?.replace(/,/g, "")) || 0,
         loanAccountNo: mapping.loanAccountNo ? row[mapping.loanAccountNo] || null : null,
         clientName: mapping.clientName ? row[mapping.clientName] || null : null,
-        paymentTypeId: mapping.paymentTypeId ? parseInt(row[mapping.paymentTypeId], 10) || null : null,
         transactionDate: mapping.transactionDate ? row[mapping.transactionDate] || null : null,
         accountNumber: mapping.accountNumber ? row[mapping.accountNumber] || null : null,
         chequeNumber: mapping.chequeNumber ? row[mapping.chequeNumber] || null : null,
@@ -188,6 +213,11 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
         receiptNumber: mapping.receiptNumber ? row[mapping.receiptNumber] || null : null,
         bankNumber: mapping.bankNumber ? row[mapping.bankNumber] || null : null,
         note: mapping.note ? row[mapping.note] || null : null,
+      })).map(({ paymentTypeValue, ...item }) => ({
+        ...item,
+        paymentTypeId: /^\d+$/.test(paymentTypeValue) ? parseInt(paymentTypeValue, 10) : null,
+        paymentTypeName:
+          paymentTypeValue && !/^\d+$/.test(paymentTypeValue) ? paymentTypeValue : null,
       }));
 
       const response = await fetch("/api/collections/uploads", {
@@ -223,7 +253,7 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
 
   return (
     <Dialog open={open} onOpenChange={(val) => { if (!val) resetState(); onOpenChange(val); }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
@@ -238,6 +268,13 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
           <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
             <AlertCircle className="h-4 w-4 flex-shrink-0" />
             {error}
+          </div>
+        )}
+
+        {warning && !error && (
+          <div className="flex items-center gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            {warning}
           </div>
         )}
 
