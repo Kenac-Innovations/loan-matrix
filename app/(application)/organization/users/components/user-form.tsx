@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, PenLine, Save, Trash2, Upload } from "lucide-react";
 import {
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/searchable-select";
 import {
   Select,
   SelectContent,
@@ -26,6 +27,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
+import {
+  AFRICAN_COUNTRY_CODES,
+  getAfricanCountryDialCodeOrDefault,
+  getNumericPhoneValidationError,
+  USER_LOGIN_PHONE_MAX_LENGTH,
+} from "@/lib/phone-utils";
 import type {
   StaffOption,
   UserDetail,
@@ -46,6 +53,8 @@ type FieldErrors = Partial<Record<string, string[]>>;
 type FormState = {
   username: string;
   email: string;
+  phone: string;
+  countryCode: string;
   firstname: string;
   lastname: string;
   sendPasswordToEmail: boolean;
@@ -60,10 +69,15 @@ type FormState = {
 const validSignatureTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
 const maxSignatureFileSize = 2 * 1024 * 1024;
 
-function buildInitialState(initialUser?: UserDetail): FormState {
+function buildInitialState(
+  initialUser: UserDetail | undefined,
+  defaultCountryCode: string
+): FormState {
   return {
     username: initialUser?.username ?? "",
     email: initialUser?.email ?? "",
+    phone: initialUser?.phone ?? "",
+    countryCode: initialUser?.countryCode ?? defaultCountryCode,
     firstname: initialUser?.firstname ?? "",
     lastname: initialUser?.lastname ?? "",
     sendPasswordToEmail: true,
@@ -118,11 +132,19 @@ export function UserForm({
   initialStaffOptions = [],
 }: Readonly<UserFormProps>) {
   const router = useRouter();
-  const [form, setForm] = useState<FormState>(() => buildInitialState(initialUser));
+  const [form, setForm] = useState<FormState>(() =>
+    buildInitialState(
+      initialUser,
+      getAfricanCountryDialCodeOrDefault(template.defaultCountryCode)
+    )
+  );
   const [staffOptions, setStaffOptions] =
     useState<StaffOption[]>(initialStaffOptions);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [phoneValidationError, setPhoneValidationError] = useState<string | null>(
+    null
+  );
   const [isLoadingStaff, setIsLoadingStaff] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [signatureData, setSignatureData] = useState<string | null>(null);
@@ -133,6 +155,14 @@ export function UserForm({
     mode === "edit" && Boolean(initialUser?.id)
   );
   const [signatureError, setSignatureError] = useState<string | null>(null);
+  const countryCodeOptions = useMemo(
+    () =>
+      AFRICAN_COUNTRY_CODES.map((entry) => ({
+        value: entry.code,
+        label: entry.label,
+      })),
+    []
+  );
 
   useEffect(() => {
     if (mode !== "edit" || !initialUser?.id) {
@@ -185,6 +215,33 @@ export function UserForm({
     }));
     setFormError(null);
   };
+
+  const handlePhoneChange = (value: string) => {
+    if (!value) {
+      setPhoneValidationError(null);
+      handleChange("phone", "");
+      return;
+    }
+
+    if (!/^\d+$/.test(value)) {
+      setPhoneValidationError("Phone number must contain only numbers");
+      return;
+    }
+
+    if (value.length > USER_LOGIN_PHONE_MAX_LENGTH) {
+      setPhoneValidationError(
+        `Phone number must not exceed ${USER_LOGIN_PHONE_MAX_LENGTH} digits`
+      );
+      return;
+    }
+
+    const nextError = getNumericPhoneValidationError(value);
+    setPhoneValidationError(nextError);
+    handleChange("phone", value);
+  };
+
+  const phoneFieldError = phoneValidationError || firstError(fieldErrors, "phone");
+  const countryCodeFieldError = firstError(fieldErrors, "countryCode");
 
   const handleOfficeChange = (value: string) => {
     const nextOfficeId = value === "__none__" ? "" : value;
@@ -248,10 +305,17 @@ export function UserForm({
     setFieldErrors({});
     setSignatureError(null);
 
+    if (phoneValidationError) {
+      setFormError("Please correct the phone number and try again.");
+      return;
+    }
+
     const payload: UserFormInput = {
       userId: initialUser?.id,
       username: form.username,
       email: form.email,
+      phone: form.phone,
+      countryCode: form.countryCode,
       firstname: form.firstname,
       lastname: form.lastname,
       sendPasswordToEmail: form.sendPasswordToEmail,
@@ -375,6 +439,44 @@ export function UserForm({
           {firstError(fieldErrors, "email") && (
             <p className="text-sm text-destructive">
               {firstError(fieldErrors, "email")}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="phone">Phone Number</Label>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <SearchableSelect
+              options={countryCodeOptions}
+              value={form.countryCode}
+              onValueChange={(value) =>
+                handleChange("countryCode", getAfricanCountryDialCodeOrDefault(value))
+              }
+              placeholder="Country code"
+              emptyMessage="No African country code found."
+              className="w-full sm:w-[220px]"
+            />
+            <Input
+              id="phone"
+              type="text"
+              inputMode="numeric"
+              autoComplete="tel-national"
+              pattern="[0-9]*"
+              maxLength={USER_LOGIN_PHONE_MAX_LENGTH}
+              value={form.phone}
+              onChange={(event) => handlePhoneChange(event.target.value)}
+              placeholder="Enter phone number for SMS MFA"
+              className="flex-1"
+            />
+          </div>
+          {countryCodeFieldError && (
+            <p className="text-sm text-destructive">{countryCodeFieldError}</p>
+          )}
+          {phoneFieldError ? (
+            <p className="text-sm text-destructive">{phoneFieldError}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Digits only, maximum {USER_LOGIN_PHONE_MAX_LENGTH} digits.
             </p>
           )}
         </div>
@@ -706,7 +808,10 @@ export function UserForm({
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Button type="submit" disabled={isPending || signatureLoading}>
+        <Button
+          type="submit"
+          disabled={isPending || signatureLoading || Boolean(phoneValidationError)}
+        >
           {isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (

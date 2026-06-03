@@ -22,27 +22,59 @@ export interface UserSummary {
   lastname: string;
   displayName: string;
   email?: string;
+  phone?: string;
+  countryCode?: string;
+  isBlocked: boolean;
+  blockedAt?: string | null;
   officeId?: number;
   officeName?: string;
   roles: string[];
 }
 
+export type UserLoginBlockAction = "BLOCK" | "UNBLOCK";
+export type UserLoginBlockSource = "MANUAL" | "SYSTEM_MFA_MAX_ATTEMPTS";
+
+export interface UserLoginBlockEvent {
+  id: string;
+  action: UserLoginBlockAction;
+  source: UserLoginBlockSource;
+  note: string;
+  actorUserId?: number | null;
+  actorName?: string | null;
+  createdAt: string;
+}
+
+export interface UserBlockHistoryPage {
+  items: UserLoginBlockEvent[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
 export interface UserDetail extends UserSummary {
   passwordNeverExpires: boolean;
   isSelfServiceUser: boolean;
+  blockedSource?: UserLoginBlockSource | null;
+  blockedNote?: string | null;
+  blockedByActorName?: string | null;
   selectedRoles: UserRoleOption[];
   staff?: StaffOption | null;
+  blockHistory: UserLoginBlockEvent[];
 }
 
 export interface UsersTemplate {
   allowedOffices: OfficeOption[];
   availableRoles: UserRoleOption[];
+  defaultCountryCode: string;
 }
 
 export interface UserFormInput {
   userId?: number | string;
   username: string;
   email?: string;
+  phone?: string;
+  countryCode?: string;
   firstname: string;
   lastname: string;
   sendPasswordToEmail?: boolean;
@@ -59,6 +91,16 @@ export interface UserPasswordChangeInput {
   firstname?: string;
   password: string;
   repeatPassword: string;
+}
+
+export interface UserBlockAccountInput {
+  userId: number | string;
+  note: string;
+}
+
+export interface UserBlockHistoryInput {
+  userId: number | string;
+  page?: number | string;
 }
 
 export interface UserActionResult<T = undefined> {

@@ -126,6 +126,7 @@ export async function getTenantBySlug(
         slug: true,
         domain: true,
         settings: true,
+        notificationServiceTenantId: true,
         logoFileUrl: true,
         logoLinkId: true,
       },
@@ -173,11 +174,19 @@ export async function getOrCreateDefaultTenant(): Promise<TenantInfo> {
           slug: true,
           domain: true,
           settings: true,
+          notificationServiceTenantId: true,
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const code =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "string"
+          ? error.code
+          : undefined;
       // If unique constraint fails, another request created it - just fetch it
-      if (error.code === "P2002") {
+      if (code === "P2002") {
         tenant = await getTenantBySlug("default");
       } else {
         throw error;
@@ -199,7 +208,7 @@ export async function createTenant(data: {
   name: string;
   slug: string;
   domain?: string;
-  settings?: any;
+  settings?: unknown;
 }): Promise<TenantInfo> {
   const tenant = await prisma.tenant.create({
     data: {
@@ -212,6 +221,7 @@ export async function createTenant(data: {
       slug: true,
       domain: true,
       settings: true,
+      notificationServiceTenantId: true,
     },
   });
 

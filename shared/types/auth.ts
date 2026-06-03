@@ -69,6 +69,7 @@ export enum Resource {
 
 export type UserDetails = {
   id: string;
+  tenantId?: string;
   userId: number;
   name: string;
   email: string;
