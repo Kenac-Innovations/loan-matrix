@@ -76,10 +76,11 @@ export async function getLeadsMetricsOnly(
   tenantSlug: string = "goodfellow",
   options: {
     assignedToUserId?: number;
+    officeId?: number;
   } = {}
 ): Promise<{ totalLeads: number; metrics: Partial<LeadMetrics>; pipelineStages: PipelineStage[] }> {
   try {
-    const { assignedToUserId } = options;
+    const { assignedToUserId, officeId } = options;
 
     // Get tenant
     let tenant = await getTenantFromHeaders();
@@ -97,6 +98,10 @@ export async function getLeadsMetricsOnly(
 
     if (assignedToUserId) {
       where.assignedToUserId = assignedToUserId;
+    }
+
+    if (officeId) {
+      where.officeId = officeId;
     }
 
     // Get total count
@@ -177,10 +182,22 @@ export async function getLeadsData(
     skipFineractStatus?: boolean; // Skip slow Fineract status lookups for faster loading
     search?: string; // Text search for client name
     leadStatus?: string; // Filter by Fineract loan status
+    officeId?: number; // Restrict to a specific office
   } = {}
 ): Promise<LeadsData> {
   try {
-    const { stage, status, limit = 50, offset = 0, assignedToUserId, loanOfficerFilter, skipFineractStatus = false, search, leadStatus } = options;
+    const {
+      stage,
+      status,
+      limit = 50,
+      offset = 0,
+      assignedToUserId,
+      loanOfficerFilter,
+      skipFineractStatus = false,
+      search,
+      leadStatus,
+      officeId,
+    } = options;
 
     // Get tenant - prefer headers for consistency with API routes
     let tenant = await getTenantFromHeaders();
@@ -199,6 +216,10 @@ export async function getLeadsData(
     const where: any = {
       tenantId: tenant.id,
     };
+
+    if (officeId) {
+      where.officeId = officeId;
+    }
 
     if (stage) {
       where.currentStageId = stage;

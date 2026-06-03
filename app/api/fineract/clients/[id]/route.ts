@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { hasSuperAdminServer } from "@/lib/authorization";
+import { getSession } from "@/lib/auth";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 
 /**
  * GET /api/fineract/clients/[id]
@@ -23,8 +26,26 @@ export async function GET(
       );
     }
 
+    const session = await getSession();
+    const tenantSlug = extractTenantSlugFromRequest(request);
     const fineractService = await getFineractServiceWithSession();
     const data = await fineractService.getClient(clientId);
+    const officeScope = resolveOmamaOfficeScope({
+      tenantSlug,
+      roles: ((session?.user as any)?.roles || []) as Array<{
+        name?: string | null;
+        disabled?: boolean | null;
+      }>,
+      officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
+      officeName: ((session?.user as any)?.officeName as string | undefined) ?? null,
+    });
+
+    if (officeScope?.officeId && data?.officeId !== officeScope.officeId) {
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 }
+      );
+    }
 
     console.log("Client Details API: Fetched client data:", {
       hasData: !!data,

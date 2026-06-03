@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getSession as getCustomSession } from "@/app/actions/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -39,8 +41,10 @@ export async function GET(
     const params = await context.params;
     const { id: loanId } = params;
 
+    const session = await getSession();
     const accessToken = await getAccessToken();
     const fineractTenantId = await getFineractTenantId();
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     if (!accessToken) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -83,6 +87,27 @@ export async function GET(
     }
 
     const loanData = await response.json();
+    const officeScope = resolveOmamaOfficeScope({
+      tenantSlug,
+      roles: ((session?.user as any)?.roles || []) as Array<{
+        name?: string | null;
+        disabled?: boolean | null;
+      }>,
+      officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
+      officeName: ((session?.user as any)?.officeName as string | undefined) ?? null,
+    });
+
+    const loanOfficeId =
+      typeof loanData?.clientOfficeId === "number"
+        ? loanData.clientOfficeId
+        : typeof loanData?.officeId === "number"
+          ? loanData.officeId
+          : null;
+
+    if (officeScope?.officeId && loanOfficeId !== officeScope.officeId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     console.log("Loan data fetched successfully");
     console.log("Loan:", {
       id: loanData.id,

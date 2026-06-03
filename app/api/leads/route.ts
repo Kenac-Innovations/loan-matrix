@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getSession } from "@/lib/auth";
+import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 
 export async function GET(request: NextRequest) {
   try {
     const tenantSlug = extractTenantSlugFromRequest(request);
+    const session = await getSession();
     let tenant = await getTenantBySlug(tenantSlug);
 
     // If tenant not found, try to create default tenant
@@ -28,6 +31,20 @@ export async function GET(request: NextRequest) {
     const where: any = {
       tenantId: tenant.id,
     };
+
+    const officeScope = resolveOmamaOfficeScope({
+      tenantSlug,
+      roles: ((session?.user as any)?.roles || []) as Array<{
+        name?: string | null;
+        disabled?: boolean | null;
+      }>,
+      officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
+      officeName: ((session?.user as any)?.officeName as string | undefined) ?? null,
+    });
+
+    if (officeScope?.officeId) {
+      where.officeId = officeScope.officeId;
+    }
 
     if (stage) {
       where.currentStageId = stage;

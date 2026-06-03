@@ -34,6 +34,7 @@ import { useIsMobile } from "@/hooks/use-media-query";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { isOmamaTenantSlug } from "@/lib/omama-tenant";
 import { shouldUseOmamaOfficeAdminDashboard } from "@/lib/omama-office-admin";
+import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 import Link from "next/link";
 import { GenericDataTable, DataTableColumn } from "@/components/tables/generic-data-table";
 import { formatCurrency } from "@/lib/format-currency";
@@ -538,6 +539,21 @@ export function LeadsStatusTabs() {
         type: "branch" as const,
         value: userOfficeName,
         label: `${userOfficeName} Office`,
+      };
+    }
+
+    const omamaOfficeScope = resolveOmamaOfficeScope({
+      tenantSlug,
+      roles: userRoles,
+      officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
+      officeName: userOfficeName,
+    });
+
+    if (omamaOfficeScope?.officeName) {
+      return {
+        type: "branch" as const,
+        value: omamaOfficeScope.officeName,
+        label: `${omamaOfficeScope.officeName} Branch`,
       };
     }
     

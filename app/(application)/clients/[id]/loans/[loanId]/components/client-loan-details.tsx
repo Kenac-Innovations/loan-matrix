@@ -1444,7 +1444,19 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       const response = await fetch(`/api/fineract/rescheduleloans?loanId=${loanId}`);
       if (response.ok) {
         const data = await response.json();
-        setReschedules(Array.isArray(data) ? data : []);
+        const normalizedReschedules = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.pageItems)
+            ? data.pageItems
+            : Array.isArray(data?.content)
+              ? data.content
+              : Array.isArray(data?.rescheduleLoans)
+                ? data.rescheduleLoans
+                : Array.isArray(data?.loanReschedules)
+                  ? data.loanReschedules
+                  : [];
+
+        setReschedules(normalizedReschedules);
       } else {
         let errorData;
         try {
@@ -1480,7 +1492,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     }
   };
 
-  const hasPendingRescheduleActions = reschedules.some(
+  const effectiveReschedules = (
+    reschedules.length > 0 ? reschedules : loan?.reschedules || []
+  ) as any[];
+
+  const hasPendingRescheduleActions = effectiveReschedules.some(
     (reschedule: any) =>
       reschedule?.statusEnum?.pendingApproval || reschedule?.status?.pendingApproval
   );
@@ -3996,8 +4012,8 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {reschedules && reschedules.length > 0 ? (
-                      reschedules.map((reschedule: any, index: number) => {
+                    {effectiveReschedules.length > 0 ? (
+                      effectiveReschedules.map((reschedule: any, index: number) => {
                         const isPendingApproval =
                           reschedule?.statusEnum?.pendingApproval ||
                           reschedule?.status?.pendingApproval;

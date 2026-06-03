@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 
 // Check if user has Loan Officer role (sees their created and assigned leads)
 async function getUserRoleFilter(): Promise<{ isLoanOfficer: boolean; userId: number | null; userIdString: string | null }> {
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const tenantSlug = extractTenantSlugFromRequest(request);
+    const session = await getSession();
 
     const stage = searchParams.get("stage") || undefined;
     const status = searchParams.get("status") || undefined;
@@ -65,6 +67,15 @@ export async function GET(request: NextRequest) {
 
     // Check if user is a Loan Officer (sees their created and assigned leads)
     const { isLoanOfficer, userId, userIdString } = await getUserRoleFilter();
+    const officeScope = resolveOmamaOfficeScope({
+      tenantSlug,
+      roles: ((session?.user as any)?.roles || []) as Array<{
+        name?: string | null;
+        disabled?: boolean | null;
+      }>,
+      officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
+      officeName: ((session?.user as any)?.officeName as string | undefined) ?? null,
+    });
 
     const leadsData = await getLeadsData(tenantSlug, {
       stage,
@@ -75,9 +86,10 @@ export async function GET(request: NextRequest) {
       search,
       leadStatus,
       // Loan officers see leads they created OR leads assigned to them
-      ...(isLoanOfficer && userId && userIdString
+      ...(isLoanOfficer && userId && userIdString && !officeScope
         ? { loanOfficerFilter: { oderId: userId, userIdString } }
         : {}),
+      ...(officeScope?.officeId ? { officeId: officeScope.officeId } : {}),
     });
 
     return NextResponse.json(leadsData);

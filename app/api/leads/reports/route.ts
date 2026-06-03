@@ -9,6 +9,7 @@ import {
   matchesOfficeName,
   shouldUseOmamaOfficeAdminDashboard,
 } from "@/lib/omama-office-admin";
+import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 
 /**
  * GET /api/leads/reports
@@ -49,6 +50,15 @@ export async function GET(request: NextRequest) {
     })
       ? userOfficeName
       : null;
+    const officeScopedOfficeName =
+      resolveOmamaOfficeScope({
+        tenantSlug,
+        roles: userRoles,
+        officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
+        officeName: userOfficeName,
+      })?.officeName ?? null;
+    const effectiveOfficeNameFilter =
+      officeScopedOfficeName || officeAdminOfficeName || null;
     const allowOpenDateRange =
       tenantFeatures.showAllLeadsByDefault === true || isOmamaTenantSlug(tenantSlug);
     const hasFullDateRange = Boolean(startDate && endDate);
@@ -87,7 +97,7 @@ export async function GET(request: NextRequest) {
         tenantId: tenant?.id ?? null,
         tenantSlug,
         allowOpenDateRange,
-        officeNameFilter: officeAdminOfficeName,
+        officeNameFilter: effectiveOfficeNameFilter,
       });
     }
 
@@ -288,11 +298,11 @@ export async function GET(request: NextRequest) {
             return enrichedRow;
           });
 
-          if (officeAdminOfficeName) {
+          if (effectiveOfficeNameFilter) {
             result = result.filter((row: any) =>
               matchesOfficeName(
                 row.branch || row.office || row.office_name || row.Branch || null,
-                officeAdminOfficeName
+                effectiveOfficeNameFilter
               )
             );
           }
@@ -301,11 +311,11 @@ export async function GET(request: NextRequest) {
         } else {
           // No local leads found — still add payment_type/facility_type columns so they're visible
           result = result.map((row: any) => ({ ...row, payment_type: null, facility_type: null }));
-          if (officeAdminOfficeName) {
+          if (effectiveOfficeNameFilter) {
             result = result.filter((row: any) =>
               matchesOfficeName(
                 row.branch || row.office || row.office_name || row.Branch || null,
-                officeAdminOfficeName
+                effectiveOfficeNameFilter
               )
             );
           }
@@ -318,11 +328,11 @@ export async function GET(request: NextRequest) {
       result = result.map((row: any) => ({ ...row, payment_type: null }));
     }
 
-    if (officeAdminOfficeName && report !== "drafts") {
+    if (effectiveOfficeNameFilter && report !== "drafts") {
       result = result.filter((row: any) =>
         matchesOfficeName(
           row.branch || row.office || row.office_name || row.Branch || null,
-          officeAdminOfficeName
+          effectiveOfficeNameFilter
         )
       );
     }
