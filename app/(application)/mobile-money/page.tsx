@@ -63,6 +63,7 @@ import {
 import { MobileMoneyConfigModal, type MobileMoneyConfigValue } from "./components/mobile-money-config-modal";
 import { MobileMoneyTopupModal } from "./components/mobile-money-topup-modal";
 import { TellerVaultTransactionsSkeleton } from "@/components/skeletons/tellers-skeleton";
+import { Input } from "@/components/ui/input";
 
 interface MobileMoneyTransaction {
   id: string;
@@ -78,6 +79,10 @@ interface MobileMoneyTransaction {
   createdBy: string;
   status: string;
   canReverse: boolean;
+  clientName?: string | null;
+  clientNrc?: string | null;
+  loanId?: number | null;
+  loanAccountNo?: string | null;
 }
 
 interface MobileMoneySummary {
@@ -105,6 +110,36 @@ function formatDateTime(dateValue: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function summarizeFilteredTransactions(
+  rows: MobileMoneyTransaction[]
+): MobileMoneySummary {
+  let openingBalance = 0;
+  let topUps = 0;
+  let payoutReversals = 0;
+  let payouts = 0;
+
+  for (const row of rows) {
+    if (row.type === "OPENING_BALANCE") {
+      openingBalance += row.amount;
+    } else if (row.type === "TOP_UP") {
+      topUps += row.amount;
+    } else if (row.type === "PAYOUT_REVERSAL") {
+      payoutReversals += row.amount;
+    } else if (row.type === "PAYOUT") {
+      payouts += row.amount;
+    }
+  }
+
+  return {
+    openingBalance,
+    topUps,
+    payoutReversals,
+    payouts,
+    currentBalance: rows.length > 0 ? rows[0].runningBalance : 0,
+    transactionCount: rows.length,
+  };
 }
 
 function getTransactionTypeInfo(type: string) {
@@ -156,9 +191,11 @@ export default function MobileMoneyPage() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [provisioningExporting, setProvisioningExporting] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(25);
-  const [summary, setSummary] = useState<MobileMoneySummary | null>(null);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [transactions, setTransactions] = useState<MobileMoneyTransaction[]>([]);
   const [config, setConfig] = useState<MobileMoneyConfigValue | null>(null);
   const [configured, setConfigured] = useState<MobileMoneyConfigValue | null>(
@@ -191,7 +228,6 @@ export default function MobileMoneyPage() {
       }
 
       const data = payload as MobileMoneyResponse;
-      setSummary(data.summary);
       setTransactions(data.transactions || []);
       setConfig(data.config || null);
       setConfigured(data.configured || null);
@@ -213,28 +249,73 @@ export default function MobileMoneyPage() {
 
   useEffect(() => {
     setPageIndex(0);
-  }, [transactions.length]);
+  }, [transactions.length, fromDate, toDate]);
 
   const currency = transactions[0]?.currency || orgCurrency;
-  const pageCount = Math.max(1, Math.ceil(transactions.length / pageSize));
+  const filteredTransactions = useMemo(() => {
+    const fromBoundary = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
+    const toBoundary = toDate ? new Date(`${toDate}T23:59:59.999`) : null;
+
+    return transactions.filter((transaction) => {
+      const transactionDate = new Date(transaction.transactionDate);
+
+      if (fromBoundary && transactionDate < fromBoundary) {
+        return false;
+      }
+
+      if (toBoundary && transactionDate > toBoundary) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [fromDate, toDate, transactions]);
+  const filteredSummary = useMemo(
+    () => summarizeFilteredTransactions(filteredTransactions),
+    [filteredTransactions]
+  );
+  const pageCount = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
   const safePageIndex = Math.min(pageIndex, pageCount - 1);
   const paginatedTransactions = useMemo(() => {
     const start = safePageIndex * pageSize;
-    return transactions.slice(start, start + pageSize);
-  }, [pageSize, safePageIndex, transactions]);
+    return filteredTransactions.slice(start, start + pageSize);
+  }, [filteredTransactions, pageSize, safePageIndex]);
   const paginationStart =
-    transactions.length === 0 ? 0 : safePageIndex * pageSize + 1;
-  const paginationEnd = Math.min((safePageIndex + 1) * pageSize, transactions.length);
+    filteredTransactions.length === 0 ? 0 : safePageIndex * pageSize + 1;
+  const paginationEnd = Math.min(
+    (safePageIndex + 1) * pageSize,
+    filteredTransactions.length
+  );
+
+  function getExportPeriodSuffix() {
+    if (fromDate && toDate) {
+      return `${fromDate}-to-${toDate}`;
+    }
+
+    if (fromDate) {
+      return `from-${fromDate}`;
+    }
+
+    if (toDate) {
+      return `to-${toDate}`;
+    }
+
+    return new Date().toISOString().split("T")[0];
+  }
 
   async function exportToExcel() {
     try {
       setExporting(true);
       const XLSX = await import("xlsx");
 
-      const rows = transactions.map((transaction) => ({
+      const rows = filteredTransactions.map((transaction) => ({
         Date: formatDateTime(transaction.transactionDate),
         Type: transaction.typeLabel,
         "Payment Type": transaction.paymentTypeLabel,
+        "Client Name": transaction.clientName || "",
+        NRC: transaction.clientNrc || "",
+        "Loan ID": transaction.loanId ?? "",
+        "Loan Account No": transaction.loanAccountNo || "",
         Notes: transaction.notes || "",
         By: transaction.createdBy || "",
         Amount: transaction.signedAmount,
@@ -247,8 +328,10 @@ export default function MobileMoneyPage() {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Mobile Money");
 
-      const fileDate = new Date().toISOString().split("T")[0];
-      XLSX.writeFile(workbook, `mobile-money-transactions-${fileDate}.xlsx`);
+      XLSX.writeFile(
+        workbook,
+        `mobile-money-transactions-${getExportPeriodSuffix()}.xlsx`
+      );
     } catch (exportError) {
       console.error("Error exporting mobile money transactions:", exportError);
       error({
@@ -257,6 +340,54 @@ export default function MobileMoneyPage() {
       });
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function exportProvisioningExcel() {
+    try {
+      setProvisioningExporting(true);
+
+      const provisioningRows = filteredTransactions
+        .filter((transaction) => transaction.type === "PAYOUT")
+        .map((transaction) => ({
+          Date: formatDateTime(transaction.transactionDate),
+          "Client Name": transaction.clientName || "",
+          NRC: transaction.clientNrc || "",
+          "Loan ID": transaction.loanId ?? "",
+          "Loan Account No": transaction.loanAccountNo || "",
+          "Payment Type": transaction.paymentTypeLabel,
+          Amount: Math.abs(transaction.signedAmount),
+          Currency: transaction.currency,
+          Status: transaction.status,
+          Notes: transaction.notes || "",
+          "Processed By": transaction.createdBy || "",
+        }));
+
+      if (provisioningRows.length === 0) {
+        error({
+          title: "No payouts to export",
+          description:
+            "There are no mobile money payout rows in the selected date range.",
+        });
+        return;
+      }
+
+      const XLSX = await import("xlsx");
+      const worksheet = XLSX.utils.json_to_sheet(provisioningRows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Provisioning");
+      XLSX.writeFile(
+        workbook,
+        `mobile-money-provisioning-${getExportPeriodSuffix()}.xlsx`
+      );
+    } catch (exportError) {
+      console.error("Error exporting provisioning report:", exportError);
+      error({
+        title: "Provisioning export failed",
+        description: "Unable to export the provisioning report right now.",
+      });
+    } finally {
+      setProvisioningExporting(false);
     }
   }
 
@@ -359,6 +490,16 @@ export default function MobileMoneyPage() {
             <Download className="h-4 w-4 mr-2" />
             {exporting ? "Exporting..." : "Export Excel"}
           </Button>
+          <Button
+            variant="outline"
+            onClick={exportProvisioningExcel}
+            disabled={provisioningExporting}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {provisioningExporting
+              ? "Exporting Provisioning..."
+              : "Provisioning Export"}
+          </Button>
           <Button variant="outline" onClick={fetchMobileMoneyTransactions}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
@@ -401,7 +542,7 @@ export default function MobileMoneyPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-500">
-              {formatCurrency(summary?.openingBalance ?? 0, currency)}
+              {formatCurrency(filteredSummary.openingBalance, currency)}
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               Initial mobile money float
@@ -415,7 +556,7 @@ export default function MobileMoneyPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-500">
-              +{formatCurrency(summary?.topUps ?? 0, currency)}
+              +{formatCurrency(filteredSummary.topUps, currency)}
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               Float funded from GL
@@ -431,7 +572,7 @@ export default function MobileMoneyPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-cyan-500">
-              +{formatCurrency(summary?.payoutReversals ?? 0, currency)}
+              +{formatCurrency(filteredSummary.payoutReversals, currency)}
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               Funds returned to mobile money
@@ -447,7 +588,7 @@ export default function MobileMoneyPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-rose-500">
-              -{formatCurrency(summary?.payouts ?? 0, currency)}
+              -{formatCurrency(filteredSummary.payouts, currency)}
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               Loans paid out through mobile money
@@ -463,11 +604,11 @@ export default function MobileMoneyPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(summary?.currentBalance ?? 0, currency)}
+              {formatCurrency(filteredSummary.currentBalance, currency)}
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              {summary?.transactionCount ?? 0} transaction
-              {(summary?.transactionCount ?? 0) === 1 ? "" : "s"}
+              {filteredSummary.transactionCount} transaction
+              {filteredSummary.transactionCount === 1 ? "" : "s"}
             </p>
           </CardContent>
         </Card>
@@ -482,13 +623,56 @@ export default function MobileMoneyPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {transactions.length === 0 ? (
+          <div className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-end">
+            <div className="grid gap-2">
+              <label htmlFor="mobile-money-from-date" className="text-sm font-medium">
+                From date
+              </label>
+              <Input
+                id="mobile-money-from-date"
+                type="date"
+                value={fromDate}
+                onChange={(event) => setFromDate(event.target.value)}
+                className="w-full md:w-[180px]"
+              />
+            </div>
+            <div className="grid gap-2">
+              <label htmlFor="mobile-money-to-date" className="text-sm font-medium">
+                To date
+              </label>
+              <Input
+                id="mobile-money-to-date"
+                type="date"
+                value={toDate}
+                onChange={(event) => setToDate(event.target.value)}
+                min={fromDate || undefined}
+                className="w-full md:w-[180px]"
+              />
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFromDate("");
+                setToDate("");
+              }}
+              disabled={!fromDate && !toDate}
+            >
+              Clear dates
+            </Button>
+          </div>
+
+          {filteredTransactions.length === 0 ? (
             <div className="flex min-h-[240px] flex-col items-center justify-center rounded-lg border border-dashed text-center">
               <Smartphone className="mb-4 h-12 w-12 text-muted-foreground" />
-              <p className="text-lg font-medium">No mobile money transactions yet</p>
+              <p className="text-lg font-medium">
+                {transactions.length === 0
+                  ? "No mobile money transactions yet"
+                  : "No mobile money transactions found for the selected date range"}
+              </p>
               <p className="text-sm text-muted-foreground">
-                Top-ups and mobile money payouts will start showing here once
-                the pool is in use.
+                {transactions.length === 0
+                  ? "Top-ups and mobile money payouts will start showing here once the pool is in use."
+                  : "Try widening the date range or clearing the filters."}
               </p>
             </div>
           ) : (
@@ -500,6 +684,9 @@ export default function MobileMoneyPage() {
                       <TableHead>Date</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Payment Type</TableHead>
+                      <TableHead>Client Name</TableHead>
+                      <TableHead>NRC</TableHead>
+                      <TableHead>Loan ID</TableHead>
                       <TableHead>Notes</TableHead>
                       <TableHead>By</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
@@ -528,6 +715,11 @@ export default function MobileMoneyPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>{transaction.paymentTypeLabel}</TableCell>
+                          <TableCell className="max-w-[220px] truncate">
+                            {transaction.clientName || "—"}
+                          </TableCell>
+                          <TableCell>{transaction.clientNrc || "—"}</TableCell>
+                          <TableCell>{transaction.loanId ?? "—"}</TableCell>
                           <TableCell className="max-w-[360px] truncate">
                             {transaction.notes || "—"}
                           </TableCell>
@@ -572,7 +764,8 @@ export default function MobileMoneyPage() {
 
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-muted-foreground">
-                  Showing {paginationStart}-{paginationEnd} of {transactions.length}
+                  Showing {paginationStart}-{paginationEnd} of{" "}
+                  {filteredTransactions.length}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Select
