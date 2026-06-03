@@ -3,24 +3,15 @@ import { notFound } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
-  PenLine,
-  ShieldCheck,
-  UserRound,
 } from "lucide-react";
 import { getUserAction } from "@/app/actions/user-management-actions";
 import { getUserSignatureAction } from "@/app/actions/user-signature-actions";
 import { UserDetailActions } from "../components/user-detail-actions";
+import { UserDetailTabs } from "../components/user-detail-tabs";
 import { UserAccessDenied } from "../components/user-access-denied";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { hasPermissionServer } from "@/lib/authorization";
 import { SpecificPermission } from "@/shared/types/auth";
 
@@ -29,18 +20,6 @@ type UserDetailPageProps = {
     id: string;
   }>;
 };
-
-function DetailField({
-  label,
-  value,
-}: Readonly<{ label: string; value: string }>) {
-  return (
-    <div className="space-y-1 rounded-lg border p-4">
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="font-medium">{value || "-"}</p>
-    </div>
-  );
-}
 
 export default async function UserDetailPage({
   params,
@@ -71,7 +50,12 @@ export default async function UserDetailPage({
       <div className="mx-auto max-w-5xl space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold">{user.displayName}</h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-bold">{user.displayName}</h1>
+              <Badge variant={user.isBlocked ? "destructive" : "secondary"}>
+                {user.isBlocked ? "Blocked" : "Active"}
+              </Badge>
+            </div>
             <p className="mt-1 text-muted-foreground">
               View user profile, assigned roles, and administration actions.
             </p>
@@ -90,94 +74,7 @@ export default async function UserDetailPage({
           canUpdate={canUpdate}
         />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserRound className="h-5 w-5" />
-              User Information
-            </CardTitle>
-            <CardDescription>
-              Core user details from the Mifos user profile.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <DetailField label="Login Name" value={user.username} />
-            <DetailField label="First Name" value={user.firstname} />
-            <DetailField label="Last Name" value={user.lastname} />
-            <DetailField label="Email" value={user.email || "Not set"} />
-            <DetailField label="Office" value={user.officeName || "-"} />
-            <DetailField
-              label="Staff"
-              value={user.staff?.displayName || "Unassigned"}
-            />
-            <DetailField
-              label="Password Never Expires"
-              value={user.passwordNeverExpires ? "Yes" : "No"}
-            />
-            <DetailField
-              label="Self Service User"
-              value={user.isSelfServiceUser ? "Yes" : "No"}
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PenLine className="h-5 w-5" />
-              User Signature
-            </CardTitle>
-            <CardDescription>
-              Saved signature used for this user&apos;s loan contract workflows.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {signatureData ? (
-              <div className="rounded-xl border-2 border-dashed p-6 text-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={signatureData}
-                  alt={`${user.displayName} signature`}
-                  className="mx-auto max-h-32 rounded border bg-white p-2"
-                />
-              </div>
-            ) : (
-              <div className="rounded-xl border-2 border-dashed p-6 text-center">
-                <PenLine className="mx-auto h-10 w-10 text-muted-foreground" />
-                <p className="mt-2 text-sm text-muted-foreground">
-                  No signature has been saved for this user.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5" />
-              Assigned Roles
-            </CardTitle>
-            <CardDescription>
-              Roles currently attached to this user in Fineract.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {user.selectedRoles.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No roles assigned to this user.
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {user.selectedRoles.map((role) => (
-                  <Badge key={role.id} variant="secondary">
-                    {role.name}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <UserDetailTabs user={user} signatureData={signatureData} />
       </div>
     );
   } catch (error) {

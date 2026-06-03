@@ -3,9 +3,65 @@
  * Uses NOTIFICATION_SERVICE_URL and POST /api/v1/notifications/sms.
  */
 
+import { prisma } from "@/lib/prisma";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
+import {
+  normalizeCountryDialCode,
+  normalizeSmsPhoneNumber as normalizeSmsPhoneNumberFromUtils,
+} from "@/lib/phone-utils";
+
 const CONTACT_LINE = "For more info please contact us on +260957224792 /774 or visit our offices.";
 const DEFAULT_SMS_COUNTRY_CODE =
   process.env.SMS_DEFAULT_COUNTRY_CODE || "+260";
+const DEFAULT_EMAIL_NOTIFICATION_PATH =
+  process.env.EMAIL_NOTIFICATION_SERVICE_PATH || "/api/v1/notifications/email";
+
+async function resolveNotificationServiceTenantId(
+  tenantId?: string
+): Promise<string> {
+  let tenantRecord:
+    | { slug: string; notificationServiceTenantId: string | null }
+    | null = null;
+
+  if (tenantId) {
+    tenantRecord = await prisma.tenant.findFirst({
+      where: {
+        OR: [{ id: tenantId }, { slug: tenantId }],
+      },
+      select: {
+        slug: true,
+        notificationServiceTenantId: true,
+      },
+    });
+  } else {
+    try {
+      const tenant = await getTenantFromHeaders();
+      if (tenant?.id) {
+        tenantRecord = await prisma.tenant.findUnique({
+          where: { id: tenant.id },
+          select: {
+            slug: true,
+            notificationServiceTenantId: true,
+          },
+        });
+      }
+    } catch {
+      tenantRecord = null;
+    }
+  }
+
+  const configuredTenantId = tenantRecord?.notificationServiceTenantId?.trim();
+  if (configuredTenantId) {
+    return configuredTenantId;
+  }
+
+  const slugFallback = tenantRecord?.slug?.trim();
+  if (slugFallback) {
+    return slugFallback;
+  }
+
+  return "no-tenant";
+}
 
 function formatAmount(amount: number): string {
   return amount.toLocaleString("en-US", {
@@ -14,51 +70,14 @@ function formatAmount(amount: number): string {
   });
 }
 
-function normalizeCountryCode(countryCode?: string | null): string | null {
-  if (!countryCode) return null;
-  const digits = String(countryCode).replace(/\D/g, "");
-  return digits || null;
-}
-
 export function normalizeSmsPhoneNumber(
   phone: string,
   countryCode?: string | null
 ): string | null {
-  const raw = String(phone || "").trim();
-  if (!raw) return null;
-
-  const digits = raw.replace(/\D/g, "");
-  if (!digits) return null;
-
-  if (raw.startsWith("+")) {
-    return `+${digits}`;
-  }
-
-  if (raw.startsWith("00")) {
-    const internationalDigits = digits.slice(2);
-    return internationalDigits ? `+${internationalDigits}` : null;
-  }
-
-  const normalizedCountryCode =
-    normalizeCountryCode(countryCode) ||
-    normalizeCountryCode(DEFAULT_SMS_COUNTRY_CODE);
-
-  if (normalizedCountryCode) {
-    if (digits.startsWith(normalizedCountryCode)) {
-      return `+${digits}`;
-    }
-
-    const localDigits = digits.startsWith("0") ? digits.slice(1) : digits;
-    if (localDigits) {
-      return `+${normalizedCountryCode}${localDigits}`;
-    }
-  }
-
-  if (digits.length >= 11) {
-    return `+${digits}`;
-  }
-
-  return digits;
+  return normalizeSmsPhoneNumberFromUtils(
+    phone,
+    countryCode || normalizeCountryDialCode(DEFAULT_SMS_COUNTRY_CODE)
+  );
 }
 
 /**
@@ -68,10 +87,13 @@ export function normalizeSmsPhoneNumber(
 export async function sendSms(
   phoneNumbers: string[],
   message: string,
-  options?: { tenantId?: string; countryCode?: string | null }
+  options?: {
+    tenantId?: string;
+    countryCode?: string | null;
+    logLabel?: string;
+  }
 ): Promise<boolean> {
   const serviceBaseUrl = process.env.NOTIFICATION_SERVICE_URL;
-  const tenantId = options?.tenantId ?? process.env.TENANT_ID ?? "no-tenant";
 
   if (!serviceBaseUrl) {
     console.warn(
@@ -89,6 +111,7 @@ export async function sendSms(
   }
 
   try {
+    const tenantId = await resolveNotificationServiceTenantId(options?.tenantId);
     const payload = {
       tenantId,
       phoneNumbers: validPhones,
@@ -100,19 +123,36 @@ export async function sendSms(
       configId: 0,
     };
 
-    console.log("SENDING SMS TO NOTIFICATION SERVICE...");
     const url = `${serviceBaseUrl.replace(/\/$/, "")}/api/v1/notifications/sms`;
+    if (options?.logLabel) {
+      console.log(`[${options.logLabel}] Notification service SMS payload:`, {
+        url,
+        payload,
+      });
+    } else {
+      console.log("SENDING SMS TO NOTIFICATION SERVICE...");
+    }
+
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    const responseText = await res.text().catch(() => "");
+
+    if (options?.logLabel) {
+      console.log(`[${options.logLabel}] Notification service SMS response:`, {
+        status: res.status,
+        ok: res.ok,
+        body: responseText,
+      });
+    }
 
     if (!res.ok) {
       console.error(
         "Notification service SMS failed:",
         res.status,
-        await res.text().catch(() => "")
+        responseText
       );
       return false;
     }
@@ -121,6 +161,91 @@ export async function sendSms(
     return true;
   } catch (err) {
     console.error("Failed to send SMS notification:", err);
+    return false;
+  }
+}
+
+export async function sendEmail(
+  emailAddresses: string[],
+  subject: string,
+  html: string,
+  options?: {
+    tenantId?: string;
+    text?: string;
+    fromEmail?: string;
+    logLabel?: string;
+  }
+): Promise<boolean> {
+  const serviceBaseUrl =
+    process.env.EMAIL_NOTIFICATION_SERVICE_URL ||
+    process.env.NOTIFICATION_SERVICE_URL;
+  const validEmails = emailAddresses
+    .map((email) => String(email || "").trim())
+    .filter(Boolean);
+
+  if (!serviceBaseUrl) {
+    console.warn(
+      "No email notification service is configured; skipping email notification"
+    );
+    return false;
+  }
+
+  if (validEmails.length === 0) {
+    console.warn("No valid email addresses; skipping email notification");
+    return false;
+  }
+
+  try {
+    const tenantId = await resolveNotificationServiceTenantId(options?.tenantId);
+    const payload = {
+      tenantId,
+      emailAddresses: validEmails,
+      subject,
+      html,
+      text: options?.text,
+      fromEmail: options?.fromEmail || process.env.MFA_EMAIL_FROM,
+      messageId:
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      configId: 0,
+    };
+
+    const url = `${serviceBaseUrl.replace(/\/$/, "")}${DEFAULT_EMAIL_NOTIFICATION_PATH}`;
+    if (options?.logLabel) {
+      console.log(`[${options.logLabel}] Notification service email payload:`, {
+        url,
+        payload,
+      });
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const responseText = await res.text().catch(() => "");
+
+    if (options?.logLabel) {
+      console.log(`[${options.logLabel}] Notification service email response:`, {
+        status: res.status,
+        ok: res.ok,
+        body: responseText,
+      });
+    }
+
+    if (!res.ok) {
+      console.error(
+        "Notification service email failed:",
+        res.status,
+        responseText
+      );
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Failed to send email notification:", error);
     return false;
   }
 }

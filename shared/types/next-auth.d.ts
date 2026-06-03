@@ -11,6 +11,7 @@ declare module "next-auth" {
     base64EncodedAuthenticationKey?: string;
     user: {
       id?: string;
+      tenantId?: string;
       userId?: number;
       officeId?: number;
       officeName?: string;
@@ -27,6 +28,7 @@ declare module "next-auth" {
    */
   interface User {
     accessToken?: string;
+    tenantId?: string;
     userId?: number;
     base64EncodedAuthenticationKey?: string;
     officeId?: number;
@@ -45,6 +47,7 @@ declare module "next-auth/jwt" {
    */
   interface JWT {
     accessToken?: string;
+    tenantId?: string;
     userId?: number;
     base64EncodedAuthenticationKey?: string;
     officeId?: number;

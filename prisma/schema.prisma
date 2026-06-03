@@ -14,6 +14,7 @@ model Tenant {
   slug                   String                  @unique
   domain                 String?
   settings               Json?
+  notificationServiceTenantId String?
   logoLinkId             String?                 // Document service link ID (UUID) for logo
   logoFileUrl            String?                 // Document service file URL for display
   isActive               Boolean                 @default(true)
@@ -28,6 +29,9 @@ model Tenant {
   pipelineStages         PipelineStage[]
   slaConfigs             SLAConfig[]
   teams                  Team[]
+  userLogins             UserLogin[]
+  userLoginBlockEvents   UserLoginBlockEvent[]
+  mfaChallenges          MfaChallenge[]
   validationRules        ValidationRule[]
   receiptRanges          ReceiptRange[]
   repaymentCashLinks     RepaymentCashLink[]
@@ -1160,6 +1164,84 @@ model UserRole {
   @@index([tenantId, mifosUserId])
   @@index([tenantId, roleId])
   @@index([tenantId, isActive])
+}
+
+model UserLogin {
+  id                   String               @id @default(cuid())
+  tenantId             String
+  fineractUserId       Int
+  username             String
+  email                String?
+  phone                String?
+  countryCode          String?
+  isBlocked            Boolean              @default(false)
+  blockedAt            DateTime?
+  blockedSource        String?
+  blockedNote          String?
+  blockedByActorUserId Int?
+  blockedByActorName   String?
+  lastLoginAt          DateTime?
+  lastMfaChannel       String?
+  lastMfaSentAt        DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  blockEvents          UserLoginBlockEvent[]
+
+  @@unique([tenantId, fineractUserId])
+  @@unique([tenantId, username])
+  @@index([tenantId, email])
+  @@index([tenantId, phone])
+  @@index([tenantId, isBlocked])
+}
+
+model UserLoginBlockEvent {
+  id            String    @id @default(cuid())
+  tenantId      String
+  userLoginId   String
+  fineractUserId Int
+  username      String
+  action        String
+  source        String
+  note          String
+  actorUserId   Int?
+  actorName     String?
+  createdAt     DateTime  @default(now())
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userLogin     UserLogin @relation(fields: [userLoginId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userLoginId, createdAt])
+  @@index([tenantId, fineractUserId, createdAt])
+}
+
+model MfaChallenge {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  fineractUserId        Int
+  username              String
+  channel               String
+  destination           String
+  maskedDestination     String
+  codeHash              String
+  verificationTokenHash String?
+  authContext           Json
+  attempts              Int       @default(0)
+  maxAttempts           Int       @default(3)
+  resendCount           Int       @default(0)
+  lastSentAt            DateTime  @default(now())
+  verifiedAt            DateTime?
+  consumedAt            DateTime?
+  invalidatedAt         DateTime?
+  expiresAt             DateTime
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  tenant                Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, username])
+  @@index([tenantId, fineractUserId])
+  @@index([tenantId, expiresAt])
+  @@index([tenantId, consumedAt])
+  @@index([tenantId, invalidatedAt])
 }
 
 // User Alert - system alerts shown in notifications

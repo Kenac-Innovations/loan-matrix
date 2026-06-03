@@ -3,13 +3,33 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { fetchFineractAPI } from "@/lib/api";
+import { getSession } from "@/lib/auth";
 import { hasPermissionServer } from "@/lib/authorization";
+import {
+  DEFAULT_AFRICAN_COUNTRY_CODE,
+  getAfricanCountryDialCodeOrDefault,
+  getNumericPhoneValidationError,
+  isAfricanCountryDialCode,
+} from "@/lib/phone-utils";
+import { prisma } from "@/lib/prisma";
+import {
+  blockUserLogin,
+  deleteUserLogin,
+  getUserLoginByFineractUserId,
+  requireCurrentTenant,
+  unblockUserLogin,
+  upsertUserLogin,
+} from "@/lib/user-login-service";
 import { SpecificPermission } from "@/shared/types/auth";
 import type {
+  UserBlockHistoryInput,
+  UserBlockHistoryPage,
   OfficeOption,
   StaffOption,
   UserActionResult,
+  UserBlockAccountInput,
   UserDetail,
+  UserLoginBlockEvent,
   UserFormInput,
   UserPasswordChangeInput,
   UserRoleOption,
@@ -27,6 +47,8 @@ const createUserSchema = z
   .object({
     username: z.string().trim().min(1, "Username is required"),
     email: z.string().trim().optional().default(""),
+    phone: z.string().trim().optional().default(""),
+    countryCode: z.string().trim().optional().default(DEFAULT_AFRICAN_COUNTRY_CODE),
     firstname: z
       .string()
       .trim()
@@ -57,6 +79,26 @@ const createUserSchema = z
   })
   .superRefine((value, context) => {
     const email = value.email.trim();
+    const phone = value.phone.trim();
+    const countryCode = value.countryCode.trim();
+
+    const phoneError = getNumericPhoneValidationError(phone);
+
+    if (phoneError) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["phone"],
+        message: phoneError,
+      });
+    }
+
+    if (phone && !isAfricanCountryDialCode(countryCode)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["countryCode"],
+        message: "Select a valid African country code",
+      });
+    }
 
     if (value.sendPasswordToEmail) {
       if (!email) {
@@ -92,41 +134,63 @@ const createUserSchema = z
     );
   });
 
-const updateUserSchema = z.object({
-  userId: z.coerce.number().int().positive("User id is required"),
-  username: z.string().trim().min(1, "Username is required"),
-  email: z
-    .string()
-    .trim()
-    .min(1, "Email is required")
-    .refine((value) => z.string().email().safeParse(value).success, {
-      message: "Enter a valid email address",
-    }),
-  firstname: z
-    .string()
-    .trim()
-    .min(1, "First name is required")
-    .regex(
-      namePattern,
-      "First name cannot begin with a special character or number"
-    ),
-  lastname: z
-    .string()
-    .trim()
-    .min(1, "Last name is required")
-    .regex(
-      namePattern,
-      "Last name cannot begin with a special character or number"
-    ),
-  passwordNeverExpires: z.boolean().default(false),
-  officeId: z.coerce.number().int().positive("Office is required"),
-  staffId: z
-    .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
-    .transform((value) => (typeof value === "number" ? value : null)),
-  roles: z
-    .array(z.coerce.number().int().positive())
-    .min(1, "At least one role must be selected"),
-});
+const updateUserSchema = z
+  .object({
+    userId: z.coerce.number().int().positive("User id is required"),
+    username: z.string().trim().min(1, "Username is required"),
+    email: z
+      .string()
+      .trim()
+      .min(1, "Email is required")
+      .refine((value) => z.string().email().safeParse(value).success, {
+        message: "Enter a valid email address",
+      }),
+    phone: z.string().trim().optional().default(""),
+    countryCode: z.string().trim().optional().default(DEFAULT_AFRICAN_COUNTRY_CODE),
+    firstname: z
+      .string()
+      .trim()
+      .min(1, "First name is required")
+      .regex(
+        namePattern,
+        "First name cannot begin with a special character or number"
+      ),
+    lastname: z
+      .string()
+      .trim()
+      .min(1, "Last name is required")
+      .regex(
+        namePattern,
+        "Last name cannot begin with a special character or number"
+      ),
+    passwordNeverExpires: z.boolean().default(false),
+    officeId: z.coerce.number().int().positive("Office is required"),
+    staffId: z
+      .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
+      .transform((value) => (typeof value === "number" ? value : null)),
+    roles: z
+      .array(z.coerce.number().int().positive())
+      .min(1, "At least one role must be selected"),
+  })
+  .superRefine((value, context) => {
+    const phoneError = getNumericPhoneValidationError(value.phone);
+
+    if (phoneError) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["phone"],
+        message: phoneError,
+      });
+    }
+
+    if (value.phone && !isAfricanCountryDialCode(value.countryCode)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["countryCode"],
+        message: "Select a valid African country code",
+      });
+    }
+  });
 
 const deleteUserSchema = z.object({
   userId: z.coerce.number().int().positive("User id is required"),
@@ -148,6 +212,18 @@ const changePasswordSchema = z
       context
     );
   });
+
+const blockAccountSchema = z.object({
+  userId: z.coerce.number().int().positive("User id is required"),
+  note: z.string().trim().min(1, "Note is required"),
+});
+
+const blockHistorySchema = z.object({
+  userId: z.coerce.number().int().positive("User id is required"),
+  page: z.coerce.number().int().positive().default(1),
+});
+
+const userBlockHistoryPageSize = 5;
 
 function validatePasswordFields(
   value: { password?: string; repeatPassword?: string },
@@ -221,6 +297,12 @@ function asNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function getTenantDefaultCountryCode(settings: unknown) {
+  const settingsRecord = asObject(settings);
+  const locale = asObject(settingsRecord.locale);
+  return getAfricanCountryDialCodeOrDefault(asString(locale.countryCode));
+}
+
 function mapRoleOption(role: unknown): UserRoleOption {
   const roleRecord = asObject(role);
   const roleId = asNumber(roleRecord.id) ?? 0;
@@ -282,11 +364,38 @@ function mapUserSummary(user: unknown): UserSummary {
     lastname,
     displayName,
     email: asString(userRecord.email),
+    phone: undefined,
+    countryCode: undefined,
+    isBlocked: false,
+    blockedAt: null,
     officeId: asNumber(userRecord.officeId),
     officeName: asString(userRecord.officeName) || asString(officeRecord.name),
     roles: selectedRoles
       .map((role) => asString(asObject(role).name))
       .filter(Boolean),
+  };
+}
+
+function mapUserLoginBlockEvent(event: {
+  id: string;
+  action: string;
+  source: string;
+  note: string;
+  actorUserId: number | null;
+  actorName: string | null;
+  createdAt: Date;
+}): UserLoginBlockEvent {
+  return {
+    id: event.id,
+    action: event.action === "UNBLOCK" ? "UNBLOCK" : "BLOCK",
+    source:
+      event.source === "SYSTEM_MFA_MAX_ATTEMPTS"
+        ? "SYSTEM_MFA_MAX_ATTEMPTS"
+        : "MANUAL",
+    note: event.note,
+    actorUserId: event.actorUserId,
+    actorName: event.actorName,
+    createdAt: event.createdAt.toISOString(),
   };
 }
 
@@ -309,15 +418,19 @@ function mapUserDetail(user: unknown): UserDetail {
     ...summary,
     passwordNeverExpires: Boolean(userRecord.passwordNeverExpires),
     isSelfServiceUser: Boolean(userRecord.isSelfServiceUser),
+    blockedSource: null,
+    blockedNote: null,
+    blockedByActorName: null,
     selectedRoles: selectedRoles.map(mapRoleOption),
     staff: staffSource ? mapStaffOption(staffSource) : null,
+    blockHistory: [],
   };
 }
 
-function toFieldErrorResult(
+function toFieldErrorResult<T = undefined>(
   error: z.ZodError,
   message = "Please correct the highlighted fields and try again"
-): UserActionResult {
+): UserActionResult<T> {
   return {
     success: false,
     error: message,
@@ -382,12 +495,42 @@ export async function listUsersAction(): Promise<UserSummary[]> {
     "You do not have permission to view users"
   );
 
-  const users = await fetchFineractAPI("/users");
+  const tenant = await requireCurrentTenant();
+  const [users, localLogins] = await Promise.all([
+    fetchFineractAPI("/users"),
+    prisma.userLogin.findMany({
+      where: {
+        tenantId: tenant.id,
+      },
+      select: {
+        fineractUserId: true,
+        email: true,
+        phone: true,
+        countryCode: true,
+        isBlocked: true,
+        blockedAt: true,
+      },
+    }),
+  ]);
+  const localLoginsByUserId = new Map(
+    localLogins.map((login) => [login.fineractUserId, login])
+  );
   const mappedUsers = Array.isArray(users) ? users.map(mapUserSummary) : [];
 
-  return mappedUsers.sort((left, right) =>
-    left.displayName.localeCompare(right.displayName)
-  );
+  return mappedUsers
+    .map((user) => {
+      const localLogin = localLoginsByUserId.get(user.id);
+
+      return {
+        ...user,
+        email: localLogin?.email || user.email,
+        phone: localLogin?.phone || undefined,
+        countryCode: localLogin?.countryCode || undefined,
+        isBlocked: localLogin?.isBlocked ?? false,
+        blockedAt: localLogin?.blockedAt?.toISOString() ?? null,
+      };
+    })
+    .sort((left, right) => left.displayName.localeCompare(right.displayName));
 }
 
 export async function getUserAction(userId: number): Promise<UserDetail> {
@@ -396,8 +539,95 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
     "You do not have permission to view users"
   );
 
+  const tenant = await requireCurrentTenant();
   const user = await fetchFineractAPI(`/users/${userId}`);
-  return mapUserDetail(user);
+  const localLogin = await prisma.userLogin.findUnique({
+    where: {
+      tenantId_fineractUserId: {
+        tenantId: tenant.id,
+        fineractUserId: userId,
+      },
+    },
+    select: {
+      email: true,
+      phone: true,
+      countryCode: true,
+      isBlocked: true,
+      blockedAt: true,
+      blockedSource: true,
+      blockedNote: true,
+      blockedByActorName: true,
+    },
+  });
+  const mappedUser = mapUserDetail(user);
+
+  return {
+    ...mappedUser,
+    email: localLogin?.email || mappedUser.email,
+    phone: localLogin?.phone || undefined,
+    countryCode: localLogin?.countryCode || undefined,
+    isBlocked: localLogin?.isBlocked ?? false,
+    blockedAt: localLogin?.blockedAt?.toISOString() ?? null,
+    blockedSource:
+      localLogin?.blockedSource === "SYSTEM_MFA_MAX_ATTEMPTS"
+        ? "SYSTEM_MFA_MAX_ATTEMPTS"
+        : localLogin?.blockedSource === "MANUAL"
+          ? "MANUAL"
+          : null,
+    blockedNote: localLogin?.blockedNote ?? null,
+    blockedByActorName: localLogin?.blockedByActorName ?? null,
+    blockHistory: [],
+  };
+}
+
+export async function getUserBlockHistoryAction(
+  input: UserBlockHistoryInput
+): Promise<UserBlockHistoryPage> {
+  await ensurePermission(
+    SpecificPermission.READ_USER,
+    "You do not have permission to view users"
+  );
+
+  const parsed = blockHistorySchema.parse(input);
+  const tenant = await requireCurrentTenant();
+  const skip = (parsed.page - 1) * userBlockHistoryPageSize;
+  const [items, total] = await prisma.$transaction([
+    prisma.userLoginBlockEvent.findMany({
+      where: {
+        tenantId: tenant.id,
+        fineractUserId: parsed.userId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      skip,
+      take: userBlockHistoryPageSize,
+      select: {
+        id: true,
+        action: true,
+        source: true,
+        note: true,
+        actorUserId: true,
+        actorName: true,
+        createdAt: true,
+      },
+    }),
+    prisma.userLoginBlockEvent.count({
+      where: {
+        tenantId: tenant.id,
+        fineractUserId: parsed.userId,
+      },
+    }),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / userBlockHistoryPageSize));
+
+  return {
+    items: items.map(mapUserLoginBlockEvent),
+    page: Math.min(parsed.page, totalPages),
+    pageSize: userBlockHistoryPageSize,
+    total,
+    totalPages,
+  };
 }
 
 export async function getUsersTemplateAction(): Promise<UsersTemplate> {
@@ -406,7 +636,10 @@ export async function getUsersTemplateAction(): Promise<UsersTemplate> {
     "You do not have permission to manage users"
   );
 
-  const template = await fetchFineractAPI("/users/template");
+  const [template, tenant] = await Promise.all([
+    fetchFineractAPI("/users/template"),
+    requireCurrentTenant(),
+  ]);
 
   return {
     allowedOffices: Array.isArray(template?.allowedOffices)
@@ -415,6 +648,7 @@ export async function getUsersTemplateAction(): Promise<UsersTemplate> {
     availableRoles: Array.isArray(template?.availableRoles)
       ? template.availableRoles.map(mapRoleOption)
       : [],
+    defaultCountryCode: getTenantDefaultCountryCode(tenant.settings),
   };
 }
 
@@ -466,6 +700,11 @@ export async function createUserAction(
     }
 
     const email = parsed.data.email.trim();
+    const phone = parsed.data.phone.trim();
+    const countryCode = phone
+      ? getAfricanCountryDialCodeOrDefault(parsed.data.countryCode)
+      : undefined;
+    const tenant = await requireCurrentTenant();
     const payload: Record<string, unknown> = {
       username: parsed.data.username,
       firstname: parsed.data.firstname,
@@ -498,6 +737,17 @@ export async function createUserAction(
       response?.resourceId ?? response?.subResourceId ?? response?.id
     );
 
+    if (Number.isFinite(userId)) {
+      await upsertUserLogin({
+        tenantId: tenant.id,
+        fineractUserId: userId,
+        username: parsed.data.username,
+        email,
+        phone,
+        countryCode,
+      });
+    }
+
     revalidateUserPaths(Number.isFinite(userId) ? userId : undefined);
 
     return {
@@ -529,6 +779,7 @@ export async function updateUserAction(
       return toFieldErrorResult(parsed.error);
     }
 
+    const tenant = await requireCurrentTenant();
     const payload = {
       username: parsed.data.username,
       email: parsed.data.email,
@@ -543,6 +794,17 @@ export async function updateUserAction(
     await fetchFineractAPI(`/users/${parsed.data.userId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
+    });
+
+    await upsertUserLogin({
+      tenantId: tenant.id,
+      fineractUserId: parsed.data.userId,
+      username: parsed.data.username,
+      email: parsed.data.email,
+      phone: parsed.data.phone,
+      countryCode: parsed.data.phone
+        ? getAfricanCountryDialCodeOrDefault(parsed.data.countryCode)
+        : null,
     });
 
     revalidateUserPaths(parsed.data.userId);
@@ -576,8 +838,17 @@ export async function deleteUserAction(input: {
       return toFieldErrorResult(parsed.error, "User id is required");
     }
 
+    const tenant = await requireCurrentTenant();
     await fetchFineractAPI(`/users/${parsed.data.userId}`, {
       method: "DELETE",
+    });
+
+    await deleteUserLogin(tenant.id, parsed.data.userId);
+    await prisma.mfaChallenge.deleteMany({
+      where: {
+        tenantId: tenant.id,
+        fineractUserId: parsed.data.userId,
+      },
     });
 
     revalidateUserPaths(parsed.data.userId);
@@ -632,6 +903,132 @@ export async function changeUserPasswordAction(
     return {
       success: false,
       error: getErrorMessage(error, "Failed to change user password"),
+    };
+  }
+}
+
+async function getUserBlockActionContext(userId: number) {
+  const [tenant, session, user] = await Promise.all([
+    requireCurrentTenant(),
+    getSession(),
+    fetchFineractAPI(`/users/${userId}`),
+  ]);
+
+  if (!session?.user?.userId || !session.user.name) {
+    throw new Error("Your session could not be validated. Please sign in again.");
+  }
+
+  const mappedUser = mapUserDetail(user);
+  const existingLogin = await getUserLoginByFineractUserId(tenant.id, userId);
+
+  return {
+    tenant,
+    actorUserId: session.user.userId,
+    actorName: session.user.name,
+    mappedUser,
+    existingLogin,
+  };
+}
+
+export async function blockUserAccountAction(
+  input: UserBlockAccountInput
+): Promise<UserActionResult> {
+  try {
+    await ensurePermission(
+      SpecificPermission.UPDATE_USER,
+      "You do not have permission to block user accounts"
+    );
+
+    const parsed = blockAccountSchema.safeParse(input);
+    if (!parsed.success) {
+      return toFieldErrorResult(parsed.error, "A note is required to block this account");
+    }
+
+    const context = await getUserBlockActionContext(parsed.data.userId);
+
+    if (context.existingLogin?.isBlocked) {
+      return {
+        success: false,
+        error: `${context.mappedUser.displayName} is already blocked`,
+      };
+    }
+
+    await blockUserLogin({
+      tenantId: context.tenant.id,
+      fineractUserId: parsed.data.userId,
+      username: context.mappedUser.username,
+      email: context.existingLogin?.email || context.mappedUser.email,
+      phone: context.existingLogin?.phone,
+      countryCode: context.existingLogin?.countryCode,
+      note: parsed.data.note,
+      source: "MANUAL",
+      actorUserId: context.actorUserId,
+      actorName: context.actorName,
+    });
+
+    revalidateUserPaths(parsed.data.userId);
+
+    return {
+      success: true,
+      message: `${context.mappedUser.displayName} has been blocked`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to block user account"),
+    };
+  }
+}
+
+export async function unblockUserAccountAction(
+  input: UserBlockAccountInput
+): Promise<UserActionResult> {
+  try {
+    await ensurePermission(
+      SpecificPermission.UPDATE_USER,
+      "You do not have permission to unblock user accounts"
+    );
+
+    const parsed = blockAccountSchema.safeParse(input);
+    if (!parsed.success) {
+      return toFieldErrorResult(
+        parsed.error,
+        "A note is required to unblock this account"
+      );
+    }
+
+    const context = await getUserBlockActionContext(parsed.data.userId);
+
+    if (!context.existingLogin?.isBlocked) {
+      return {
+        success: false,
+        error: `${context.mappedUser.displayName} is already active`,
+      };
+    }
+
+    await unblockUserLogin({
+      tenantId: context.tenant.id,
+      fineractUserId: parsed.data.userId,
+      username: context.mappedUser.username,
+      email: context.existingLogin.email,
+      phone: context.existingLogin.phone,
+      countryCode: context.existingLogin.countryCode,
+      note: parsed.data.note,
+      source: "MANUAL",
+      actorUserId: context.actorUserId,
+      actorName: context.actorName,
+    });
+
+    revalidateUserPaths(parsed.data.userId);
+
+    return {
+      success: true,
+      message: `${context.mappedUser.displayName} has been unblocked`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: getErrorMessage(error, "Failed to unblock user account"),
     };
   }
 }

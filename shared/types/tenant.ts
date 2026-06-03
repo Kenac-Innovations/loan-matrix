@@ -32,6 +32,12 @@ export interface TenantFeatures {
   officeScopedAdminLeadsDashboard: boolean;
   /** When showing client active loans for topup, use the foreclosure settlement amount instead of total outstanding (excludes unrealized/future interest) */
   topupLoanBalanceExcludeUnrealizedInterests: boolean;
+  /** When true, MFA is required for tenant logins. Missing or false disables MFA. */
+  usesMFA?: boolean;
+  /** Enabled MFA delivery channels for the tenant. */
+  mfaChannels?: MfaChannel[];
+  /** Maximum incorrect MFA verification attempts before the account is blocked. */
+  mfaMaxAttempts?: number;
 }
 
 /**
@@ -45,6 +51,7 @@ export type FirstRepaymentDateStrategy =
   | "month-after-disbursement";
 
 export type InterestRateDisplayMode = "annual" | "monthly";
+export type MfaChannel = "email" | "sms";
 
 export interface FirstRepaymentDateConfig {
   strategy: FirstRepaymentDateStrategy;
@@ -117,6 +124,7 @@ export interface TenantInfo {
   slug: string;
   domain?: string | null;
   settings?: TenantSettings;
+  notificationServiceTenantId?: string | null;
   /** Document service file URL for org logo (when set) */
   logoFileUrl?: string | null;
   /** Document service link ID (UUID) for logo */

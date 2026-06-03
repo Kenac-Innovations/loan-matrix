@@ -2,8 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Pencil, Shield } from "lucide-react";
-import { changeUserPasswordAction } from "@/app/actions/user-management-actions";
+import { Ban, Loader2, LockOpen, Pencil, Shield } from "lucide-react";
+import {
+  blockUserAccountAction,
+  changeUserPasswordAction,
+  unblockUserAccountAction,
+} from "@/app/actions/user-management-actions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -16,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/use-toast";
 import type { UserDetail } from "@/shared/types/user-management";
 
@@ -34,6 +39,11 @@ export function UserDetailActions({
   const [repeatPassword, setRepeatPassword] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [accountAction, setAccountAction] = useState<"block" | "unblock" | null>(
+    null
+  );
+  const [accountNote, setAccountNote] = useState("");
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handlePasswordChange = () => {
@@ -71,6 +81,49 @@ export function UserDetailActions({
     });
   };
 
+  const handleAccountAction = () => {
+    const nextAction = accountAction;
+
+    if (!nextAction) {
+      return;
+    }
+
+    setAccountError(null);
+
+    startTransition(async () => {
+      const result =
+        nextAction === "block"
+          ? await blockUserAccountAction({
+              userId: user.id,
+              note: accountNote,
+            })
+          : await unblockUserAccountAction({
+              userId: user.id,
+              note: accountNote,
+            });
+
+      if (!result.success) {
+        setAccountError(result.fieldErrors?.note?.[0] || result.error || "Unable to update account status");
+        return;
+      }
+
+      toast({
+        title:
+          nextAction === "block" ? "Account blocked" : "Account unblocked",
+        description:
+          result.message ||
+          `${user.displayName} has been ${nextAction === "block" ? "blocked" : "unblocked"}.`,
+        variant: "success",
+      });
+      setAccountNote("");
+      setAccountError(null);
+      setAccountAction(null);
+      router.refresh();
+    });
+  };
+
+  const isBlockAction = accountAction === "block";
+
   return (
     <>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -88,6 +141,29 @@ export function UserDetailActions({
           <Button variant="secondary" onClick={() => setIsPasswordOpen(true)}>
             <Shield className="h-4 w-4" />
             Change Password
+          </Button>
+        )}
+
+        {canUpdate && (
+          <Button
+            variant={user.isBlocked ? "secondary" : "destructive"}
+            className={
+              user.isBlocked
+                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                : undefined
+            }
+            onClick={() => {
+              setAccountNote("");
+              setAccountError(null);
+              setAccountAction(user.isBlocked ? "unblock" : "block");
+            }}
+          >
+            {user.isBlocked ? (
+              <LockOpen className="h-4 w-4" />
+            ) : (
+              <Ban className="h-4 w-4" />
+            )}
+            {user.isBlocked ? "Unblock Account" : "Block Account"}
           </Button>
         )}
       </div>
@@ -152,6 +228,80 @@ export function UserDetailActions({
             <Button onClick={handlePasswordChange} disabled={isPending}>
               {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Save Password
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={accountAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAccountAction(null);
+            setAccountNote("");
+            setAccountError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {isBlockAction ? "Block User Account" : "Unblock User Account"}
+            </DialogTitle>
+            <DialogDescription>
+              {isBlockAction
+                ? `Block ${user.displayName} from receiving MFA codes and completing sign-in.`
+                : `Restore MFA access for ${user.displayName}.`}
+              {" "}
+              A note is required for the audit trail.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="account-note">Note</Label>
+              <Textarea
+                id="account-note"
+                value={accountNote}
+                onChange={(event) => setAccountNote(event.target.value)}
+                placeholder={
+                  isBlockAction
+                    ? "Explain why this account is being blocked"
+                    : "Explain why this account is being unblocked"
+                }
+                rows={4}
+              />
+            </div>
+
+            {accountError && (
+              <p className="text-sm text-destructive">{accountError}</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAccountAction(null);
+                setAccountNote("");
+                setAccountError(null);
+              }}
+              disabled={isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={isBlockAction ? "destructive" : "default"}
+              className={
+                isBlockAction
+                  ? undefined
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }
+              onClick={handleAccountAction}
+              disabled={isPending}
+            >
+              {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isBlockAction ? "Block Account" : "Unblock Account"}
             </Button>
           </DialogFooter>
         </DialogContent>

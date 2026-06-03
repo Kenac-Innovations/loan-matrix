@@ -59,6 +59,17 @@ export function UsersPageClient({
         ),
     },
     {
+      id: "status",
+      header: "Status",
+      accessorKey: "isBlocked",
+      cell: ({ row }) => (
+        <Badge variant={row.original.isBlocked ? "destructive" : "secondary"}>
+          {row.original.isBlocked ? "Blocked" : "Active"}
+        </Badge>
+      ),
+      getExportValue: (item) => (item.isBlocked ? "Blocked" : "Active"),
+    },
+    {
       id: "officeName",
       header: "Office",
       accessorKey: "officeName",

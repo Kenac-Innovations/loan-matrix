@@ -2,8 +2,30 @@
 
 import React, { createContext, useContext } from "react";
 import { signIn, signOut, useSession, getSession } from "next-auth/react";
+import type { MfaChannel } from "@/shared/types/tenant";
 
-type LoginResult = { success: boolean; error?: string };
+type LoginResult =
+  | { success: true }
+  | {
+      success: false;
+      error: string;
+      requiresMfa?: false;
+      requiresChannelSelection?: false;
+    }
+  | {
+      success: false;
+      requiresMfa: true;
+      challengeId: string;
+      channel: MfaChannel;
+      maskedDestination: string;
+    }
+  | {
+      success: false;
+      requiresMfa: true;
+      requiresChannelSelection: true;
+      availableChannels: MfaChannel[];
+      destinations: Partial<Record<MfaChannel, string | null>>;
+    };
 
 type AuthContextType = {
   status: "loading" | "authenticated" | "unauthenticated";
@@ -13,15 +35,19 @@ type AuthContextType = {
     email?: string | null;
     image?: string | null;
   } | null;
-  login: (username: string, password: string) => Promise<LoginResult>;
-  logout: () => void;
+  login: (
+    username: string,
+    password: string,
+    channel?: MfaChannel
+  ) => Promise<LoginResult>;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
   status: "loading",
   user: null,
-  login: async () => ({ success: false }),
-  logout: () => {},
+  login: async () => ({ success: false, error: "Authentication unavailable" }),
+  logout: async () => {},
 });
 
 // Custom hook to use the auth context
@@ -49,11 +75,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return false;
   };
 
+  const waitForSessionToClear = async (
+    attempts = 10,
+    delayMs = 120
+  ): Promise<boolean> => {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const currentSession = await getSession();
+      if (!currentSession) {
+        return true;
+      }
+
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    return false;
+  };
+
   const login = async (
     username: string,
-    password: string
+    password: string,
+    channel?: MfaChannel
   ): Promise<LoginResult> => {
     try {
+      const mfaStartRes = await fetch("/api/auth/mfa/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, channel }),
+      });
+      const mfaStartData = await mfaStartRes.json();
+
+      if (!mfaStartRes.ok || !mfaStartData.success) {
+        return {
+          success: false,
+          error: mfaStartData.error || "Login failed",
+        };
+      }
+
+      if (mfaStartData.requiresMfa) {
+        if (mfaStartData.requiresChannelSelection) {
+          return {
+            success: false,
+            requiresMfa: true,
+            requiresChannelSelection: true,
+            availableChannels: mfaStartData.availableChannels || [],
+            destinations: mfaStartData.destinations || {},
+          };
+        }
+
+        return {
+          success: false,
+          requiresMfa: true,
+          challengeId: mfaStartData.challengeId,
+          channel: mfaStartData.channel,
+          maskedDestination: mfaStartData.maskedDestination,
+        };
+      }
+
       const result = await signIn("credentials", {
         username,
         password,
@@ -69,25 +148,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         console.error("SignIn error:", result.error);
-
-        try {
-          const validateRes = await fetch("/api/auth/validate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username, password }),
-          });
-          const validateData = await validateRes.json();
-
-          if (!validateRes.ok || !validateData.success) {
-            return {
-              success: false,
-              error: validateData.error || "Invalid username or password",
-            };
-          }
-        } catch {
-          // validate endpoint unreachable, fall through to generic error
-        }
-
         return { success: false, error: "Invalid username or password" };
       }
 
@@ -97,25 +157,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           success: false,
           error: "Authentication is taking longer than expected. Please try again.",
         };
-      }
-
-      try {
-        const validateRes = await fetch("/api/auth/validate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
-        });
-        const validateData = await validateRes.json();
-
-        if (!validateRes.ok || !validateData.success) {
-          await signOut({ redirect: false });
-          return {
-            success: false,
-            error: validateData.error || "Authentication failed",
-          };
-        }
-      } catch {
-        // validate endpoint unreachable — signIn already succeeded so allow login
       }
 
       return { success: true };
@@ -133,10 +174,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = () => {
-    signOut({
-      callbackUrl: `${window.location.origin}/auth/login`,
+  const logout = async () => {
+    await signOut({
+      redirect: false,
     });
+
+    await waitForSessionToClear();
+    window.location.href = `${window.location.origin}/auth/login`;
   };
 
   // Map NextAuth session status to our auth context status
