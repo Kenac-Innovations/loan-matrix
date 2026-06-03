@@ -3,7 +3,7 @@
  * Uses NOTIFICATION_SERVICE_URL and POST /api/v1/notifications/sms.
  */
 
-const CONTACT_LINE = "Contact us on +260957224792 /774 or visit our offices.";
+const CONTACT_LINE = "For more info please contact us on +260957224792 /774 or visit our offices.";
 const DEFAULT_SMS_COUNTRY_CODE =
   process.env.SMS_DEFAULT_COUNTRY_CODE || "+260";
 
@@ -179,7 +179,7 @@ export async function sendLoanStatusSms(
       message = `Sorry ${name}, your loan application of ${prefix} was not approved. Reason: ${reason || "No reason provided"}. ${CONTACT_LINE}`;
       break;
     case "disbursed":
-      message = `Dear ${name}, your loan of ${prefix} has been disbursed. Visit our office to collect your payout. ${CONTACT_LINE}`;
+      message = `Dear ${name}, your loan of ${prefix} has been processed successfully. ${CONTACT_LINE}`;
       break;
     case "paid":
       message = `Dear ${name}, your loan payout of ${prefix} has been completed. Thank you for banking with us. ${CONTACT_LINE}`;

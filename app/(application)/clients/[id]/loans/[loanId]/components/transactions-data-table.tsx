@@ -96,6 +96,10 @@ export function TransactionsDataTable({
     return undefined;
   };
 
+  const getPaymentTypeLabel = (transaction: Transaction) => {
+    return transaction.paymentDetailData?.paymentType?.name || "—";
+  };
+
   // Define columns for the generic data table
   const columns: DataTableColumn<Transaction>[] = [
     {
@@ -154,6 +158,16 @@ export function TransactionsDataTable({
         { label: "Accrual", value: "accrual" },
         ...transactionTypes,
       ],
+    },
+    {
+      id: "paymentType",
+      header: "Payment Type",
+      accessorKey: "paymentDetailData",
+      cell: ({ row }) => (
+        <span className={getReversedTextClass(row.original)}>
+          {getPaymentTypeLabel(row.original)}
+        </span>
+      ),
     },
     {
       id: "amount",
