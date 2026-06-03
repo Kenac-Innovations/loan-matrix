@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { getSession } from "@/lib/auth";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 
 /**
  * GET /api/fineract/loans/[id]
@@ -12,12 +15,33 @@ export async function GET(
   try {
     const { id } = await params;
     const { searchParams } = new URL(request.url);
+    const session = await getSession();
+    const tenantSlug = extractTenantSlugFromRequest(request);
 
     // Get associations parameter if provided, otherwise default to 'all'
     const associations = searchParams.get("associations") || "all";
 
     const fineractService = await getFineractServiceWithSession();
     const data = await fineractService.getLoan(id, associations);
+    const officeScope = resolveOmamaOfficeScope({
+      tenantSlug,
+      roles: ((session?.user as any)?.roles || []) as Array<{
+        name?: string | null;
+        disabled?: boolean | null;
+      }>,
+      officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
+      officeName: ((session?.user as any)?.officeName as string | undefined) ?? null,
+    });
+    const loanOfficeId =
+      typeof data?.clientOfficeId === "number"
+        ? data.clientOfficeId
+        : typeof data?.officeId === "number"
+          ? data.officeId
+          : null;
+
+    if (officeScope?.officeId && loanOfficeId !== officeScope.officeId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // Return the data as-is to preserve the original structure
     return NextResponse.json(data);

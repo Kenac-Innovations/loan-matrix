@@ -5,6 +5,8 @@ import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSearchHeaders } from "@/lib/fineract-search-auth";
 import { prisma } from "@/lib/prisma";
 import { sendLoanStatusSms } from "@/lib/notification-service";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -62,6 +64,18 @@ async function getAccessToken(): Promise<string | undefined> {
 export async function GET(request: NextRequest) {
   try {
     const fineractTenantId = await getFineractTenantId();
+    const tenantSlug = extractTenantSlugFromRequest(request);
+    const session = await getSession();
+    const officeScope = resolveOmamaOfficeScope({
+      tenantSlug,
+      roles: ((session?.user as any)?.roles || []) as Array<{
+        name?: string | null;
+        disabled?: boolean | null;
+      }>,
+      officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
+      officeName: ((session?.user as any)?.officeName as string | undefined) ?? null,
+    });
+    const scopedOfficeId = officeScope?.officeId ?? null;
 
     console.log("=== LOANS API - Tenant Information ===");
     console.log("Using Fineract Tenant ID:", fineractTenantId);
@@ -77,6 +91,11 @@ export async function GET(request: NextRequest) {
     const offset = searchParams.get("offset") || "0";
     const query = searchParams.get("query");
     const accountNo = searchParams.get("accountNo");
+    const officeSqlFilter = scopedOfficeId
+      ? `l.client_id in (select mc.id from m_client mc where mc.office_id=${Number(
+          scopedOfficeId
+        )})`
+      : null;
 
     let result;
 
@@ -117,7 +136,13 @@ export async function GET(request: NextRequest) {
         // Fetch loans for matching clients using SQL search
         if (clientIds.size > 0) {
           const clientIdList = Array.from(clientIds).join(',');
-          const clientLoansUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=l.client_id in (${clientIdList})&limit=500`;
+          const sqlSearch = [
+            `l.client_id in (${clientIdList})`,
+            officeSqlFilter,
+          ]
+            .filter(Boolean)
+            .join(" and ");
+          const clientLoansUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=${encodeURIComponent(sqlSearch)}&limit=500`;
           
           console.log("Fetching loans for clients:", clientLoansUrl);
           
@@ -140,7 +165,7 @@ export async function GET(request: NextRequest) {
         } else if (loanIds.size > 0) {
           // Fetch loans by IDs
           const loanIdList = Array.from(loanIds).join(',');
-          const loansUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=l.id in (${loanIdList})&limit=500`;
+          const loansUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=${encodeURIComponent(`l.id in (${loanIdList})`)}&limit=500`;
           
           const loansResponse = await fetch(loansUrl, {
             method: "GET",
@@ -150,7 +175,18 @@ export async function GET(request: NextRequest) {
           
           if (loansResponse.ok) {
             const loansResult = await loansResponse.json();
-            const loans = loansResult?.pageItems || loansResult || [];
+            let loans = loansResult?.pageItems || loansResult || [];
+            if (scopedOfficeId) {
+              loans = loans.filter((loan: any) => {
+                const loanOfficeId =
+                  typeof loan?.clientOfficeId === "number"
+                    ? loan.clientOfficeId
+                    : typeof loan?.officeId === "number"
+                      ? loan.officeId
+                      : null;
+                return loanOfficeId === scopedOfficeId;
+              });
+            }
             result = { pageItems: loans, totalFilteredRecords: loans.length };
           } else {
             result = { pageItems: [], totalFilteredRecords: 0 };
@@ -165,7 +201,13 @@ export async function GET(request: NextRequest) {
       }
     } else if (accountNo) {
       // Search by exact account number
-      const accountUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=l.account_no='${accountNo}'`;
+      const sqlSearch = [
+        `l.account_no='${accountNo}'`,
+        officeSqlFilter,
+      ]
+        .filter(Boolean)
+        .join(" and ");
+      const accountUrl = `${baseUrl}/fineract-provider/api/v1/loans?sqlSearch=${encodeURIComponent(sqlSearch)}`;
 
       const response = await fetch(accountUrl, {
         method: "GET",
@@ -195,6 +237,9 @@ export async function GET(request: NextRequest) {
       let url = `${baseUrl}/fineract-provider/api/v1/loans?limit=${limit}&offset=${offset}`;
       if (status) {
         url += `&status=${status}`;
+      }
+      if (officeSqlFilter) {
+        url += `&sqlSearch=${encodeURIComponent(officeSqlFilter)}`;
       }
 
       console.log("Fetching loans from Fineract:", url);

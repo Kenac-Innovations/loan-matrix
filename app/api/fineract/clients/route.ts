@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { getSession } from "@/lib/auth";
+import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 import {
   fetchFineractSearch,
   getSearchHeaders,
@@ -15,15 +18,29 @@ const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+    const tenantSlug = extractTenantSlugFromRequest(request);
     const offset = searchParams.get("offset") || "0";
     const limit = searchParams.get("limit") || "20";
     const query = searchParams.get("query");
-    const officeId = searchParams.get("officeId");
+    const requestedOfficeId = searchParams.get("officeId");
     const status = searchParams.get("status"); // active, pending, closed
     const orderBy = searchParams.get("orderBy") || "id"; // id, displayName, accountNo
     const sortOrder = searchParams.get("sortOrder") || "DESC"; // ASC, DESC
 
     const fineractTenantId = await getFineractTenantId();
+    const session = await getSession();
+    const officeScope = resolveOmamaOfficeScope({
+      tenantSlug,
+      roles: ((session?.user as any)?.roles || []) as Array<{
+        name?: string | null;
+        disabled?: boolean | null;
+      }>,
+      officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
+      officeName: ((session?.user as any)?.officeName as string | undefined) ?? null,
+    });
+    const officeId = officeScope?.officeId
+      ? String(officeScope.officeId)
+      : requestedOfficeId;
 
     // Use service account token for search operations
     const headers = getSearchHeaders(fineractTenantId);
