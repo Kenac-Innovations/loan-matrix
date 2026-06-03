@@ -9,7 +9,6 @@ import {
   AlertCircle,
   TrendingUp,
   ChevronRight,
-  FileText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -28,8 +27,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
 import { getDisplayLoanStatus } from "@/lib/loan-status";
+import {
+  extractTenantSlugFromHostname,
+  isOmamaTenantSlug,
+} from "@/lib/omama-tenant";
 
 interface FineractLoan {
   id: number;
@@ -48,6 +50,7 @@ interface FineractLoan {
     value: string;
     active: boolean;
     closed: boolean;
+    closedObligationsMet?: boolean;
   };
   displayStatus: string;
   chargedOff?: boolean;
@@ -63,6 +66,7 @@ interface FineractLoan {
     principalOutstanding: number;
     totalOutstanding: number;
     totalOverdue: number;
+    overdueSinceDate?: string | number[] | null;
   };
   isTopup?: boolean;
 }
@@ -90,6 +94,7 @@ interface RawClientLoan {
     value?: string;
     active?: boolean;
     closed?: boolean;
+    closedObligationsMet?: boolean;
     closedWrittenOff?: boolean;
   };
   timeline?: {
@@ -102,6 +107,7 @@ interface RawClientLoan {
     totalOverdue?: number;
     totalOutstanding?: number;
     principalOutstanding?: number;
+    overdueSinceDate?: string | number[] | null;
   };
   loanBalance?: number;
   inArrears?: boolean;
@@ -120,6 +126,25 @@ interface ClientLoanSequenceItem {
     approvedOnDate?: string;
     actualDisbursementDate?: string;
     expectedDisbursementDate?: string;
+  };
+}
+
+interface LoanDetailsForTable {
+  id: number;
+  status?: {
+    closedObligationsMet?: boolean;
+  };
+  summary?: {
+    totalOverdue?: number;
+    overdueSinceDate?: string | number[] | null;
+  };
+  repaymentSchedule?: {
+    periods?: Array<{
+      period?: number;
+      dueDate?: string | number[];
+      obligationsMetOnDate?: string | number[];
+      totalOverdue?: number;
+    }>;
   };
 }
 
@@ -148,6 +173,11 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function ClientLoans({ clientId }: ClientLoansProps) {
   const router = useRouter();
+  const tenantSlug =
+    typeof globalThis.window !== "undefined"
+      ? extractTenantSlugFromHostname(globalThis.location.hostname)
+      : null;
+  const isOmamaTenant = isOmamaTenantSlug(tenantSlug);
 
   // Use accounts endpoint to get loanAccounts for accuracy
   const { data, error, isLoading } = useSWR(`/api/fineract/clients/${clientId}/accounts`, fetcher);
@@ -181,7 +211,9 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     
     const CUTOFF = new Date("2026-01-01T00:00:00Z");
 
-    const parseFineractDate = (d: any): Date | null => {
+    const parseFineractDate = (
+      d: string | number[] | null | undefined
+    ): Date | null => {
       if (!d) return null;
       if (Array.isArray(d) && d.length >= 3) return new Date(d[0], d[1] - 1, d[2]);
       if (typeof d === "string") return new Date(d);
@@ -189,7 +221,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
     };
 
     return rawLoans
-      .filter((loan: any) => {
+      .filter((loan: RawClientLoan) => {
         const date = parseFineractDate(loan.timeline?.actualDisbursementDate)
           ?? parseFineractDate(loan.timeline?.submittedOnDate);
         return !date || date >= CUTOFF;
@@ -217,6 +249,7 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
         value: loan.status?.value || "",
         active: loan.status?.active || false,
         closed: loan.status?.closed || false,
+        closedObligationsMet: loan.status?.closedObligationsMet || false,
       },
       displayStatus: getDisplayLoanStatus(loan),
       chargedOff: loan.chargedOff || false,
@@ -239,9 +272,50 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
         totalOverdue:
           loan.summary?.totalOverdue ||
           (loan.inArrears ? (loan.loanBalance || 0) : 0),
+        overdueSinceDate: loan.summary?.overdueSinceDate || null,
       },
     }));
   })();
+
+  const shouldFetchOmamaLoanDetails =
+    isOmamaTenant &&
+    loans.some(
+      (loan) => loan.summary.totalOverdue > 0 || loan.status.closedObligationsMet
+    );
+
+  const { data: omamaLoanDetails } = useSWR<Record<number, LoanDetailsForTable>>(
+    shouldFetchOmamaLoanDetails
+      ? [
+          "omama-client-loan-details",
+          ...loans
+            .filter(
+              (loan) =>
+                loan.summary.totalOverdue > 0 || loan.status.closedObligationsMet
+            )
+            .map((loan) => loan.id)
+            .sort((a, b) => a - b),
+        ]
+      : null,
+    async ([, ...loanIds]) => {
+      const detailEntries = await Promise.all(
+        loanIds.map(async (loanId) => {
+          const response = await fetch(`/api/fineract/loans/${loanId}/details`);
+          if (!response.ok) {
+            return [loanId, null] as const;
+          }
+
+          const detail = (await response.json()) as LoanDetailsForTable;
+          return [loanId, detail] as const;
+        })
+      );
+
+      return Object.fromEntries(
+        detailEntries.filter((entry): entry is readonly [number, LoanDetailsForTable] =>
+          Boolean(entry[1])
+        )
+      );
+    }
+  );
 
   const getStatusBadge = (loan: FineractLoan) => {
     const status = loan.displayStatus;
@@ -316,6 +390,82 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
       month: "short",
       day: "numeric",
     });
+  };
+
+  const toDate = (value: string | number[] | null | undefined): Date | null => {
+    if (!value) return null;
+    if (Array.isArray(value) && value.length >= 3) {
+      return new Date(value[0], value[1] - 1, value[2]);
+    }
+
+    if (typeof value === "string") {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    return null;
+  };
+
+  const getDifferenceInDays = (startDate: Date, endDate: Date): number => {
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const start = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth(),
+      startDate.getDate()
+    ).getTime();
+    const end = new Date(
+      endDate.getFullYear(),
+      endDate.getMonth(),
+      endDate.getDate()
+    ).getTime();
+
+    return Math.max(0, Math.floor((end - start) / msPerDay));
+  };
+
+  const formatDayCount = (days: number | null): string => {
+    if (days === null) return "Current";
+    if (days === 1) return "1 day overdue";
+    return `${days} days overdue`;
+  };
+
+  const getOmamaLoanDetail = (loanId: number) => omamaLoanDetails?.[loanId] ?? null;
+
+  const getOverdueDays = (loan: FineractLoan): number | null => {
+    const detail = getOmamaLoanDetail(loan.id);
+    const overdueSinceDate = toDate(
+      detail?.summary?.overdueSinceDate ?? loan.summary.overdueSinceDate
+    );
+
+    if (!overdueSinceDate || loan.summary.totalOverdue <= 0) {
+      return null;
+    }
+
+    return getDifferenceInDays(overdueSinceDate, new Date());
+  };
+
+  const getClosedObligationsPaidOnTime = (loan: FineractLoan): boolean | null => {
+    if (!loan.status.closedObligationsMet) {
+      return null;
+    }
+
+    const repaymentPeriods =
+      getOmamaLoanDetail(loan.id)?.repaymentSchedule?.periods || [];
+
+    if (repaymentPeriods.length === 0) {
+      return null;
+    }
+
+    return repaymentPeriods
+      .filter((period) => Number(period?.period ?? 0) > 0)
+      .every((period) => {
+        const dueDate = toDate(period?.dueDate);
+        const settledDate = toDate(period?.obligationsMetOnDate);
+
+        if ((period?.totalOverdue ?? 0) > 0) return false;
+        if (!dueDate || !settledDate) return true;
+
+        return settledDate.getTime() <= dueDate.getTime();
+      });
   };
 
   // Calculate summary metrics
@@ -493,13 +643,23 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                     <TableHead>Account No</TableHead>
                     <TableHead>Principal</TableHead>
                     <TableHead>Outstanding</TableHead>
+                    {isOmamaTenant && <TableHead>Overdue By</TableHead>}
                     <TableHead>Status</TableHead>
+                    {isOmamaTenant && <TableHead>Closed Obligations Met</TableHead>}
                     <TableHead>Maturity Date</TableHead>
                     <TableHead className="w-[48px] text-right">Open</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orderedLoans.map((loan) => (
+                  {orderedLoans.map((loan) => {
+                    const overdueDays = isOmamaTenant
+                      ? getOverdueDays(loan)
+                      : null;
+                    const closedObligationsPaidOnTime = isOmamaTenant
+                      ? getClosedObligationsPaidOnTime(loan)
+                      : null;
+
+                    return (
                     <TableRow
                       key={loan.id}
                       className="cursor-pointer transition-colors hover:bg-muted/50"
@@ -562,7 +722,29 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                           )}
                         </div>
                       </TableCell>
+                      {isOmamaTenant && (
+                        <TableCell>
+                          <div className="text-sm">
+                            {loan.summary.totalOverdue > 0
+                              ? formatDayCount(overdueDays)
+                              : "Current"}
+                          </div>
+                        </TableCell>
+                      )}
                       <TableCell>{getStatusBadge(loan)}</TableCell>
+                      {isOmamaTenant && (
+                        <TableCell>
+                          <div className="text-sm">
+                            {loan.status.closedObligationsMet
+                              ? closedObligationsPaidOnTime === null
+                                ? "Closed in full"
+                                : closedObligationsPaidOnTime
+                                  ? "Paid in full and on time"
+                                  : "Paid in full, but not all on time"
+                              : "—"}
+                          </div>
+                        </TableCell>
+                      )}
                       <TableCell>
                         <div className="flex items-center gap-1 text-sm">
                           <Calendar className="h-3 w-3" />
@@ -575,7 +757,8 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                         <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
