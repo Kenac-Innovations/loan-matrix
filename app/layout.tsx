@@ -7,7 +7,6 @@ import { Providers } from "./providers";
 import { Toaster } from "sonner";
 // Initialize queue consumer
 import "@/lib/queue-initializer";
-
 const inter = Inter({ 
   subsets: ["latin"],
   display: "swap",

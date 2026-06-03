@@ -2,15 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
     ignoreBuildErrors: true,
   },
   experimental: {
     optimizePackageImports: ["@radix-ui/react-icons"],
   },
+  turbopack: {},
   headers: async () => [
     {
       source: "/((?!_next/static|_next/image|favicon.ico|auth|static).*)",
