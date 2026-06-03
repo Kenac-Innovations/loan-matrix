@@ -26,7 +26,7 @@ interface ReversePayoutModalProps {
 
 /**
  * Reverse payout only (not the disbursement). Marks the LoanPayout as REVERSED
- * so the cashier gets the money back in their transaction history.
+ * so cash goes back to the cashier or mobile money goes back to the pool.
  */
 export function ReversePayoutModal({
   isOpen,
@@ -61,7 +61,7 @@ export function ReversePayoutModal({
       toast({
         title: "Payout reversed",
         description:
-          "Cash will show as returned in the cashier's transaction history.",
+          "The payout has been reversed and the funds have been returned to the original pool.",
       });
       onSuccess();
       onClose();
@@ -89,9 +89,10 @@ export function ReversePayoutModal({
             Reverse payout
           </DialogTitle>
           <DialogDescription>
-            Reverse the cash payout for this loan only. The disbursement in
-            Fineract is not changed. The amount will show as returned to the
-            cashier in their transaction history.
+            Reverse the payout for this loan only. The disbursement in
+            Fineract is not changed. Cash payouts return funds to the
+            cashier&apos;s history, while mobile money payouts return funds to the
+            mobile money pool.
             {clientName && (
               <span className="block mt-2 font-medium text-foreground">
                 Loan / client: {clientName}
@@ -121,7 +122,7 @@ export function ReversePayoutModal({
             <Label htmlFor="reason">Reason (optional)</Label>
             <Textarea
               id="reason"
-              placeholder="e.g. Wrong amount paid; cash returned to cashier"
+              placeholder="e.g. Wrong amount paid; funds returned to the original pool"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={2}

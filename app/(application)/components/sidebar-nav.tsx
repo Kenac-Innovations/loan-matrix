@@ -129,6 +129,7 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
         subMenuItems={[
           { label: "Banks", href: "/banks" },
           { label: "Tellers", href: "/tellers" },
+          { label: "Mobile Money", href: "/mobile-money" },
           ...(isEnabled("receiptRanges")
             ? [{ label: "Receipt Ranges", href: "/banks/receipts" }]
             : []),

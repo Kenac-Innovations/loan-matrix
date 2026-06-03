@@ -34,6 +34,7 @@ model Tenant {
   usedReceipts           UsedReceipt[]
   loanContractTemplates  LoanContractTemplate[]
   requiredDocuments      RequiredDocument[]
+  mobileMoneyTransactions MobileMoneyTransaction[]
   invoiceDiscountingCases InvoiceDiscountingCase[]
   invoiceDiscountingInvoices InvoiceDiscountingInvoice[]
   invoiceDiscountingCharges InvoiceDiscountingCharge[]
@@ -1064,10 +1065,64 @@ model LoanPayout {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   settlements      CashSettlement[]
+  mobileMoneyTransactions MobileMoneyTransaction[]
 
   @@unique([tenantId, fineractLoanId])
   @@index([tenantId, status])
   @@index([tenantId, fineractClientId])
+}
+
+enum MobileMoneyTransactionType {
+  OPENING_BALANCE
+  TOP_UP
+  TOP_UP_REVERSAL
+  PAYOUT
+  PAYOUT_REVERSAL
+}
+
+enum MobileMoneyTransactionStatus {
+  ACTIVE
+  REVERSED
+}
+
+model MobileMoneyTransaction {
+  id                      String                       @id @default(cuid())
+  tenantId                String
+  loanPayoutId            String?
+  type                    MobileMoneyTransactionType
+  amount                  Float
+  currency                String                       @default("ZMW")
+  transactionDate         DateTime
+  notes                   String?
+  status                  MobileMoneyTransactionStatus @default(ACTIVE)
+  createdBy               String
+  reversalOfId            String?
+  reversedAt              DateTime?
+  reversedBy              String?
+  reversalReason          String?
+  fineractJournalEntryId  String?
+  fineractLoanId          Int?
+  fineractClientId        Int?
+  clientName              String?
+  loanAccountNo           String?
+  sourceGlAccountId       Int?
+  sourceGlAccountName     String?
+  sourceGlAccountCode     String?
+  mobileMoneyGlAccountId  Int?
+  mobileMoneyGlAccountName String?
+  mobileMoneyGlAccountCode String?
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+  tenant                  Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  loanPayout              LoanPayout?                  @relation(fields: [loanPayoutId], references: [id], onDelete: SetNull)
+  reversalOf              MobileMoneyTransaction?      @relation("MobileMoneyTransactionReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
+  reversals               MobileMoneyTransaction[]     @relation("MobileMoneyTransactionReversal")
+
+  @@index([tenantId, transactionDate])
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([tenantId, loanPayoutId])
+  @@index([tenantId, fineractLoanId])
 }
 
 // System Roles - maps to Mifos/Fineract roles

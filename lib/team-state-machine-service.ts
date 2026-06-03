@@ -1,7 +1,7 @@
 import { prisma } from "./prisma";
 import { getFineractServiceWithSession } from "./fineract-api";
 import { applyTopupDisbursementCharges } from "./topup-disbursement-charge-service";
-import { isPaymentTypeCash } from "./cash-repayment-teller";
+import { getPaymentTypeInfo, isPaymentTypeCash } from "./cash-repayment-teller";
 import { resolveCurrentUserCashierContext } from "./current-user-cashier";
 import {
   createSavingsAccount,
@@ -15,6 +15,10 @@ import {
   getFacilityLoanLink,
   updateFacility,
 } from "./fineract-credit-facility";
+import {
+  recordMobileMoneyPayout,
+  reverseMobileMoneyPayout,
+} from "./mobile-money-transactions";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -256,8 +260,24 @@ export class TeamAwareStateMachineService {
   ): Promise<"CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | undefined> {
     if (!paymentTypeId) return undefined;
 
-    const paymentTypeIsCash = await isPaymentTypeCash(paymentTypeId);
-    return paymentTypeIsCash ? "CASH" : "BANK_TRANSFER";
+    const paymentType = await getPaymentTypeInfo(paymentTypeId);
+    const paymentTypeIsCash = paymentType?.isCashPayment ?? (await isPaymentTypeCash(paymentTypeId));
+
+    if (paymentTypeIsCash) {
+      return "CASH";
+    }
+
+    const normalizedName = (paymentType?.name || "").trim().toUpperCase();
+    if (
+      normalizedName.includes("MOBILE") ||
+      normalizedName.includes("MOMO") ||
+      normalizedName.includes("AIRTEL") ||
+      normalizedName.includes("MTN")
+    ) {
+      return "MOBILE_MONEY";
+    }
+
+    return "BANK_TRANSFER";
   }
 
   private static async validateCombinedDisbursementPayout(
@@ -1406,7 +1426,7 @@ export class TeamAwareStateMachineService {
         return `Fineract loan #${fineractLoanId} disbursement undone`;
       }
       case "payout": {
-        // Reverse the payout: find the payout record, reverse the cashier transaction, and mark as reversed
+        // Reverse the payout: branch by payment method so mobile money returns to the pool
         const payout = await prisma.loanPayout.findUnique({
           where: {
             tenantId_fineractLoanId: { tenantId: lead.tenantId, fineractLoanId },
@@ -1414,21 +1434,13 @@ export class TeamAwareStateMachineService {
         });
 
         if (payout && payout.status === "PAID") {
-          // If it was a cash payout with a cashier transaction, reverse the journal entry
-          if (payout.fineractTransactionId) {
-            try {
-              await fetchFineractAPI(
-                `/journalentries/${payout.fineractTransactionId}?command=reverse`,
-                {
-                  method: "POST",
-                  body: JSON.stringify({
-                    comments: reason || "Payout reversed — lead moved back",
-                  }),
-                }
-              );
-            } catch (err) {
-              console.warn(`[Undo Payout] Could not reverse journal entry ${payout.fineractTransactionId}:`, err);
-            }
+          if (payout.paymentMethod === "MOBILE_MONEY") {
+            await reverseMobileMoneyPayout({
+              tenantId: lead.tenantId,
+              loanPayoutId: payout.id,
+              reversedBy: "system",
+              reason: reason || "Lead moved back",
+            });
           }
 
           // Mark payout as reversed
@@ -1695,7 +1707,7 @@ export class TeamAwareStateMachineService {
       // Non-cash (Mobile Money / Bank Transfer)
       const methodLabel = overrides.payoutMethod === "MOBILE_MONEY" ? "Mobile Money" : "Bank Transfer";
 
-      await prisma.loanPayout.upsert({
+      const payoutRecord = await prisma.loanPayout.upsert({
         where: {
           tenantId_fineractLoanId: { tenantId: lead.tenantId, fineractLoanId },
         },
@@ -1721,6 +1733,21 @@ export class TeamAwareStateMachineService {
           notes: overrides.payoutNote || overrides.note || `Payout via ${methodLabel}`,
         },
       });
+
+      if (overrides.payoutMethod === "MOBILE_MONEY") {
+        await recordMobileMoneyPayout({
+          tenantId: lead.tenantId,
+          loanPayoutId: payoutRecord.id,
+          fineractLoanId,
+          fineractClientId: lead.fineractClientId,
+          clientName,
+          loanAccountNo: accountNo,
+          amount,
+          currency: currencyCode,
+          notes: payoutRecord.notes,
+          createdBy: triggeredBy || "system",
+        });
+      }
 
       return `Payout of ${currencyCode} ${amount.toLocaleString()} marked as paid via ${methodLabel}`;
     }

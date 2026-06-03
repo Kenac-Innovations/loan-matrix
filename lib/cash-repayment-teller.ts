@@ -36,13 +36,28 @@ function formatTxnDateForTellerSettle(isoDate: string): string {
  */
 export async function isPaymentTypeCash(paymentTypeId: number): Promise<boolean> {
   try {
-    const paymentTypes = await fetchFineractAPI("/paymenttypes");
-    const list = Array.isArray(paymentTypes) ? paymentTypes : paymentTypes?.pageItems ?? [];
-    const found = list.find((pt: any) => pt.id === paymentTypeId);
+    const found = await getPaymentTypeInfo(paymentTypeId);
     return !!found?.isCashPayment;
   } catch (err) {
     console.error("Error checking payment type:", err);
     return false;
+  }
+}
+
+export async function getPaymentTypeInfo(paymentTypeId: number): Promise<{
+  id: number;
+  name?: string;
+  isCashPayment?: boolean;
+} | null> {
+  try {
+    const paymentTypes = await fetchFineractAPI("/paymenttypes");
+    const list = Array.isArray(paymentTypes)
+      ? paymentTypes
+      : paymentTypes?.pageItems ?? [];
+    return list.find((pt: any) => pt.id === paymentTypeId) ?? null;
+  } catch (err) {
+    console.error("Error fetching payment type info:", err);
+    return null;
   }
 }
 
