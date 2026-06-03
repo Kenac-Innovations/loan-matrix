@@ -4,6 +4,9 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { recordMobileMoneyPayout } from "@/lib/mobile-money-transactions";
+import { getPaymentTypeInfo } from "@/lib/cash-repayment-teller";
+import { normalizePreferredPaymentMethod } from "@/lib/payment-method-resolution";
 
 /**
  * GET /api/loans/[id]/payout
@@ -37,6 +40,15 @@ export async function GET(
         },
       },
     });
+    const lead = await prisma.lead.findFirst({
+      where: {
+        tenantId: tenant.id,
+        fineractLoanId,
+      },
+      select: {
+        preferredPaymentMethod: true,
+      },
+    });
 
     let disbursementPaymentType: {
       id: number | null;
@@ -53,9 +65,15 @@ export async function GET(
         (t) => t.type?.disbursement && !t.manuallyReversed
       );
       if (disburseTxn?.paymentDetailData?.paymentType) {
+        const paymentTypeId = disburseTxn.paymentDetailData.paymentType.id;
+        const paymentTypeInfo =
+          paymentTypeId != null
+            ? await getPaymentTypeInfo(paymentTypeId)
+            : null;
         disbursementPaymentType = {
-          id: disburseTxn.paymentDetailData.paymentType.id,
+          id: paymentTypeId,
           name: disburseTxn.paymentDetailData.paymentType.name,
+          isCash: Boolean(paymentTypeInfo?.isCashPayment),
         };
       }
     } catch (error) {
@@ -72,12 +90,16 @@ export async function GET(
         status: "PENDING",
         message: "No payout record found - loan is pending payout",
         disbursementPaymentType,
+        preferredPaymentMethod:
+          normalizePreferredPaymentMethod(lead?.preferredPaymentMethod) ?? null,
       });
     }
 
     return NextResponse.json({
       ...payout,
       disbursementPaymentType,
+      preferredPaymentMethod:
+        normalizePreferredPaymentMethod(lead?.preferredPaymentMethod) ?? null,
     });
   } catch (error) {
     console.error("Error fetching payout:", error);
@@ -202,10 +224,34 @@ export async function POST(
     // Mark payout as paid for non-cash payment methods (Mobile Money, Bank Transfer)
     if (action === "markPaid") {
       const { paymentMethod, notes: payoutNotes } = body;
+      const lead = await prisma.lead.findFirst({
+        where: {
+          tenantId: tenant.id,
+          fineractLoanId,
+        },
+        select: {
+          preferredPaymentMethod: true,
+        },
+      });
+      const lockedPreferredPaymentMethod = normalizePreferredPaymentMethod(
+        lead?.preferredPaymentMethod
+      );
 
       if (!paymentMethod || !["MOBILE_MONEY", "BANK_TRANSFER"].includes(paymentMethod)) {
         return NextResponse.json(
           { error: "Invalid payment method. Use 'MOBILE_MONEY' or 'BANK_TRANSFER'" },
+          { status: 400 }
+        );
+      }
+
+      if (
+        lockedPreferredPaymentMethod &&
+        paymentMethod !== lockedPreferredPaymentMethod
+      ) {
+        return NextResponse.json(
+          {
+            error: `Payout payment method is locked to ${lockedPreferredPaymentMethod === "MOBILE_MONEY" ? "Mobile Money" : lockedPreferredPaymentMethod === "BANK_TRANSFER" ? "Bank Transfer" : "Cash"} from lead generation.`,
+          },
           { status: 400 }
         );
       }
@@ -234,6 +280,22 @@ export async function POST(
           notes: payoutNotes || `Paid via ${paymentMethod === "MOBILE_MONEY" ? "Mobile Money" : "Bank Transfer"}`,
         },
       });
+
+      if (paymentMethod === "MOBILE_MONEY") {
+        await recordMobileMoneyPayout({
+          tenantId: tenant.id,
+          loanPayoutId: updatedPayout.id,
+          fineractLoanId: updatedPayout.fineractLoanId,
+          fineractClientId: updatedPayout.fineractClientId,
+          clientName: updatedPayout.clientName,
+          loanAccountNo: updatedPayout.loanAccountNo,
+          amount: updatedPayout.amount,
+          currency: updatedPayout.currency,
+          notes: updatedPayout.notes,
+          createdBy:
+            session.user.name || session.user.email || session.user.id || "Unknown",
+        });
+      }
 
       return NextResponse.json({
         success: true,

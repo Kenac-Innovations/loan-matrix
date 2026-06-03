@@ -46,7 +46,23 @@ export function SearchableSelect({
 
   // Ensure options is always an array
   const safeOptions = React.useMemo(() => {
-    return Array.isArray(options) ? options : [];
+    if (!Array.isArray(options)) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const uniqueOptions: Option[] = [];
+
+    for (const option of options) {
+      if (!option?.value || seen.has(option.value)) {
+        continue;
+      }
+
+      seen.add(option.value);
+      uniqueOptions.push(option);
+    }
+
+    return uniqueOptions;
   }, [options]);
 
   const filteredOptions = React.useMemo(() => {
@@ -82,6 +98,21 @@ export function SearchableSelect({
       scrollRef.current.scrollTop = 0;
     }
   }, [open]);
+
+  const handleWheel: React.WheelEventHandler<HTMLDivElement> = (event) => {
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const { deltaY } = event;
+    const canScroll =
+      container.scrollHeight > container.clientHeight;
+
+    if (!canScroll) return;
+
+    container.scrollTop += deltaY;
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -131,8 +162,9 @@ export function SearchableSelect({
         {/* Scrollable Options List */}
         <div 
           ref={scrollRef}
-          className="overflow-y-auto"
+          className="overflow-y-auto overscroll-contain touch-pan-y"
           style={{ maxHeight: '300px' }}
+          onWheel={handleWheel}
         >
           {filteredOptions.length === 0 ? (
             <div className="py-6 text-center text-sm text-muted-foreground">

@@ -68,6 +68,32 @@ export async function getOrgRawCurrencyCode(): Promise<string> {
 }
 
 /**
+ * Convert a display-facing currency code back into the raw code Fineract
+ * expects for writes such as journal entries.
+ */
+export async function toFineractCurrencyCode(
+  currencyCode?: string | null
+): Promise<string> {
+  const requestedCode = (currencyCode || "").trim().toUpperCase();
+  const rawOrgCode = (await getOrgRawCurrencyCode()).trim().toUpperCase();
+  const normalizedOrgCode = normalizeCode(rawOrgCode).toUpperCase();
+
+  if (!requestedCode) {
+    return rawOrgCode || "USD";
+  }
+
+  if (requestedCode === normalizedOrgCode) {
+    return rawOrgCode;
+  }
+
+  if (requestedCode === "ZMW") {
+    return "ZMK";
+  }
+
+  return requestedCode;
+}
+
+/**
  * Synchronous fallback that returns the last cached value.
  * Returns undefined if the cache is empty (call getOrgDefaultCurrencyCode first).
  */

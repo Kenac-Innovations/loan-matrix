@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { prisma } from "@/lib/prisma";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { reverseMobileMoneyPayout } from "@/lib/mobile-money-transactions";
 
 function formatDateForFineract(d: Date): string {
   const day = d.getDate();
@@ -13,7 +14,7 @@ function formatDateForFineract(d: Date): string {
   return `${day.toString().padStart(2, "0")} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-/** POST: Reverse cash payout only (not disbursement). Money returns to cashier; cashier balance increases. */
+/** POST: Reverse payout only (not disbursement). */
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -42,9 +43,7 @@ export async function POST(
       session.user.email ||
       "Unknown";
     const userReason = (body.reason as string)?.trim();
-    const reason = userReason
-      ? `Reversed in Fineract; cashier credited (${reversedBy}). ${userReason}`
-      : `Reversed in Fineract; cashier credited (${reversedBy})`;
+    const isMobileMoney = payoutMethodIsMobileMoney(body?.paymentMethod);
 
     const payout = await prisma.loanPayout.findFirst({
       where: {
@@ -76,6 +75,52 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    const reversedAt = new Date();
+
+    if (payout.paymentMethod === "MOBILE_MONEY" || isMobileMoney) {
+      const reason = userReason
+        ? `Reversed in Fineract; mobile money pool credited (${reversedBy}). ${userReason}`
+        : `Reversed in Fineract; mobile money pool credited (${reversedBy})`;
+
+      const reversal = await reverseMobileMoneyPayout({
+        tenantId: tenant.id,
+        loanPayoutId: payout.id,
+        reversedBy,
+        reason,
+      });
+
+      await prisma.loanPayout.update({
+        where: { id: payout.id },
+        data: {
+          status: "REVERSED",
+          voidedAt: reversedAt,
+          voidedBy: reversedBy,
+          voidReason: reason,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Payout reversed. The amount has been returned to the mobile money pool.",
+        payout: {
+          id: payout.id,
+          fineractLoanId: payout.fineractLoanId,
+          clientName: payout.clientName,
+          amount: payout.amount,
+          currency: payout.currency,
+          status: "REVERSED",
+          voidedAt: reversedAt.toISOString(),
+          voidedBy: reversedBy,
+        },
+        mobileMoneyTransactionId: reversal.id,
+      });
+    }
+
+    const reason = userReason
+      ? `Reversed in Fineract; cashier credited (${reversedBy}). ${userReason}`
+      : `Reversed in Fineract; cashier credited (${reversedBy})`;
 
     if (!payout.cashierId || !payout.tellerId) {
       return NextResponse.json(
@@ -117,7 +162,6 @@ export async function POST(
       );
     }
 
-    const reversedAt = new Date();
     const txnNote = `Reversal - ${reason}`;
 
     // Send the payout amount to Fineract so net cash increases by that amount
@@ -209,4 +253,10 @@ export async function POST(
       { status: 500 }
     );
   }
+}
+
+function payoutMethodIsMobileMoney(paymentMethod: unknown) {
+  return String(paymentMethod || "")
+    .trim()
+    .toUpperCase() === "MOBILE_MONEY";
 }

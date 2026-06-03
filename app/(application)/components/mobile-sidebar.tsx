@@ -333,21 +333,28 @@ export function MobileSidebar({
               <Link
                 href="/banks"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                  pathname.startsWith("/banks") || pathname.startsWith("/tellers")
+                  pathname.startsWith("/banks") ||
+                  pathname.startsWith("/tellers") ||
+                  pathname.startsWith("/mobile-money")
                     ? `${activeBgColor} ${textColor}`
                     : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
                 }`}
               >
                 <Landmark
                   className={`h-5 w-5 ${
-                    pathname.startsWith("/banks") || pathname.startsWith("/tellers") ? iconColorActive : iconColor
+                    pathname.startsWith("/banks") ||
+                    pathname.startsWith("/tellers") ||
+                    pathname.startsWith("/mobile-money")
+                      ? iconColorActive
+                      : iconColor
                   }`}
                 />
                 Cash Management
               </Link>
 
               {(pathname.startsWith("/banks") ||
-                pathname.startsWith("/tellers")) && (
+                pathname.startsWith("/tellers") ||
+                pathname.startsWith("/mobile-money")) && (
                 <div className="pl-10 space-y-1">
                   <Link
                     href="/banks"
@@ -368,6 +375,16 @@ export function MobileSidebar({
                     }`}
                   >
                     Tellers
+                  </Link>
+                  <Link
+                    href="/mobile-money"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/mobile-money")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Mobile Money
                   </Link>
                   {isEnabled("receiptRanges") && (
                     <Link

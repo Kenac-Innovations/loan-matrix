@@ -57,6 +57,17 @@ export interface TenantAutoPopulateFields {
   principalAmount?: boolean;
 }
 
+export interface TenantMobileMoneySettings {
+  glAccountId?: number;
+  glAccountName?: string;
+  glAccountCode?: string;
+  defaultOfficeId?: number;
+  defaultOfficeName?: string;
+  payoutClearingGlAccountId?: number;
+  payoutClearingGlAccountName?: string;
+  payoutClearingGlAccountCode?: string;
+}
+
 /**
  * Tenant settings stored in the database
  */
@@ -75,6 +86,8 @@ export interface TenantSettings {
   processingTimeTarget?: number;
   /** How to calculate the default first repayment date */
   firstRepaymentDate?: FirstRepaymentDateConfig;
+  /** Mobile money pool configuration */
+  mobileMoney?: TenantMobileMoneySettings;
 }
 
 /**

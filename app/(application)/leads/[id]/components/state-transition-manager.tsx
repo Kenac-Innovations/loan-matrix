@@ -19,6 +19,12 @@ import { useReceiptValidation } from "@/hooks/use-receipt-validation";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  getPreferredPaymentMethodLabel,
+  inferPreferredPaymentMethodFromPaymentType,
+  normalizePreferredPaymentMethod,
+  resolvePaymentTypeForPreferredMethod,
+} from "@/lib/payment-method-resolution";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -73,6 +79,7 @@ interface StateTransitionManagerProps {
   leadId: string;
   currentStage: string;
   currentStageColor?: string;
+  preferredPaymentMethod?: string | null;
   assignedToUserId?: number | null;
   currentUserId?: string;
   isUserInStageTeam?: boolean;
@@ -100,29 +107,11 @@ interface CurrentCashierContext {
   reason?: string;
 }
 
-function inferPayoutMethodFromPaymentType(
-  paymentType?: { name?: string | null; isCashPayment?: boolean } | null
-): "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | "" {
-  if (!paymentType) return "";
-  if (paymentType.isCashPayment) return "CASH";
-
-  const normalizedName = paymentType.name?.toLowerCase() || "";
-  if (
-    normalizedName.includes("mobile") ||
-    normalizedName.includes("airtel") ||
-    normalizedName.includes("mtn") ||
-    normalizedName.includes("wallet")
-  ) {
-    return "MOBILE_MONEY";
-  }
-
-  return "BANK_TRANSFER";
-}
-
 export default function StateTransitionManager({
   leadId,
   currentStage,
   currentStageColor,
+  preferredPaymentMethod,
   assignedToUserId,
   currentUserId,
   onTransitionComplete,
@@ -154,10 +143,15 @@ export default function StateTransitionManager({
   const [payoutNotes, setPayoutNotes] = useState("");
   const [loadingTellers, setLoadingTellers] = useState(false);
   const [loadingCashiers, setLoadingCashiers] = useState(false);
+  const [paymentTypeResolutionError, setPaymentTypeResolutionError] = useState<string | null>(null);
   const [failedValidations, setFailedValidations] = useState<{ tab: string; checks: { id: string; label: string; message: string; severity?: string }[] }[]>([]);
   const hasBlockingValidations = failedValidations.some((tv) => tv.checks.some((c) => c.severity === "error"));
   const [overrideValidations, setOverrideValidations] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  const normalizedPreferredPaymentMethod = useMemo(
+    () => normalizePreferredPaymentMethod(preferredPaymentMethod),
+    [preferredPaymentMethod]
+  );
 
   // Multi-approval state
   const [approvalStatus, setApprovalStatus] = useState<{
@@ -198,8 +192,20 @@ export default function StateTransitionManager({
   );
   const selectedPaymentTypeIsCash = Boolean(selectedPaymentType?.isCashPayment);
   const derivedDisbursementPayoutMethod = useMemo(
-    () => inferPayoutMethodFromPaymentType(selectedPaymentType),
+    () => inferPreferredPaymentMethodFromPaymentType(selectedPaymentType) || "",
     [selectedPaymentType]
+  );
+  const resolvedPreferredPaymentType = useMemo(
+    () =>
+      resolvePaymentTypeForPreferredMethod(
+        normalizedPreferredPaymentMethod,
+        paymentTypes
+      ),
+    [normalizedPreferredPaymentMethod, paymentTypes]
+  );
+  const effectivePayoutMethod = useMemo(
+    () => normalizedPreferredPaymentMethod || payoutMethod,
+    [normalizedPreferredPaymentMethod, payoutMethod]
   );
 
   const fetchApprovalStatus = useCallback(async () => {
@@ -316,6 +322,7 @@ export default function StateTransitionManager({
       setSelectedTransition(null);
       setReason("");
       setFineractDate(new Date().toISOString().split("T")[0]);
+      setPaymentTypes([]);
       setPaymentTypeId("");
       setShowPaymentDetails(false);
       setAccountNumber("");
@@ -330,6 +337,7 @@ export default function StateTransitionManager({
       setPayoutNotes("");
       setTellers([]);
       setCashiers([]);
+      setPaymentTypeResolutionError(null);
       setOverrideValidations(false);
       setOverrideReason("");
       clearReceiptValidation();
@@ -343,18 +351,35 @@ export default function StateTransitionManager({
         .then((data) => {
           const list = Array.isArray(data) ? data : data?.pageItems ?? [];
           setPaymentTypes(list);
-          const firstCash = list.find((p: { isCashPayment?: boolean }) => p.isCashPayment);
-          const firstNonCash = list.find((p: { isCashPayment?: boolean }) => !p.isCashPayment);
-          const defaultPaymentType = currentCashierContext?.isCashier
-            ? (firstCash || list[0])
-            : (firstNonCash || list[0]);
-          if (defaultPaymentType) {
-            setPaymentTypeId(String(defaultPaymentType.id));
+          if (normalizedPreferredPaymentMethod) {
+            const resolved = resolvePaymentTypeForPreferredMethod(
+              normalizedPreferredPaymentMethod,
+              list
+            );
+
+            if (resolved) {
+              setPaymentTypeId(resolved.paymentTypeId);
+              setPaymentTypeResolutionError(null);
+            } else {
+              setPaymentTypeId("");
+              setPaymentTypeResolutionError(
+                `No allowed ${getPreferredPaymentMethodLabel(normalizedPreferredPaymentMethod)} payment type is available for your branch or user profile.`
+              );
+            }
+          } else {
+            const firstCash = list.find((p: { isCashPayment?: boolean }) => p.isCashPayment);
+            const firstNonCash = list.find((p: { isCashPayment?: boolean }) => !p.isCashPayment);
+            const defaultPaymentType = currentCashierContext?.isCashier
+              ? (firstCash || list[0])
+              : (firstNonCash || list[0]);
+            if (defaultPaymentType) {
+              setPaymentTypeId(String(defaultPaymentType.id));
+            }
           }
         })
         .catch(() => {});
     }
-  }, [currentCashierContext?.isCashier, effectiveAction, paymentTypes.length]);
+  }, [currentCashierContext?.isCashier, effectiveAction, normalizedPreferredPaymentMethod, paymentTypes.length]);
 
   useEffect(() => {
     if (effectiveAction !== "disburse") return;
@@ -418,6 +443,8 @@ export default function StateTransitionManager({
   useEffect(() => {
     if (effectiveAction !== "disburse") return;
 
+    if (normalizedPreferredPaymentMethod) return;
+
     if (!currentCashierContext?.isCashier && selectedPaymentTypeIsCash) {
       const firstNonCash = paymentTypes.find((paymentType) => !paymentType.isCashPayment);
       if (firstNonCash) {
@@ -427,6 +454,7 @@ export default function StateTransitionManager({
   }, [
     currentCashierContext?.isCashier,
     effectiveAction,
+    normalizedPreferredPaymentMethod,
     paymentTypes,
     selectedPaymentTypeIsCash,
   ]);
@@ -442,10 +470,23 @@ export default function StateTransitionManager({
     if (!selectedTransition) return;
 
     if (effectiveAction === "disburse") {
+      if (normalizedPreferredPaymentMethod && !resolvedPreferredPaymentType) {
+        toast({
+          title: "Payment Type Unavailable",
+          description:
+            paymentTypeResolutionError ||
+            "No allowed payment type is available for the saved lead payment method.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       if (!paymentTypeId) {
         toast({
           title: "Validation Error",
-          description: "Please select a disbursement payment type.",
+          description: normalizedPreferredPaymentMethod
+            ? "No allowed payment type is available for the saved lead payment method."
+            : "Please select a disbursement payment type.",
           variant: "destructive",
         });
         return;
@@ -543,7 +584,7 @@ export default function StateTransitionManager({
         };
       } else if (effectiveAction === "payout") {
         fineractOverrides = {
-          payoutMethod: payoutMethod || undefined,
+          payoutMethod: effectivePayoutMethod || undefined,
           tellerId: selectedTeller || undefined,
           cashierId: selectedCashier || undefined,
           note: payoutNotes || reason || undefined,
@@ -1041,26 +1082,48 @@ export default function StateTransitionManager({
                 <>
                   <div className="space-y-2">
                     <Label className="text-sm">Payment Type</Label>
-                    <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select payment type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {paymentTypes.map((p) => (
-                          <SelectItem
-                            key={p.id}
-                            value={String(p.id)}
-                            disabled={Boolean(p.isCashPayment && currentCashierContext && !currentCashierContext.isCashier)}
-                          >
-                            {p.name}{p.isCashPayment ? " (Cash)" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {currentCashierContext && !currentCashierContext.isCashier && (
-                      <p className="text-xs text-muted-foreground">
-                        Cash payment types are disabled because the logged in user is not an assigned cashier.
-                      </p>
+                    {normalizedPreferredPaymentMethod ? (
+                      <>
+                        <Input
+                          value={
+                            resolvedPreferredPaymentType?.displayLabel ||
+                            getPreferredPaymentMethodLabel(normalizedPreferredPaymentMethod)
+                          }
+                          disabled
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Payment type is locked from lead generation and cannot be changed here.
+                        </p>
+                        {paymentTypeResolutionError && (
+                          <p className="text-xs text-red-600 dark:text-red-400">
+                            {paymentTypeResolutionError}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select payment type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {paymentTypes.map((p) => (
+                              <SelectItem
+                                key={p.id}
+                                value={String(p.id)}
+                                disabled={Boolean(p.isCashPayment && currentCashierContext && !currentCashierContext.isCashier)}
+                              >
+                                {p.name}{p.isCashPayment ? " (Cash)" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {currentCashierContext && !currentCashierContext.isCashier && (
+                          <p className="text-xs text-muted-foreground">
+                            Cash payment types are disabled because the logged in user is not an assigned cashier.
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -1230,40 +1293,52 @@ export default function StateTransitionManager({
               {/* Payment Method */}
               <div className="space-y-2">
                 <Label className="text-sm">Payment Method *</Label>
-                <Select
-                  value={payoutMethod}
-                  onValueChange={(value) =>
-                    setPayoutMethod(value as "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER")
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select payment method..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">
-                      <span className="flex items-center gap-2">
-                        <Banknote className="h-4 w-4 text-green-600" />
-                        Cash
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="MOBILE_MONEY">
-                      <span className="flex items-center gap-2">
-                        <Smartphone className="h-4 w-4 text-blue-600" />
-                        Mobile Money
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="BANK_TRANSFER">
-                      <span className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-purple-600" />
-                        Bank Transfer
-                      </span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                {normalizedPreferredPaymentMethod ? (
+                  <>
+                    <Input
+                      value={getPreferredPaymentMethodLabel(normalizedPreferredPaymentMethod)}
+                      disabled
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Payment method is locked from lead generation and cannot be changed here.
+                    </p>
+                  </>
+                ) : (
+                  <Select
+                    value={payoutMethod}
+                    onValueChange={(value) =>
+                      setPayoutMethod(value as "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER")
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select payment method..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">
+                        <span className="flex items-center gap-2">
+                          <Banknote className="h-4 w-4 text-green-600" />
+                          Cash
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="MOBILE_MONEY">
+                        <span className="flex items-center gap-2">
+                          <Smartphone className="h-4 w-4 text-blue-600" />
+                          Mobile Money
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="BANK_TRANSFER">
+                        <span className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-purple-600" />
+                          Bank Transfer
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               {/* Teller & Cashier — cash only */}
-              {payoutMethod === "CASH" && (
+              {effectivePayoutMethod === "CASH" && (
                 <>
                   <div className="space-y-2">
                     <Label className="text-sm">Teller *</Label>
@@ -1333,10 +1408,10 @@ export default function StateTransitionManager({
               )}
 
               {/* Non-cash info */}
-              {payoutMethod && payoutMethod !== "CASH" && (
+              {effectivePayoutMethod && effectivePayoutMethod !== "CASH" && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-300">
                   <p className="font-medium">
-                    {payoutMethod === "MOBILE_MONEY" ? "Mobile Money Payout" : "Bank Transfer Payout"}
+                    {effectivePayoutMethod === "MOBILE_MONEY" ? "Mobile Money Payout" : "Bank Transfer Payout"}
                   </p>
                   <p className="text-xs mt-1">
                     The payout will be marked as paid. No cashier balance will be affected.
@@ -1468,10 +1543,11 @@ export default function StateTransitionManager({
               (hasBlockingValidations && !selectedTransition?.isBackward && !overrideValidations) ||
               (hasBlockingValidations && !selectedTransition?.isBackward && overrideValidations && !overrideReason?.trim()) ||
               (!selectedTransition?.isBackward && effectiveAction === "disburse" && !paymentTypeId) ||
+              (!selectedTransition?.isBackward && effectiveAction === "disburse" && !!normalizedPreferredPaymentMethod && !resolvedPreferredPaymentType) ||
               (!selectedTransition?.isBackward && effectiveAction === "disburse" && !derivedDisbursementPayoutMethod) ||
               (!selectedTransition?.isBackward && effectiveAction === "disburse" && selectedPaymentTypeIsCash && loadingCurrentCashier) ||
-              (!selectedTransition?.isBackward && effectiveAction === "payout" && !payoutMethod) ||
-              (!selectedTransition?.isBackward && effectiveAction === "payout" && payoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
+              (!selectedTransition?.isBackward && effectiveAction === "payout" && !effectivePayoutMethod) ||
+              (!selectedTransition?.isBackward && effectiveAction === "payout" && effectivePayoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
               (!selectedTransition?.isBackward && effectiveAction === "reject" && !reason?.trim())
             }
             className={

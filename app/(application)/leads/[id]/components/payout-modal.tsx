@@ -1,6 +1,11 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
+import {
+  getPreferredPaymentMethodLabel,
+  inferPreferredPaymentMethodFromPaymentType,
+  normalizePreferredPaymentMethod,
+} from "@/lib/payment-method-resolution";
 
 import { useState, useEffect } from "react";
 import {
@@ -72,7 +77,11 @@ export function PayoutModal({
   const [disbursementPaymentType, setDisbursementPaymentType] = useState<{
     id: number | null;
     name: string | null;
-  }>({ id: null, name: null });
+    isCash?: boolean;
+  }>({ id: null, name: null, isCash: false });
+  const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<
+    "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | null
+  >(null);
 
   // Teller and cashier selection
   const [tellers, setTellers] = useState<Teller[]>([]);
@@ -91,12 +100,22 @@ export function PayoutModal({
   const [payoutStatus, setPayoutStatus] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
 
-  // Whether we need user to pick payment method
+  const disbursementPayoutMethod =
+    disbursementPaymentType.id != null
+      ? inferPreferredPaymentMethodFromPaymentType({
+          name: disbursementPaymentType.name,
+          isCashPayment: disbursementPaymentType.isCash,
+        })
+      : null;
+  const lockedPreferredPaymentMethod =
+    normalizePreferredPaymentMethod(preferredPaymentMethod);
+  const effectivePaymentMethod =
+    disbursementPayoutMethod ||
+    lockedPreferredPaymentMethod ||
+    selectedPaymentMethod;
   const needsPaymentMethodSelection =
-    disbursementPaymentType.id == null;
-  // Whether cash flow is active (either from Fineract or user selection)
-  const isCashFlow =
-    disbursementPaymentType.id != null || selectedPaymentMethod === "CASH";
+    disbursementPaymentType.id == null && !lockedPreferredPaymentMethod;
+  const isCashFlow = effectivePaymentMethod === "CASH";
 
   useEffect(() => {
     if (open) {
@@ -105,7 +124,8 @@ export function PayoutModal({
       setError(null);
       setSuccess(null);
       setNotes("");
-      setDisbursementPaymentType({ id: null, name: null });
+      setDisbursementPaymentType({ id: null, name: null, isCash: false });
+      setPreferredPaymentMethod(null);
       setSelectedPaymentMethod(null);
     }
   }, [open]);
@@ -130,10 +150,14 @@ export function PayoutModal({
           setDisbursementPaymentType({
             id: data.disbursementPaymentType.id ?? null,
             name: data.disbursementPaymentType.name ?? null,
+            isCash: Boolean(data.disbursementPaymentType.isCash),
           });
         } else {
-          setDisbursementPaymentType({ id: null, name: null });
+          setDisbursementPaymentType({ id: null, name: null, isCash: false });
         }
+        setPreferredPaymentMethod(
+          normalizePreferredPaymentMethod(data.preferredPaymentMethod)
+        );
       }
     } catch (error) {
       console.error("Error checking payout status:", error);
@@ -190,15 +214,14 @@ export function PayoutModal({
       maximumFractionDigits: 2,
     })}`;
   };
+  const displayCurrency = currency ?? orgCurrency;
 
   const handlePayout = async () => {
     setError(null);
     setSuccess(null);
 
     // Determine which payment method is being used
-    const paymentMethod = disbursementPaymentType.id
-      ? "CASH" // Has Fineract payment type = cash flow
-      : selectedPaymentMethod;
+    const paymentMethod = effectivePaymentMethod;
 
     if (!paymentMethod) {
       setError("Please select a payment method");
@@ -244,7 +267,7 @@ export function PayoutModal({
           console.log("Cash payout processed successfully:", result);
 
           setSuccess(
-            `Successfully paid out ${formatCurrency(principal, currency)} to ${clientName} via Cash`
+            `Successfully paid out ${formatCurrency(principal, displayCurrency)} to ${clientName} via Cash`
           );
           setPayoutStatus("PAID");
           onSuccess?.();
@@ -288,7 +311,7 @@ export function PayoutModal({
               ? "Mobile Money"
               : "Bank Transfer";
           setSuccess(
-            `Successfully paid out ${formatCurrency(principal, currency)} to ${clientName} via ${methodLabel}`
+            `Successfully paid out ${formatCurrency(principal, displayCurrency)} to ${clientName} via ${methodLabel}`
           );
           setPayoutStatus("PAID");
           onSuccess?.();
@@ -379,12 +402,12 @@ export function PayoutModal({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Amount</span>
                 <span className="font-semibold text-green-600">
-                  {formatCurrency(principal, currency)}
+                  {formatCurrency(principal, displayCurrency)}
                 </span>
               </div>
             </div>
 
-            {/* Payment Method Selection - shown when no payment type from Fineract */}
+            {/* Payment Method Selection - shown when there is no saved upstream method */}
             {needsPaymentMethodSelection && (
               <div className="space-y-2">
                 <Label>Select Payment Method *</Label>
@@ -430,7 +453,7 @@ export function PayoutModal({
             )}
 
             {/* Existing Fineract payment type info - shown when payment type exists */}
-            {!needsPaymentMethodSelection && (
+            {disbursementPaymentType.id != null && (
               <div className="space-y-2">
                 <Label>Disbursement Payment Type</Label>
                 <Input value={disbursementPaymentType.name || "Cash"} disabled />
@@ -440,6 +463,22 @@ export function PayoutModal({
                 </p>
               </div>
             )}
+
+            {/* Lead payment method lock - shown when no disbursement payment type exists */}
+            {disbursementPaymentType.id == null &&
+              lockedPreferredPaymentMethod && (
+                <div className="space-y-2">
+                  <Label>Payment Method</Label>
+                  <Input
+                    value={getPreferredPaymentMethodLabel(preferredPaymentMethod)}
+                    disabled
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This payout uses the payment method selected during lead
+                    generation.
+                  </p>
+                </div>
+              )}
 
             {/* Teller/Cashier Selection - only shown for cash flow */}
             {isCashFlow ? (
@@ -527,11 +566,11 @@ export function PayoutModal({
             ) : null}
 
             {/* Non-cash info banner */}
-            {selectedPaymentMethod &&
-              selectedPaymentMethod !== "CASH" && (
+            {effectivePaymentMethod &&
+              effectivePaymentMethod !== "CASH" && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
                   <p className="font-medium">
-                    {selectedPaymentMethod === "MOBILE_MONEY"
+                    {effectivePaymentMethod === "MOBILE_MONEY"
                       ? "Mobile Money Payout"
                       : "Bank Transfer Payout"}
                   </p>
@@ -589,7 +628,7 @@ export function PayoutModal({
                 // Cash flow requires teller + cashier
                 (isCashFlow && (!selectedTeller || !selectedCashier)) ||
                 // Must have a payment method selected (either from Fineract or user)
-                (needsPaymentMethodSelection && !selectedPaymentMethod)
+                (!effectivePaymentMethod)
               }
               className="bg-green-600 hover:bg-green-700"
             >
@@ -600,9 +639,9 @@ export function PayoutModal({
                 </>
               ) : (
                 <>
-                  {selectedPaymentMethod === "MOBILE_MONEY" ? (
+                  {effectivePaymentMethod === "MOBILE_MONEY" ? (
                     <Smartphone className="mr-2 h-4 w-4" />
-                  ) : selectedPaymentMethod === "BANK_TRANSFER" ? (
+                  ) : effectivePaymentMethod === "BANK_TRANSFER" ? (
                     <Building2 className="mr-2 h-4 w-4" />
                   ) : (
                     <Banknote className="mr-2 h-4 w-4" />
@@ -617,4 +656,3 @@ export function PayoutModal({
     </Dialog>
   );
 }
-
