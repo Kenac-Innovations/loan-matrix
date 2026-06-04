@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -67,6 +67,18 @@ async function hasActiveSession(
 }
 
 export default function MfaPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background px-6">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+      </div>
+    }>
+      <MfaPageContent />
+    </Suspense>
+  );
+}
+
+function MfaPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const challengeId = searchParams.get("challengeId") || "";
