@@ -97,11 +97,7 @@ export function LoanContracts({
   const { toast } = useToast();
   const router = useRouter();
   const mandateLogoUrl = useMemo(() => {
-    const fallbackLogoUrl =
-      typeof window !== "undefined"
-        ? new URL("/kenac_logo_light.png", window.location.origin).toString()
-        : null;
-    const candidate = tenantLogoUrl || fallbackLogoUrl;
+    const candidate = tenantLogoUrl;
 
     if (!candidate || typeof window === "undefined") {
       return candidate;
@@ -142,12 +138,26 @@ export function LoanContracts({
 
   useEffect(() => {
     let cancelled = false;
+    fetch("/api/tenant")
+      .then((res) => res.json())
+      .then((data: { logoFileUrl?: string | null }) => {
+        if (!cancelled) {
+          setTenantLogoUrl(data.logoFileUrl ?? null);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     fetch("/api/tenant/contract-template?slug=full-loan")
       .then((res) => res.json())
-      .then((data: { html?: string | null; logoUrl?: string | null }) => {
+      .then((data: { html?: string | null }) => {
         if (!cancelled) {
           if (data.html) setTenantContractHtml(data.html);
-          if (data.logoUrl) setTenantLogoUrl(data.logoUrl);
         }
       })
       .catch(() => {});
