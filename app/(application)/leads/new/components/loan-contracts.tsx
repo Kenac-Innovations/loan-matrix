@@ -96,6 +96,19 @@ export function LoanContracts({
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
+  const mandateLogoUrl = useMemo(() => {
+    const fallbackLogoUrl =
+      typeof window !== "undefined"
+        ? new URL("/kenac_logo_light.png", window.location.origin).toString()
+        : null;
+    const candidate = tenantLogoUrl || fallbackLogoUrl;
+
+    if (!candidate || typeof window === "undefined") {
+      return candidate;
+    }
+
+    return new URL(candidate, window.location.origin).toString();
+  }, [tenantLogoUrl]);
 
   const filledTenantContractHtml = useMemo(() => {
     if (!tenantContractHtml) return null;
@@ -1272,6 +1285,7 @@ export function LoanContracts({
     } else if (printType === "mandate") {
       const mandateHTML = generateMandateFormHTML(contractData, {
         borrower: borrowerSignature,
+        logoUrl: mandateLogoUrl,
       });
       printWindow.document.write(mandateHTML);
     } else {
@@ -1303,6 +1317,7 @@ export function LoanContracts({
 
       const mandateHTML = generateMandateFormHTML(contractData, {
         borrower: borrowerSignature,
+        logoUrl: mandateLogoUrl,
       });
 
       const kfsStyles = keyFactsData
@@ -2595,7 +2610,10 @@ export function LoanContracts({
               <iframe
                 srcDoc={
                   contractData
-                    ? generateMandateFormHTML(contractData, { borrower: borrowerSignature })
+                    ? generateMandateFormHTML(contractData, {
+                        borrower: borrowerSignature,
+                        logoUrl: mandateLogoUrl,
+                      })
                     : "<p>Loading...</p>"
                 }
                 className="w-full border rounded bg-white"
