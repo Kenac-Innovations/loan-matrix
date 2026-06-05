@@ -256,3 +256,32 @@ export function formatPhoneWithCountryCode(
     ? `${normalizedCountryCode} ${normalizedPhone}`
     : normalizedPhone;
 }
+
+/**
+ * Normalizes a mobile number to the canonical Fineract format:
+ * no spaces, no leading +, country code prefix included.
+ * e.g. "97 123 4567" + "+260" → "260971234567"
+ */
+export function formatMobileForFineract(
+  mobileNo: string,
+  countryCode: string = "+260"
+): string {
+  if (!mobileNo) return mobileNo;
+
+  let digits = mobileNo.replace(/\s+/g, "");
+  const ccDigits = countryCode.replace(/^\+/, "");
+
+  digits = digits.replace(/^\+/, "");
+
+  if (digits.startsWith(ccDigits)) {
+    return digits;
+  }
+
+  digits = digits.replace(/^0+/, "");
+
+  if (digits.length === 9) {
+    return ccDigits + digits;
+  }
+
+  return digits;
+}
