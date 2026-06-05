@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { formatMobileForFineract } from "@/lib/phone-utils";
 
 // Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
@@ -164,7 +165,10 @@ export async function autoSaveField(
             isStaff: validatedData.isStaff,
           }),
           ...(validatedData.mobileNo !== undefined && {
-            mobileNo: validatedData.mobileNo,
+            mobileNo: formatMobileForFineract(
+              validatedData.mobileNo,
+              validatedData.countryCode ?? "+260"
+            ),
           }),
           ...(validatedData.countryCode !== undefined && {
             countryCode: validatedData.countryCode,
@@ -245,7 +249,9 @@ export async function autoSaveField(
             dateOfIncorporation: validatedData.dateOfIncorporation || null,
             natureOfBusiness: validatedData.natureOfBusiness || null,
             isStaff: validatedData.isStaff || false,
-            mobileNo: validatedData.mobileNo || null,
+            mobileNo: validatedData.mobileNo
+              ? formatMobileForFineract(validatedData.mobileNo, validatedData.countryCode ?? "+260")
+              : null,
             countryCode: validatedData.countryCode || "+260",
             emailAddress: validatedData.emailAddress || null,
             clientTypeId: validatedData.clientTypeId || null,
@@ -299,7 +305,9 @@ export async function autoSaveField(
             dateOfIncorporation: validatedData.dateOfIncorporation || null,
             natureOfBusiness: validatedData.natureOfBusiness || null,
             isStaff: validatedData.isStaff || false,
-            mobileNo: validatedData.mobileNo || null,
+            mobileNo: validatedData.mobileNo
+              ? formatMobileForFineract(validatedData.mobileNo, validatedData.countryCode ?? "+260")
+              : null,
             countryCode: validatedData.countryCode || "+260",
             emailAddress: validatedData.emailAddress || null,
             clientTypeId: validatedData.clientTypeId || null,

@@ -8,6 +8,7 @@ import {
   getTenantBySlug,
   extractTenantSlug,
 } from "@/lib/tenant-service";
+import { formatMobileForFineract } from "@/lib/phone-utils";
 
 // Helper to resolve the current tenant, optionally using the raw request
 // so we can read middleware-set and proxy-set headers directly.
@@ -589,7 +590,12 @@ async function handleCreateLeadWithClient(data: any) {
     const clientData: Record<string, any> = {
       officeId: validatedData.officeId,
       legalFormId: validatedData.legalFormId,
-      ...(validatedData.mobileNo && { mobileNo: validatedData.mobileNo }),
+      ...(validatedData.mobileNo && {
+        mobileNo: formatMobileForFineract(
+          validatedData.mobileNo,
+          validatedData.countryCode ?? "+260"
+        ),
+      }),
       ...(validatedData.emailAddress && { emailAddress: validatedData.emailAddress }),
       ...(validatedData.clientTypeId && { clientTypeId: validatedData.clientTypeId }),
       ...(validatedData.externalId && { externalId: validatedData.externalId }),
@@ -858,7 +864,9 @@ async function handleCreateClientInFineract(leadId: string) {
     const clientData: Record<string, any> = {
       officeId: lead.officeId,
       legalFormId: lead.legalFormId,
-      mobileNo: lead.mobileNo,
+      mobileNo: lead.mobileNo
+        ? formatMobileForFineract(lead.mobileNo, lead.countryCode ?? "+260")
+        : undefined,
       ...(lead.emailAddress && { emailAddress: lead.emailAddress }),
       clientTypeId: lead.clientTypeId,
       ...(lead.externalId && { externalId: lead.externalId }),

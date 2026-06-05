@@ -8,6 +8,7 @@ import {
 import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
 import { fetchFineractAPI } from "@/lib/api";
 import { revalidatePath } from "next/cache";
+import { formatMobileForFineract } from "@/lib/phone-utils";
 
 // Original client creation action
 async function createClientAction(data: any) {
@@ -20,7 +21,9 @@ async function createClientAction(data: any) {
       firstname: data.firstname,
       lastname: data.lastname,
       ...(data.middlename && { middlename: data.middlename }),
-      mobileNo: data.mobileNo,
+      mobileNo: data.mobileNo
+        ? formatMobileForFineract(data.mobileNo, data.countryCode ?? "+260")
+        : undefined,
       emailAddress: data.emailAddress,
       dateOfBirth: data.dateOfBirth,
       clientTypeId: data.clientTypeId,
@@ -66,7 +69,9 @@ async function updateClientAction(clientId: number, data: any) {
       ...(data.firstname && { firstname: data.firstname }),
       ...(data.lastname && { lastname: data.lastname }),
       ...(data.middlename && { middlename: data.middlename }),
-      ...(data.mobileNo && { mobileNo: data.mobileNo }),
+      ...(data.mobileNo && {
+        mobileNo: formatMobileForFineract(data.mobileNo, data.countryCode ?? "+260"),
+      }),
       ...(data.emailAddress && { emailAddress: data.emailAddress }),
       ...(data.dateOfBirth && { dateOfBirth: data.dateOfBirth }),
       ...(data.clientTypeId && { clientTypeId: data.clientTypeId }),

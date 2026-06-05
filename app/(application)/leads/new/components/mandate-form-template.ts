@@ -3,6 +3,7 @@ import { ContractData } from "./contract-types";
 
 interface MandateSignatures {
   borrower?: string | null;
+  logoUrl?: string | null;
 }
 
 function frequencyCode(paymentFrequency: string): string {
@@ -27,6 +28,15 @@ function fmtDate(dateStr: string | null | undefined): string {
 
 function fmtAmount(n: number): string {
   return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function referenceNumberBoxes(referenceNumber: string): string {
+  return `<div class="reference-boxes">${referenceNumber
+    .split("")
+    .map(
+      (digit) => `<span class="reference-box">${digit}</span>`
+    )
+    .join("")}</div>`;
 }
 
 function freqBoxes(activeCode: string): string {
@@ -59,6 +69,8 @@ export function generateMandateFormHTML(
   const accountNumber = contractData?.accountNumber ?? "";
   const today = format(new Date(), "dd/MM/yyyy");
   const borrowerSig = signatures.borrower ?? null;
+  const logoUrl = signatures.logoUrl ?? null;
+  const serviceProviderReference = "0013100001";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -72,7 +84,9 @@ export function generateMandateFormHTML(
     .page { max-width: 740px; margin: 0 auto; }
     h1 { text-align: center; font-size: 13px; font-weight: bold; margin: 0 0 12px; letter-spacing: 1px; }
     .header-row { display: flex; border: 1px solid #666; margin-bottom: 8px; }
-    .logo-box { padding: 10px 14px; border-right: 1px solid #666; min-width: 140px; }
+    .logo-box { padding: 10px 14px; border-right: 1px solid #666; min-width: 140px; display: flex; align-items: center; justify-content: center; }
+    .logo-image { max-width: 120px; max-height: 40px; width: auto; height: auto; object-fit: contain; display: block; }
+    .logo-fallback { text-align: left; }
     .logo-gfl { font-size: 30px; font-weight: 900; color: #2d7a27; line-height: 1; }
     .logo-sub { font-size: 7px; color: #2d7a27; letter-spacing: 0.5px; margin-top: 2px; }
     .address-box { padding: 10px 14px; font-size: 10px; line-height: 1.6; }
@@ -91,6 +105,9 @@ export function generateMandateFormHTML(
     .guarantee-title { text-align: center; font-weight: bold; font-size: 10px; margin-bottom: 6px; border-bottom: 1px solid #555; padding-bottom: 4px; }
     .guarantee-list { font-size: 8.5px; line-height: 1.55; padding-left: 18px; margin: 0; }
     .instruction-text { font-size: 8.5px; line-height: 1.55; margin: 6px 0; }
+    .reference-boxes { display: inline-flex; border: 1px solid #888; min-height: 18px; }
+    .reference-box { width: 20px; min-width: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; border-left: 1px solid #888; }
+    .reference-box:first-child { border-left: 0; }
     @media print { body { padding: 10px; } }
   </style>
 </head>
@@ -102,8 +119,15 @@ export function generateMandateFormHTML(
   <!-- Header -->
   <div class="header-row">
     <div class="logo-box">
-      <div class="logo-gfl">GFL</div>
-      <div class="logo-sub">GOODFELLOW FINANCE LIMITED</div>
+      ${
+        logoUrl
+          ? `<img src="${logoUrl}" alt="Organization Logo" class="logo-image" onerror="this.style.display='none'; var fallback=this.parentElement.querySelector('.logo-fallback'); if (fallback) fallback.style.display='block';" />`
+          : ""
+      }
+      <div class="logo-fallback" style="${logoUrl ? "display:none;" : ""}">
+        <div class="logo-gfl">GFL</div>
+        <div class="logo-sub">GOODFELLOW FINANCE LIMITED</div>
+      </div>
     </div>
     <div class="address-box">
       <strong>Goodfellow Finance Limited</strong><br/>
@@ -119,7 +143,7 @@ export function generateMandateFormHTML(
     <div class="section-body">
       <div class="field">
         <div class="field-label">Service Provider's Reference Number:</div>
-        <div class="field-input field-input-full">&nbsp;</div>
+        ${referenceNumberBoxes(serviceProviderReference)}
       </div>
       <div class="field">
         <div class="field-label">Payer's Account Number with Service Provider:</div>
