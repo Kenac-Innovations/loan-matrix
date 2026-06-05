@@ -133,6 +133,9 @@ export const AFRICAN_COUNTRY_CODES: AfricanCountryCode[] = [
 const AFRICAN_COUNTRY_CODE_SET = new Set(
   AFRICAN_COUNTRY_CODES.map((entry) => entry.code)
 );
+const AFRICAN_COUNTRY_CODES_SORTED = Array.from(AFRICAN_COUNTRY_CODE_SET).sort(
+  (left, right) => right.length - left.length
+);
 
 export function normalizeCountryDialCode(
   countryCode?: string | null
@@ -257,6 +260,50 @@ export function formatPhoneWithCountryCode(
     : normalizedPhone;
 }
 
+export function inferAfricanCountryDialCodeFromPhone(
+  phone?: string | null
+): string | null {
+  if (typeof phone !== "string") {
+    return null;
+  }
+
+  const raw = phone.trim();
+  if (!raw) {
+    return null;
+  }
+
+  const digits = normalizePhoneDigits(raw);
+  if (!digits) {
+    return null;
+  }
+
+  // Only infer from numbers that already look internationally prefixed.
+  if (!raw.startsWith("+") && !raw.startsWith("00") && digits.length < 11) {
+    return null;
+  }
+
+  for (const countryCode of AFRICAN_COUNTRY_CODES_SORTED) {
+    if (digits.startsWith(countryCode.slice(1))) {
+      return countryCode;
+    }
+  }
+
+  return null;
+}
+
+export function resolveCountryDialCodeForPhone(
+  phone?: string | null,
+  fallbackPhone?: string | null,
+  fallbackCountryCode = DEFAULT_AFRICAN_COUNTRY_CODE
+): string {
+  return (
+    inferAfricanCountryDialCodeFromPhone(phone) ??
+    inferAfricanCountryDialCodeFromPhone(fallbackPhone) ??
+    normalizeCountryDialCode(fallbackCountryCode) ??
+    DEFAULT_AFRICAN_COUNTRY_CODE
+  );
+}
+
 /**
  * Normalizes a mobile number to the canonical Fineract format:
  * no spaces, no leading +, country code prefix included.
@@ -268,10 +315,17 @@ export function formatMobileForFineract(
 ): string {
   if (!mobileNo) return mobileNo;
 
-  let digits = mobileNo.replace(/\s+/g, "");
-  const ccDigits = countryCode.replace(/^\+/, "");
+  const normalizedDigits = normalizePhoneDigits(mobileNo);
+  if (!normalizedDigits) {
+    return mobileNo;
+  }
 
-  digits = digits.replace(/^\+/, "");
+  let digits = normalizedDigits;
+  const ccDigits = resolveCountryDialCodeForPhone(
+    undefined,
+    undefined,
+    countryCode
+  ).replace(/^\+/, "");
 
   if (digits.startsWith(ccDigits)) {
     return digits;

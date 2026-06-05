@@ -14,6 +14,7 @@ import {
 export type Option = {
   value: string;
   label: string;
+  shortLabel?: string;
   disabled?: boolean;
 };
 
@@ -129,7 +130,9 @@ export function SearchableSelect({
           disabled={disabled}
         >
           <span className="truncate">
-            {selectedOption ? selectedOption.label : placeholder}
+            {selectedOption
+              ? (selectedOption.shortLabel ?? selectedOption.label)
+              : placeholder}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>

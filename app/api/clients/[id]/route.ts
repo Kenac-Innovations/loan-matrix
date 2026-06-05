@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 import { hasSuperAdminServer } from "@/lib/authorization";
+import {
+  formatMobileForFineract,
+  inferAfricanCountryDialCodeFromPhone,
+  resolveCountryDialCodeForPhone,
+} from "@/lib/phone-utils";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) {
@@ -93,10 +98,41 @@ export async function PUT(
     }
 
     const body = await request.json();
+    const outboundBody =
+      typeof body === "object" && body !== null ? { ...body } : body;
+
+    if (
+      typeof outboundBody === "object" &&
+      outboundBody !== null &&
+      typeof outboundBody.mobileNo === "string" &&
+      outboundBody.mobileNo.trim()
+    ) {
+      let existingMobileNo: string | null | undefined;
+
+      if (!inferAfricanCountryDialCodeFromPhone(outboundBody.mobileNo)) {
+        try {
+          const currentClient = (await fetchFineractAPI(
+            `/clients/${clientId}`
+          )) as { mobileNo?: string | null };
+          existingMobileNo = currentClient?.mobileNo;
+        } catch (lookupError) {
+          console.warn(
+            `Failed to fetch current client ${clientId} for phone normalization:`,
+            lookupError
+          );
+        }
+      }
+
+      outboundBody.mobileNo = formatMobileForFineract(
+        outboundBody.mobileNo,
+        resolveCountryDialCodeForPhone(outboundBody.mobileNo, existingMobileNo)
+      );
+    }
+
     const data = await fetchFineractAPI(`/clients/${clientId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(outboundBody),
     });
 
     return NextResponse.json(data);

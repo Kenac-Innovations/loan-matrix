@@ -24,8 +24,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { SearchableSelect } from "@/components/searchable-select";
 import { useToast } from "@/hooks/use-toast";
 import { EntityStructureEditor } from "@/components/entity-structure/entity-structure-editor";
+import {
+  AFRICAN_COUNTRY_CODES,
+  formatMobileForFineract,
+  resolveCountryDialCodeForPhone,
+} from "@/lib/phone-utils";
 
 type Option = {
   id: number;
@@ -67,6 +73,7 @@ type ClientTemplateData = {
   genderOptions?: Option[];
   isStaff?: boolean;
   mobileNo?: string;
+  countryCode?: string;
   emailAddress?: string;
   dateOfBirth?: string | number[];
   clientType?: Option;
@@ -104,6 +111,7 @@ type FormDataState = {
   lastname: string;
   genderId: string;
   isStaff: boolean;
+  countryCode: string;
   mobileNo: string;
   emailAddress: string;
   dateOfBirth: string;
@@ -170,10 +178,76 @@ function toDateInputValue(value?: string | number[] | null): string {
   return "";
 }
 
+function countryFlagFromIso2(iso2: string): string {
+  return iso2
+    .toUpperCase()
+    .replace(/./g, (character) =>
+      String.fromCodePoint(127397 + character.charCodeAt(0))
+    );
+}
+
+function splitStoredMobileNumber(
+  mobileNo?: string | null,
+  fallbackCountryCode?: string | null
+) {
+  const countryCode = resolveCountryDialCodeForPhone(
+    mobileNo,
+    undefined,
+    fallbackCountryCode ?? "+260"
+  );
+  const digitsOnly = mobileNo?.replace(/\D/g, "") ?? "";
+
+  if (!digitsOnly) {
+    return { countryCode, number: "" };
+  }
+
+  const countryDigits = countryCode.replace(/\D/g, "");
+  let number = digitsOnly;
+
+  if (number.startsWith(countryDigits) && number.length > countryDigits.length) {
+    number = number.slice(countryDigits.length);
+  }
+
+  if (number.startsWith("0") && number.length > 1) {
+    number = number.slice(1);
+  }
+
+  return { countryCode, number };
+}
+
+function parsePhoneInput(
+  phoneNumber: string,
+  currentCountryCode: string
+): { countryCode: string; number: string } {
+  if (!phoneNumber) {
+    return { countryCode: currentCountryCode, number: "" };
+  }
+
+  const countryCode = resolveCountryDialCodeForPhone(
+    phoneNumber,
+    undefined,
+    currentCountryCode
+  );
+  const digitsOnly = phoneNumber.replace(/\D/g, "");
+  const countryDigits = countryCode.replace(/\D/g, "");
+  let number = digitsOnly;
+
+  if (number.startsWith(countryDigits) && number.length > countryDigits.length) {
+    number = number.slice(countryDigits.length);
+  }
+
+  if (number.startsWith("0") && number.length > 1) {
+    number = number.slice(1);
+  }
+
+  return { countryCode, number };
+}
+
 function buildInitialFormData(client: ClientTemplateData): FormDataState {
   const legalFormId = String(client.legalForm?.id ?? 1);
   const isEntity = legalFormId === "2";
   const nonPerson = client.clientNonPersonDetails;
+  const phone = splitStoredMobileNumber(client.mobileNo, client.countryCode);
 
   return {
     officeId: String(client.officeId ?? ""),
@@ -187,7 +261,8 @@ function buildInitialFormData(client: ClientTemplateData): FormDataState {
     lastname: isEntity ? "" : client.lastname ?? "",
     genderId: isEntity ? "" : client.gender?.id ? String(client.gender.id) : "",
     isStaff: Boolean(client.isStaff),
-    mobileNo: client.mobileNo ?? "",
+    countryCode: phone.countryCode,
+    mobileNo: phone.number,
     emailAddress: client.emailAddress ?? "",
     dateOfBirth: toDateInputValue(
       isEntity
@@ -297,6 +372,15 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
   const clientClassificationOptions = client?.clientClassificationOptions ?? [];
   const constitutionOptions = client?.clientNonPersonConstitutionOptions ?? [];
   const businessLineOptions = client?.clientNonPersonMainBusinessLineOptions ?? [];
+  const countryCodeOptions = useMemo(
+    () =>
+      AFRICAN_COUNTRY_CODES.map((entry) => ({
+        value: entry.code,
+        label: `${countryFlagFromIso2(entry.iso2)} ${entry.code} ${entry.country}`,
+        shortLabel: `${countryFlagFromIso2(entry.iso2)} ${entry.code}`,
+      })),
+    []
+  );
 
   const submittedDateMin = "2000-01-01";
   const maxDate = "2100-01-01";
@@ -332,6 +416,19 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
     value: string | boolean
   ) => {
     setFormData((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  const handlePhoneInputChange = (value: string) => {
+    setFormData((prev) => {
+      if (!prev) return prev;
+
+      const parsed = parsePhoneInput(value, prev.countryCode);
+      return {
+        ...prev,
+        countryCode: parsed.countryCode,
+        mobileNo: parsed.number,
+      };
+    });
   };
 
   const handleEntityFieldChange = (
@@ -382,9 +479,16 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
       const rawValue = structuredClone(formData);
       const locale = "en";
       const dateFormat = "yyyy-MM-dd";
+      const normalizedCountryCode =
+        rawValue.countryCode ||
+        resolveCountryDialCodeForPhone(rawValue.mobileNo, client.mobileNo);
+      const normalizedMobileNo = rawValue.mobileNo
+        ? formatMobileForFineract(rawValue.mobileNo, normalizedCountryCode)
+        : "";
 
       const updateData: Record<string, unknown> = {
         ...rawValue,
+        mobileNo: normalizedMobileNo,
         dateOfBirth: rawValue.dateOfBirth || undefined,
         submittedOnDate: rawValue.submittedOnDate || undefined,
         activationDate: rawValue.activationDate || undefined,
@@ -403,6 +507,7 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
 
       delete updateData.officeId;
       delete updateData.accountNo;
+      delete updateData.countryCode;
 
       updateData.clientNonPersonDetails = isEntity
         ? {
@@ -693,14 +798,24 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
 
               <div className="space-y-2">
                 <Label htmlFor="mobileNo">Mobile No</Label>
-                <Input
-                  id="mobileNo"
-                  type="tel"
-                  value={formData.mobileNo}
-                  onChange={(e) =>
-                    handleInputChange("mobileNo", e.target.value)
-                  }
-                />
+                <div className="flex gap-2">
+                  <SearchableSelect
+                    options={countryCodeOptions}
+                    value={formData.countryCode}
+                    onValueChange={(value) =>
+                      handleInputChange("countryCode", value)
+                    }
+                    placeholder="+260"
+                    className="w-28 shrink-0"
+                  />
+                  <Input
+                    id="mobileNo"
+                    type="tel"
+                    value={formData.mobileNo}
+                    onChange={(e) => handlePhoneInputChange(e.target.value)}
+                    className="flex-1"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">

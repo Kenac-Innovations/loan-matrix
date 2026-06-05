@@ -335,11 +335,68 @@ const savingsProductSchema = z.object({
 
 type ClientFormValues = z.infer<typeof clientFormSchema>;
 
-// Phone country codes available for new lead / client phone number
-const PHONE_COUNTRY_CODES = [
-  { code: "+260", label: "🇿🇲 +260 (Zambia)" },
-  { code: "+263", label: "🇿🇼 +263 (Zimbabwe)" },
-  { code: "+44", label: "🇬🇧 +44 (UK)" },
+// African country dialling codes for the country code picker
+const PHONE_COUNTRY_CODES: { value: string; label: string; shortLabel: string }[] = [
+  { value: "+20",  shortLabel: "🇪🇬 +20",  label: "🇪🇬 +20 Egypt" },
+  { value: "+212", shortLabel: "🇲🇦 +212", label: "🇲🇦 +212 Morocco" },
+  { value: "+213", shortLabel: "🇩🇿 +213", label: "🇩🇿 +213 Algeria" },
+  { value: "+216", shortLabel: "🇹🇳 +216", label: "🇹🇳 +216 Tunisia" },
+  { value: "+218", shortLabel: "🇱🇾 +218", label: "🇱🇾 +218 Libya" },
+  { value: "+220", shortLabel: "🇬🇲 +220", label: "🇬🇲 +220 Gambia" },
+  { value: "+221", shortLabel: "🇸🇳 +221", label: "🇸🇳 +221 Senegal" },
+  { value: "+222", shortLabel: "🇲🇷 +222", label: "🇲🇷 +222 Mauritania" },
+  { value: "+223", shortLabel: "🇲🇱 +223", label: "🇲🇱 +223 Mali" },
+  { value: "+224", shortLabel: "🇬🇳 +224", label: "🇬🇳 +224 Guinea" },
+  { value: "+225", shortLabel: "🇨🇮 +225", label: "🇨🇮 +225 Ivory Coast" },
+  { value: "+226", shortLabel: "🇧🇫 +226", label: "🇧🇫 +226 Burkina Faso" },
+  { value: "+227", shortLabel: "🇳🇪 +227", label: "🇳🇪 +227 Niger" },
+  { value: "+228", shortLabel: "🇹🇬 +228", label: "🇹🇬 +228 Togo" },
+  { value: "+229", shortLabel: "🇧🇯 +229", label: "🇧🇯 +229 Benin" },
+  { value: "+230", shortLabel: "🇲🇺 +230", label: "🇲🇺 +230 Mauritius" },
+  { value: "+231", shortLabel: "🇱🇷 +231", label: "🇱🇷 +231 Liberia" },
+  { value: "+232", shortLabel: "🇸🇱 +232", label: "🇸🇱 +232 Sierra Leone" },
+  { value: "+233", shortLabel: "🇬🇭 +233", label: "🇬🇭 +233 Ghana" },
+  { value: "+234", shortLabel: "🇳🇬 +234", label: "🇳🇬 +234 Nigeria" },
+  { value: "+235", shortLabel: "🇹🇩 +235", label: "🇹🇩 +235 Chad" },
+  { value: "+236", shortLabel: "🇨🇫 +236", label: "🇨🇫 +236 Central African Republic" },
+  { value: "+237", shortLabel: "🇨🇲 +237", label: "🇨🇲 +237 Cameroon" },
+  { value: "+238", shortLabel: "🇨🇻 +238", label: "🇨🇻 +238 Cape Verde" },
+  { value: "+239", shortLabel: "🇸🇹 +239", label: "🇸🇹 +239 São Tomé and Príncipe" },
+  { value: "+240", shortLabel: "🇬🇶 +240", label: "🇬🇶 +240 Equatorial Guinea" },
+  { value: "+241", shortLabel: "🇬🇦 +241", label: "🇬🇦 +241 Gabon" },
+  { value: "+242", shortLabel: "🇨🇬 +242", label: "🇨🇬 +242 Republic of the Congo" },
+  { value: "+243", shortLabel: "🇨🇩 +243", label: "🇨🇩 +243 DR Congo" },
+  { value: "+244", shortLabel: "🇦🇴 +244", label: "🇦🇴 +244 Angola" },
+  { value: "+245", shortLabel: "🇬🇼 +245", label: "🇬🇼 +245 Guinea-Bissau" },
+  { value: "+246", shortLabel: "🇮🇴 +246", label: "🇮🇴 +246 British Indian Ocean Territory" },
+  { value: "+247", shortLabel: "🇸🇭 +247", label: "🇸🇭 +247 Ascension Island" },
+  { value: "+248", shortLabel: "🇸🇨 +248", label: "🇸🇨 +248 Seychelles" },
+  { value: "+249", shortLabel: "🇸🇩 +249", label: "🇸🇩 +249 Sudan" },
+  { value: "+250", shortLabel: "🇷🇼 +250", label: "🇷🇼 +250 Rwanda" },
+  { value: "+251", shortLabel: "🇪🇹 +251", label: "🇪🇹 +251 Ethiopia" },
+  { value: "+252", shortLabel: "🇸🇴 +252", label: "🇸🇴 +252 Somalia" },
+  { value: "+253", shortLabel: "🇩🇯 +253", label: "🇩🇯 +253 Djibouti" },
+  { value: "+254", shortLabel: "🇰🇪 +254", label: "🇰🇪 +254 Kenya" },
+  { value: "+255", shortLabel: "🇹🇿 +255", label: "🇹🇿 +255 Tanzania" },
+  { value: "+256", shortLabel: "🇺🇬 +256", label: "🇺🇬 +256 Uganda" },
+  { value: "+257", shortLabel: "🇧🇮 +257", label: "🇧🇮 +257 Burundi" },
+  { value: "+258", shortLabel: "🇲🇿 +258", label: "🇲🇿 +258 Mozambique" },
+  { value: "+260", shortLabel: "🇿🇲 +260", label: "🇿🇲 +260 Zambia" },
+  { value: "+261", shortLabel: "🇲🇬 +261", label: "🇲🇬 +261 Madagascar" },
+  { value: "+262", shortLabel: "🇷🇪 +262", label: "🇷🇪 +262 Réunion" },
+  { value: "+263", shortLabel: "🇿🇼 +263", label: "🇿🇼 +263 Zimbabwe" },
+  { value: "+264", shortLabel: "🇳🇦 +264", label: "🇳🇦 +264 Namibia" },
+  { value: "+265", shortLabel: "🇲🇼 +265", label: "🇲🇼 +265 Malawi" },
+  { value: "+266", shortLabel: "🇱🇸 +266", label: "🇱🇸 +266 Lesotho" },
+  { value: "+267", shortLabel: "🇧🇼 +267", label: "🇧🇼 +267 Botswana" },
+  { value: "+268", shortLabel: "🇸🇿 +268", label: "🇸🇿 +268 Eswatini" },
+  { value: "+269", shortLabel: "🇰🇲 +269", label: "🇰🇲 +269 Comoros" },
+  { value: "+27",  shortLabel: "🇿🇦 +27",  label: "🇿🇦 +27 South Africa" },
+  { value: "+290", shortLabel: "🇸🇭 +290", label: "🇸🇭 +290 Saint Helena" },
+  { value: "+291", shortLabel: "🇪🇷 +291", label: "🇪🇷 +291 Eritrea" },
+  { value: "+297", shortLabel: "🇦🇼 +297", label: "🇦🇼 +297 Aruba" },
+  { value: "+298", shortLabel: "🇫🇴 +298", label: "🇫🇴 +298 Faroe Islands" },
+  { value: "+299", shortLabel: "🇬🇱 +299", label: "🇬🇱 +299 Greenland" },
 ];
 
 // Phone number parsing utility - works with any country code
@@ -353,9 +410,9 @@ const parsePhoneNumber = (
 
   // Try to detect country code from known codes (longest match first)
   const sortedCodes = [...PHONE_COUNTRY_CODES].sort(
-    (a, b) => b.code.length - a.code.length
+    (a, b) => b.value.length - a.value.length
   );
-  for (const { code } of sortedCodes) {
+  for (const { value: code } of sortedCodes) {
     const codeDigits = code.replace("+", "");
     if (digitsOnly.startsWith(codeDigits)) {
       digitsOnly = digitsOnly.substring(codeDigits.length);
@@ -6912,7 +6969,13 @@ export function ClientRegistrationForm({
                                       }
                                       name="countryCode"
                                       render={({ field }) => (
-                                        <Select
+                                        <SearchableSelect
+                                          options={PHONE_COUNTRY_CODES.map((c) => ({
+                                            value: c.value,
+                                            label: c.label,
+                                            shortLabel: c.shortLabel,
+                                          }))}
+                                          value={field.value}
                                           onValueChange={(value) => {
                                             field.onChange(value);
                                             form.setValue("countryCode", value);
@@ -6923,24 +6986,10 @@ export function ClientRegistrationForm({
                                               );
                                             }
                                           }}
-                                          value={field.value}
+                                          placeholder={tenantLocale.countryCode}
                                           disabled={isFormDisabled}
-                                        >
-                                          <SelectTrigger
-                                            className={`h-10 w-24 sm:w-28 lg:w-32 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
-                                          >
-                                            <SelectValue placeholder={tenantLocale.countryCode} />
-                                          </SelectTrigger>
-                                          <SelectContent
-                                            className={`border-${colors.borderColor} ${colors.dropdownBg} ${colors.textColor}`}
-                                          >
-                                            {PHONE_COUNTRY_CODES.map(({ code, label }) => (
-                                              <SelectItem key={code} value={code}>
-                                                {label}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
+                                          className={`w-28 sm:w-32 lg:w-36 border-${colors.borderColor} ${colors.inputBg} flex-shrink-0`}
+                                        />
                                       )}
                                     />
                                     <div className="relative">
