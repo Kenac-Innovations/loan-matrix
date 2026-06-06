@@ -66,6 +66,7 @@ export function getDisplayedTransactionType(
 ): string {
   if (!transaction) return "";
 
+  const baseLabel = getTransactionTypeDisplayLabel(transaction.type);
   const paidCharges = transaction.loanChargePaidByList;
   if (Array.isArray(paidCharges) && paidCharges.length > 0) {
     const chargeNames = Array.from(
@@ -81,8 +82,12 @@ export function getDisplayedTransactionType(
     }
 
     if (chargeNames.length > 1) {
+      if (transaction.type?.repayment && !transaction.type?.repaymentAtDisbursement) {
+        return baseLabel;
+      }
+
       return chargeNames.join(", ");
     }
   }
-  return getTransactionTypeDisplayLabel(transaction.type);
+  return baseLabel;
 }
