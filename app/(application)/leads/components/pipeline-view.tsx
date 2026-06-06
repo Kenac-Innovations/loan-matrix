@@ -42,6 +42,7 @@ import {
   ConversionMetricsChart,
 } from "@/components/charts";
 import { LeadsData } from "@/app/actions/leads-actions";
+import { useRouter } from "next/navigation";
 
 interface PipelineViewProps {
   initialData: LeadsData;
@@ -78,6 +79,7 @@ function getStatusBadgeColor(status: string): string {
 }
 
 export function PipelineView({ initialData }: PipelineViewProps) {
+  const router = useRouter();
   const [filter, setFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [leadsData, setLeadsData] = useState(initialData);
@@ -283,9 +285,9 @@ export function PipelineView({ initialData }: PipelineViewProps) {
                   const isNavigating = navigatingLeadId === lead.id;
                   const handleRowClick = () => {
                     setNavigatingLeadId(lead.id);
-                    window.location.href = isSubmitted
-                      ? `/leads/${lead.id}`
-                      : `/leads/new?id=${lead.id}`;
+                    router.push(
+                      isSubmitted ? `/leads/${lead.id}` : `/leads/new?id=${lead.id}`
+                    );
                   };
 
                   return (

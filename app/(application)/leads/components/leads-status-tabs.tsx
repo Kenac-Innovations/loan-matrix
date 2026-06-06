@@ -2,6 +2,7 @@
 
 import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -206,6 +207,7 @@ function getTenantSlugFromHost(): string {
 }
 
 export function LeadsStatusTabs() {
+  const router = useRouter();
   const { data: session } = useSession();
   const { currencyCode: orgCurrency, locale: tenantLocale } = useCurrency();
   const {
@@ -1174,9 +1176,9 @@ export function LeadsStatusTabs() {
               const draftHref = facilityType === "REVOLVING_CREDIT"
                 ? `/leads/new/rcf?id=${leadId}`
                 : `/leads/new/loan?id=${leadId}`;
-              globalThis.location.href = draftHref;
+              router.push(draftHref);
             } else {
-              globalThis.location.href = `/leads/${leadId}`;
+              router.push(`/leads/${leadId}`);
             }
           }}
           emptyMessage="No records found for the selected filters."

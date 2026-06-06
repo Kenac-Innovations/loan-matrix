@@ -3,8 +3,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, ShieldCheck, ArrowRight, Users, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Clock, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { LeadAssignment } from "./lead-assignment";
@@ -61,36 +61,42 @@ interface SidebarData {
   loanActionInfo?: LoanActionInfo;
 }
 
+interface SessionUser {
+  userId?: number;
+  id?: string;
+}
+
 export function LeadSidebar({ leadId }: LeadSidebarProps) {
   const { data: session } = useSession();
   const [data, setData] = useState<SidebarData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-    const fetchSidebarData = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/leads/${leadId}/sidebar`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch sidebar data");
-        }
-        const sidebarData = await response.json();
-        setData(sidebarData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
+  const fetchSidebarData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`/api/leads/${leadId}/sidebar`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch sidebar data");
       }
-    };
+      const sidebarData = await response.json();
+      setData(sidebarData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  }, [leadId]);
 
   useEffect(() => {
-    fetchSidebarData();
-  }, [leadId]);
+    void fetchSidebarData();
+  }, [fetchSidebarData]);
 
   // Listen for assignment changes and loan action events to refresh sidebar data
   useEffect(() => {
     const handleRefresh = () => {
-      fetchSidebarData();
+      void fetchSidebarData();
     };
 
     window.addEventListener("assignment-change", handleRefresh);
@@ -99,10 +105,10 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
       window.removeEventListener("assignment-change", handleRefresh);
       window.removeEventListener("loan-action-complete", handleRefresh);
     };
-  }, [leadId]);
+  }, [fetchSidebarData]);
 
   // Get current Mifos user ID from session - try userId first, then fall back to id
-  const sessionUser = session?.user as any;
+  const sessionUser = session?.user as SessionUser | undefined;
   const currentMifosUserId =
     sessionUser?.userId ??
     (sessionUser?.id ? parseInt(sessionUser.id) : undefined);

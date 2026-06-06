@@ -24,6 +24,26 @@ const NO_CACHE_HEADERS = {
   "Expires": "0",
 } as const;
 
+function getRequestOrigin(request: NextRequest): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost?.split(",")[0]?.trim() || request.headers.get("host");
+  const protocol = forwardedProto || request.nextUrl.protocol.replace(/:$/, "");
+
+  if (host) {
+    return `${protocol}://${host}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
+function getRequestUrl(request: NextRequest): URL {
+  return new URL(
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    getRequestOrigin(request)
+  );
+}
+
 function isPublicPage(pathname: string): boolean {
   if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return true;
@@ -59,6 +79,7 @@ async function getSessionToken(request: NextRequest) {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const requestUrl = getRequestUrl(request);
 
   const tenantResponse = await tenantMiddleware(request);
   if (tenantResponse && tenantResponse.status !== 200) {
@@ -89,7 +110,7 @@ export async function proxy(request: NextRequest) {
     if (pathname === "/auth/login") {
       const token = await getSessionToken(request);
       if (token) {
-        return NextResponse.redirect(new URL("/leads", request.url));
+        return NextResponse.redirect(new URL("/leads", requestUrl));
       }
     }
     return next();
@@ -100,13 +121,13 @@ export async function proxy(request: NextRequest) {
   const token = await getSessionToken(request);
 
   if (!token) {
-    const loginUrl = new URL("/auth/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", encodeURI(request.url));
+    const loginUrl = new URL("/auth/login", requestUrl);
+    loginUrl.searchParams.set("callbackUrl", requestUrl.toString());
     return NextResponse.redirect(loginUrl);
   }
 
   if (pathname === "/") {
-    return NextResponse.redirect(new URL("/leads", request.url));
+    return NextResponse.redirect(new URL("/leads", requestUrl));
   }
 
   return setNoCacheHeaders(next());

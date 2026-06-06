@@ -9,7 +9,6 @@ export async function GET() {
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    // Return user info without the access token for security
     return NextResponse.json({
       user: {
         id: session.user.id,
@@ -18,9 +17,9 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error("Session API error:", error);
+    console.error("Current user API error:", error);
     return NextResponse.json(
-      { error: "Failed to get session" },
+      { error: "Failed to get current user" },
       { status: 500 }
     );
   }

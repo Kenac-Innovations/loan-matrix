@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const checkAuth = async () => {
       try {
         // We'll use a simple fetch to a protected endpoint to check auth status
-        const res = await fetch("/api/auth/session");
+        const res = await fetch("/api/auth/current-user");
         if (res.ok) {
           const data = await res.json();
           if (data.user) {

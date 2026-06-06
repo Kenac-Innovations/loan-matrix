@@ -16,6 +16,18 @@ import {
   updateUserLoginLastLogin,
 } from "@/lib/user-login-service";
 
+if (process.env.NODE_ENV === "development" && !process.env.AUTH_TRUST_HOST) {
+  process.env.AUTH_TRUST_HOST = "true";
+}
+
+function isTrustedLocalDevHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".localhost")
+  );
+}
+
 // Define the NextAuth options
 export const authOptions: NextAuthOptions = {
   debug: process.env.NODE_ENV === "development",
@@ -114,7 +126,8 @@ export const authOptions: NextAuthOptions = {
           urlObj.hostname.endsWith(".kenacloanmatrix.com") ||
           urlObj.hostname.endsWith(".kenac.co.zw") ||
           urlObj.hostname === baseObj.hostname ||
-          urlObj.hostname === "localhost"
+          (isTrustedLocalDevHost(urlObj.hostname) &&
+            isTrustedLocalDevHost(baseObj.hostname))
         ) {
           return url;
         }

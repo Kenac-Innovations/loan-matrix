@@ -1,11 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
-
-const MobileSidebar = dynamic(
-  () => import("./mobile-sidebar").then((mod) => mod.MobileSidebar),
-  { ssr: false }
-);
+import { MobileSidebar } from "./mobile-sidebar";
 
 interface MobileSidebarWrapperProps {
   tenantLogoUrl?: string | null;

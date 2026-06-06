@@ -10,6 +10,7 @@ import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { FileEdit, User, Loader2, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 
 interface LeadsTableProps {
@@ -64,6 +65,7 @@ const LOAN_STATUS_OPTIONS = [
 
 
 export function LeadsTable({ initialData }: LeadsTableProps) {
+  const router = useRouter();
   const { leads: initialLeads, pipelineStages } = initialData;
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
     { columnId: "leadStatus", value: "", type: "select" },
@@ -452,7 +454,7 @@ export function LeadsTable({ initialData }: LeadsTableProps) {
     const draftHref = lead.facilityType === "REVOLVING_CREDIT"
       ? `/leads/new/rcf?id=${lead.id}`
       : `/leads/new?id=${lead.id}`;
-    window.location.href = isSubmitted ? `/leads/${lead.id}` : draftHref;
+    router.push(isSubmitted ? `/leads/${lead.id}` : draftHref);
   };
 
   return (
