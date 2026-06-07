@@ -314,7 +314,11 @@ export function StagingTab({
                           <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">None</SelectItem>
+                          <SelectItem value="__none__">
+                            {item.paymentTypeId == null && item.paymentTypeName
+                              ? `Unmapped: ${item.paymentTypeName}`
+                              : "None"}
+                          </SelectItem>
                           {paymentTypes.map((pt) => (
                             <SelectItem key={pt.id} value={pt.id.toString()}>
                               {pt.name}
