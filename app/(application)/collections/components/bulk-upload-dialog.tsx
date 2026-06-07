@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import Papa from "papaparse";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +39,6 @@ interface BulkUploadDialogProps {
 interface ColumnMapping {
   loanId: string;
   amount: string;
-  paymentTypeId: string;
   transactionDate: string;
   loanAccountNo: string;
   clientName: string;
@@ -51,12 +50,18 @@ interface ColumnMapping {
   note: string;
 }
 
+interface PaymentType {
+  id: number;
+  name: string;
+  description?: string;
+  isCashPayment?: boolean;
+}
+
 const REQUIRED_FIELDS: (keyof ColumnMapping)[] = ["loanId", "amount"];
 
 const FIELD_LABELS: Record<keyof ColumnMapping, string> = {
   loanId: "Loan ID *",
   amount: "Amount *",
-  paymentTypeId: "Payment Type ID",
   transactionDate: "Transaction Date",
   loanAccountNo: "Loan Account No",
   clientName: "Client Name",
@@ -71,7 +76,6 @@ const FIELD_LABELS: Record<keyof ColumnMapping, string> = {
 const AUTO_DETECT_PATTERNS: Record<keyof ColumnMapping, RegExp> = {
   loanId: /^(loan[_\s-]?id|loanid|loan_resource_id)$/i,
   amount: /^(amount|transaction[_\s-]?amount|repayment[_\s-]?amount|total|payment)$/i,
-  paymentTypeId: /^(payment[_\s-]?type[_\s-]?id|paymenttypeid|payment_type)$/i,
   transactionDate: /^(transaction[_\s-]?date|date|payment[_\s-]?date|repayment[_\s-]?date)$/i,
   loanAccountNo: /^(loan[_\s-]?account[_\s-]?no|account[_\s-]?no|loan[_\s-]?account|account_number)$/i,
   clientName: /^(client[_\s-]?name|name|customer[_\s-]?name|borrower)$/i,
@@ -92,10 +96,13 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
   const [previewRows, setPreviewRows] = useState<Record<string, string>[]>([]);
   const [allRows, setAllRows] = useState<Record<string, string>[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
+  const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
+  const [selectedPaymentTypeId, setSelectedPaymentTypeId] = useState("");
+  const [loadingPaymentTypes, setLoadingPaymentTypes] = useState(false);
+  const [paymentTypesError, setPaymentTypesError] = useState<string | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping>({
     loanId: "",
     amount: "",
-    paymentTypeId: "",
     transactionDate: "",
     loanAccountNo: "",
     clientName: "",
@@ -116,14 +123,62 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
     setPreviewRows([]);
     setAllRows([]);
     setWarning(null);
+    setSelectedPaymentTypeId("");
+    setPaymentTypesError(null);
     setMapping({
-      loanId: "", amount: "", paymentTypeId: "", transactionDate: "",
+      loanId: "", amount: "", transactionDate: "",
       loanAccountNo: "", clientName: "", accountNumber: "", chequeNumber: "",
       routingCode: "", receiptNumber: "", bankNumber: "", note: "",
     });
     setUploading(false);
     setError(null);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    const fetchPaymentTypes = async () => {
+      setLoadingPaymentTypes(true);
+      setPaymentTypesError(null);
+
+      try {
+        const response = await fetch("/api/fineract/paymenttypes");
+        if (!response.ok) {
+          throw new Error("Failed to load payment types");
+        }
+
+        const data = await response.json();
+        const list: PaymentType[] = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.pageItems)
+            ? data.pageItems
+            : [];
+
+        if (!cancelled) {
+          setPaymentTypes(list);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPaymentTypes([]);
+          setPaymentTypesError(
+            err instanceof Error ? err.message : "Failed to load payment types"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingPaymentTypes(false);
+        }
+      }
+    };
+
+    fetchPaymentTypes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -186,8 +241,8 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
   }, [mapping]);
 
   const isValid = useMemo(() => {
-    return REQUIRED_FIELDS.every((f) => mapping[f] !== "");
-  }, [mapping]);
+    return REQUIRED_FIELDS.every((f) => mapping[f] !== "") && selectedPaymentTypeId !== "";
+  }, [mapping, selectedPaymentTypeId]);
 
   const handleUpload = async () => {
     if (!isValid || allRows.length === 0) return;
@@ -197,10 +252,15 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
     setError(null);
 
     try {
+      const selectedPaymentType = paymentTypes.find(
+        (paymentType) => paymentType.id.toString() === selectedPaymentTypeId
+      );
+      const paymentTypeId = parseInt(selectedPaymentTypeId, 10);
+      if (!selectedPaymentType || Number.isNaN(paymentTypeId)) {
+        throw new Error("Please select a valid payment type.");
+      }
+
       const items = allRows.map((row, idx) => ({
-        paymentTypeValue: mapping.paymentTypeId
-          ? row[mapping.paymentTypeId]?.trim() || ""
-          : "",
         rowNumber: idx + 1,
         loanId: parseInt(row[mapping.loanId], 10) || 0,
         amount: parseFloat(row[mapping.amount]?.replace(/,/g, "")) || 0,
@@ -213,11 +273,8 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
         receiptNumber: mapping.receiptNumber ? row[mapping.receiptNumber] || null : null,
         bankNumber: mapping.bankNumber ? row[mapping.bankNumber] || null : null,
         note: mapping.note ? row[mapping.note] || null : null,
-      })).map(({ paymentTypeValue, ...item }) => ({
-        ...item,
-        paymentTypeId: /^\d+$/.test(paymentTypeValue) ? parseInt(paymentTypeValue, 10) : null,
-        paymentTypeName:
-          paymentTypeValue && !/^\d+$/.test(paymentTypeValue) ? paymentTypeValue : null,
+        paymentTypeId,
+        paymentTypeName: selectedPaymentType?.name || null,
       }));
 
       const response = await fetch("/api/collections/uploads", {
@@ -300,6 +357,43 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
               <span>
                 <strong>{allRows.length}</strong> rows found in <strong>{file?.name}</strong>
               </span>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Payment Type *</label>
+              <Select
+                value={selectedPaymentTypeId}
+                onValueChange={setSelectedPaymentTypeId}
+                disabled={loadingPaymentTypes || paymentTypes.length === 0}
+              >
+                <SelectTrigger className="h-9 max-w-md">
+                  <SelectValue
+                    placeholder={
+                      loadingPaymentTypes ? "Loading payment types..." : "Select payment type"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentTypes.length === 0 ? (
+                    <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                      No payment types available
+                    </div>
+                  ) : (
+                    paymentTypes.map((paymentType) => (
+                      <SelectItem key={paymentType.id} value={paymentType.id.toString()}>
+                        {paymentType.name}
+                        {paymentType.isCashPayment ? " (Cash)" : ""}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              {!selectedPaymentTypeId && (
+                <p className="text-xs text-destructive">Required</p>
+              )}
+              {paymentTypesError && (
+                <p className="text-xs text-destructive">{paymentTypesError}</p>
+              )}
             </div>
 
             {/* Column mapping */}
@@ -390,7 +484,7 @@ export function BulkUploadDialog({ open, onOpenChange, onUploadCreated }: BulkUp
             Cancel
           </Button>
           {step === "mapping" && (
-            <Button onClick={handleUpload} disabled={!isValid || uploading} className="bg-blue-500 hover:bg-blue-600">
+            <Button onClick={handleUpload} disabled={!isValid || uploading || loadingPaymentTypes} className="bg-blue-500 hover:bg-blue-600">
               {uploading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
