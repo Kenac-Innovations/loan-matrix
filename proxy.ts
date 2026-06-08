@@ -14,6 +14,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/webhooks",
   "/api/ussd-leads/payment-callback",
   "/api/queue/health",
+  "/api/recoveries/reminders/cron",
   "/api/tenant",
   "/api/init",
 ];

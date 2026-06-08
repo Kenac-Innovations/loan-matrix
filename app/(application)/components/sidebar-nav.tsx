@@ -105,6 +105,7 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
         href="/collections"
         subMenuItems={[
           { label: "Expected Payments", href: "/collections" },
+          { label: "Recoveries", href: "/collections/recoveries" },
           { label: "Bulk Receipting", href: "/collections/bulk-receipting" },
           { label: "Loan Product Eligibility", href: "/collections/loan-product-eligibility" },
         ]}

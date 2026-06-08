@@ -18,6 +18,10 @@ import {
   setupCreditFacilityDatatables,
   setupCreditFacilityReports,
 } from "@/app/actions/credit-facility-actions";
+import {
+  setupRecoveryDatatables,
+  setupRecoveriesReports,
+} from "@/app/actions/recovery-actions";
 import type { TenantFeatures } from "@/shared/types/tenant";
 
 interface FeatureConfig {
@@ -120,6 +124,10 @@ export default function FeaturesSettingsPage() {
   const [setupError, setSetupError] = useState<string | null>(null);
   const [reportsStatus, setReportsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [reportsError, setReportsError] = useState<string | null>(null);
+  const [recoverySetupStatus, setRecoverySetupStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [recoverySetupError, setRecoverySetupError] = useState<string | null>(null);
+  const [recoveryReportsStatus, setRecoveryReportsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [recoveryReportsError, setRecoveryReportsError] = useState<string | null>(null);
 
   const fetchFeatures = useCallback(async () => {
     try {
@@ -194,6 +202,32 @@ export default function FeaturesSettingsPage() {
     }
   };
 
+  const handleSetupRecoveryDatatables = async () => {
+    setRecoverySetupStatus("loading");
+    setRecoverySetupError(null);
+    const result = await setupRecoveryDatatables();
+    if (result.success) {
+      setRecoverySetupStatus("success");
+      setTimeout(() => setRecoverySetupStatus("idle"), 3000);
+    } else {
+      setRecoverySetupStatus("error");
+      setRecoverySetupError(result.error ?? "Setup failed");
+    }
+  };
+
+  const handleSetupRecoveryReports = async () => {
+    setRecoveryReportsStatus("loading");
+    setRecoveryReportsError(null);
+    const result = await setupRecoveriesReports();
+    if (result.success) {
+      setRecoveryReportsStatus("success");
+      setTimeout(() => setRecoveryReportsStatus("idle"), 3000);
+    } else {
+      setRecoveryReportsStatus("error");
+      setRecoveryReportsError(result.error ?? "Setup failed");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -248,7 +282,7 @@ export default function FeaturesSettingsPage() {
               {setupStatus === "success" ? "Done" : "Run Setup"}
             </Button>
           </div>
-          <div className="flex items-start justify-between gap-4 py-2">
+          <div className="flex items-start justify-between gap-4 py-2 border-b">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">Credit Facility Stretchy Reports</p>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -270,6 +304,50 @@ export default function FeaturesSettingsPage() {
               {reportsStatus === "success" ? "Done" : "Run Setup"}
             </Button>
           </div>
+          <div className="flex items-start justify-between gap-4 py-2 border-b">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Recovery Court Datatables</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Register Fineract loan datatables for court cases and court proceedings.
+              </p>
+              {recoverySetupStatus === "error" && recoverySetupError && (
+                <p className="text-xs text-destructive mt-1">{recoverySetupError}</p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSetupRecoveryDatatables}
+              disabled={recoverySetupStatus === "loading"}
+              className="shrink-0"
+            >
+              {recoverySetupStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              {recoverySetupStatus === "success" && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />}
+              {recoverySetupStatus === "success" ? "Done" : "Run Setup"}
+            </Button>
+          </div>
+          <div className="flex items-start justify-between gap-4 py-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Recovery Reports</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Register Fineract stretchy reports for arrears, NPA, court cases, and court proceedings.
+              </p>
+              {recoveryReportsStatus === "error" && recoveryReportsError && (
+                <p className="text-xs text-destructive mt-1">{recoveryReportsError}</p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSetupRecoveryReports}
+              disabled={recoveryReportsStatus === "loading"}
+              className="shrink-0"
+            >
+              {recoveryReportsStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              {recoveryReportsStatus === "success" && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />}
+              {recoveryReportsStatus === "success" ? "Done" : "Run Setup"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -282,7 +360,7 @@ export default function FeaturesSettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {FEATURE_CONFIGS.map((config) => {
-            const value = features?.[config.key] ?? false;
+            const value = Boolean(features?.[config.key] ?? false);
             const isSaving = saving === config.key;
             const isSaved = savedKey === config.key;
 
