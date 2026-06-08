@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   BriefcaseBusiness,
@@ -147,6 +147,11 @@ type CourtReportRow = {
   product_name?: string;
   case_number?: string;
   court_name?: string;
+  filing_date?: string;
+  lawyer_name?: string;
+  court_process_started?: string;
+  started_on_date?: string;
+  started_by?: string;
   proceeding_date?: string;
   proceeding_type?: string;
   status?: string;
@@ -154,6 +159,40 @@ type CourtReportRow = {
   outcome?: string;
   recorded_by?: string;
   notes?: string;
+};
+
+type CourtCaseRecord = {
+  id?: number;
+  loan_id?: number;
+  case_number?: string;
+  court_name?: string;
+  filing_date?: string | number[] | null;
+  lawyer_name?: string;
+  status?: string;
+  court_process_started?: string;
+  started_on_date?: string | number[] | null;
+  started_by?: string;
+  next_hearing_date?: string | number[] | null;
+  outcome?: string;
+  notes?: string;
+};
+
+type CourtProceedingRecord = {
+  id?: number;
+  loan_id?: number;
+  case_number?: string;
+  proceeding_date?: string | number[] | null;
+  proceeding_type?: string;
+  status?: string;
+  next_hearing_date?: string | number[] | null;
+  outcome?: string;
+  recorded_by?: string;
+  notes?: string;
+};
+
+type LoanCourtData = {
+  cases: CourtCaseRecord[];
+  proceedings: CourtProceedingRecord[];
 };
 
 type CourtCaseForm = {
@@ -189,13 +228,17 @@ const TABS: Array<{ value: BucketTab; label: string; icon: ReactNode }> = [
 
 const PAGE_SIZE = 25;
 
+function todayInputDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 const emptyCourtCaseForm: CourtCaseForm = {
   caseNumber: "",
   courtName: "",
   filingDate: "",
   lawyerName: "",
   status: "STARTED",
-  startedOnDate: new Date().toISOString().slice(0, 10),
+  startedOnDate: todayInputDate(),
   nextHearingDate: "",
   outcome: "",
   notes: "",
@@ -203,13 +246,47 @@ const emptyCourtCaseForm: CourtCaseForm = {
 
 const emptyProceedingForm: ProceedingForm = {
   caseNumber: "",
-  proceedingDate: new Date().toISOString().slice(0, 10),
+  proceedingDate: todayInputDate(),
   proceedingType: "",
   status: "RECORDED",
   nextHearingDate: "",
   outcome: "",
   notes: "",
 };
+
+function buildCourtCaseForm(row: RecoveryLoanRow): CourtCaseForm {
+  return {
+    ...emptyCourtCaseForm,
+    caseNumber: row.accountNo,
+    startedOnDate: todayInputDate(),
+  };
+}
+
+function buildProceedingForm(row: RecoveryLoanRow, caseNumber?: string): ProceedingForm {
+  return {
+    ...emptyProceedingForm,
+    caseNumber: caseNumber || row.accountNo,
+    proceedingDate: todayInputDate(),
+  };
+}
+
+function isCourtCaseFormValid(form: CourtCaseForm) {
+  return Boolean(
+    form.caseNumber.trim() &&
+    form.courtName.trim() &&
+    form.status.trim() &&
+    form.startedOnDate.trim()
+  );
+}
+
+function isProceedingFormValid(form: ProceedingForm) {
+  return Boolean(
+    form.caseNumber.trim() &&
+    form.proceedingDate.trim() &&
+    form.proceedingType.trim() &&
+    form.status.trim()
+  );
+}
 
 function toRecoveryBucket(tab: BucketTab): RecoveryBucket {
   if (tab === "performance") return "all";
@@ -285,11 +362,16 @@ function RecoveryStatsSkeleton() {
 
 export function RecoveriesDashboard() {
   const { currencyCode } = useCurrency();
+  const dashboardCacheRef = useRef<Partial<Record<BucketTab, Record<number, RecoveryDashboardData>>>>({});
+  const courtRowsCacheRef = useRef<CourtReportRow[] | null>(null);
   const [activeTab, setActiveTab] = useState<BucketTab>("30");
   const [dashboard, setDashboard] = useState<RecoveryDashboardData | null>(null);
   const [courtRows, setCourtRows] = useState<CourtReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [courtLoading, setCourtLoading] = useState(false);
+  const [caseProceedingsTarget, setCaseProceedingsTarget] = useState<CourtReportRow | null>(null);
+  const [caseProceedingsData, setCaseProceedingsData] = useState<LoanCourtData | null>(null);
+  const [caseProceedingsLoading, setCaseProceedingsLoading] = useState(false);
   const [pageByTab, setPageByTab] = useState<Partial<Record<BucketTab, number>>>({});
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [noteTarget, setNoteTarget] = useState<RecoveryLoanRow | null>(null);
@@ -297,13 +379,24 @@ export function RecoveriesDashboard() {
   const [writeOffTarget, setWriteOffTarget] = useState<RecoveryLoanRow | null>(null);
   const [writeOffNote, setWriteOffNote] = useState("");
   const [courtCaseTarget, setCourtCaseTarget] = useState<RecoveryLoanRow | null>(null);
+  const [courtCaseLoading, setCourtCaseLoading] = useState(false);
+  const [courtCaseData, setCourtCaseData] = useState<LoanCourtData | null>(null);
   const [courtCaseForm, setCourtCaseForm] = useState<CourtCaseForm>(emptyCourtCaseForm);
   const [proceedingTarget, setProceedingTarget] = useState<RecoveryLoanRow | null>(null);
   const [proceedingForm, setProceedingForm] = useState<ProceedingForm>(emptyProceedingForm);
 
   const activePage = pageByTab[activeTab] ?? 1;
+  const courtCaseFormValid = isCourtCaseFormValid(courtCaseForm);
+  const proceedingFormValid = isProceedingFormValid(proceedingForm);
 
-  const fetchDashboard = useCallback(async (tab: BucketTab, page: number) => {
+  const fetchDashboard = useCallback(async (tab: BucketTab, page: number, force = false) => {
+    const cached = dashboardCacheRef.current[tab]?.[page];
+    if (!force && cached) {
+      setDashboard(cached);
+      setLoading(false);
+      return;
+    }
+
     const bucket = toRecoveryBucket(tab);
     setLoading(true);
     try {
@@ -318,6 +411,13 @@ export function RecoveriesDashboard() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Failed to load recovery data");
       setDashboard(result);
+      dashboardCacheRef.current = {
+        ...dashboardCacheRef.current,
+        [tab]: {
+          ...(dashboardCacheRef.current[tab] || {}),
+          [page]: result,
+        },
+      };
     } catch (error) {
       toast({
         title: "Recoveries",
@@ -329,19 +429,27 @@ export function RecoveriesDashboard() {
     }
   }, []);
 
-  const fetchCourtRows = useCallback(async () => {
+  const fetchCourtRows = useCallback(async (force = false) => {
+    if (!force && courtRowsCacheRef.current) {
+      setCourtRows(courtRowsCacheRef.current);
+      setCourtLoading(false);
+      return;
+    }
+
     setCourtLoading(true);
     try {
-      const response = await fetch("/api/recoveries/reports/court-proceedings", {
+      const response = await fetch("/api/recoveries/reports/court-cases", {
         cache: "no-store",
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Failed to load court proceedings");
-      setCourtRows(Array.isArray(result.rows) ? result.rows : []);
+      if (!response.ok) throw new Error(result.error || "Failed to load court cases");
+      const rows = Array.isArray(result.rows) ? result.rows : [];
+      setCourtRows(rows);
+      courtRowsCacheRef.current = rows;
     } catch (error) {
       toast({
-        title: "Court proceedings",
-        description: error instanceof Error ? error.message : "Failed to load court proceedings",
+        title: "Court cases",
+        description: error instanceof Error ? error.message : "Failed to load court cases",
         variant: "destructive",
       });
     } finally {
@@ -369,10 +477,10 @@ export function RecoveriesDashboard() {
 
   const refreshCurrentTab = useCallback(() => {
     if (activeTab === "court") {
-      fetchCourtRows();
+      fetchCourtRows(true);
       return;
     }
-    fetchDashboard(activeTab, activePage);
+    fetchDashboard(activeTab, activePage, true);
   }, [activePage, activeTab, fetchCourtRows, fetchDashboard]);
 
   const setActiveTabPage = useCallback((page: number) => {
@@ -381,6 +489,76 @@ export function RecoveriesDashboard() {
       [activeTab]: Math.max(1, page),
     }));
   }, [activeTab]);
+
+  const loadCourtCaseData = useCallback(async (row: RecoveryLoanRow) => {
+    setCourtCaseLoading(true);
+    try {
+      const response = await fetch(`/api/recoveries/loans/${row.loanId}/court`, {
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({})) as Partial<LoanCourtData> & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Failed to load court case");
+
+      const data: LoanCourtData = {
+        cases: Array.isArray(result.cases) ? result.cases : [],
+        proceedings: Array.isArray(result.proceedings) ? result.proceedings : [],
+      };
+      setCourtCaseData(data);
+      return data;
+    } catch (error) {
+      toast({
+        title: "Court case",
+        description: error instanceof Error ? error.message : "Failed to load court case",
+        variant: "destructive",
+      });
+      setCourtCaseData({ cases: [], proceedings: [] });
+      return null;
+    } finally {
+      setCourtCaseLoading(false);
+    }
+  }, []);
+
+  const handleViewCaseProceedings = async (row: CourtReportRow) => {
+    if (!row.loan_id) return;
+
+    setCaseProceedingsTarget(row);
+    setCaseProceedingsData(null);
+    setCaseProceedingsLoading(true);
+    try {
+      const response = await fetch(`/api/recoveries/loans/${row.loan_id}/court`, {
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({})) as Partial<LoanCourtData> & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Failed to load court proceedings");
+
+      setCaseProceedingsData({
+        cases: Array.isArray(result.cases) ? result.cases : [],
+        proceedings: Array.isArray(result.proceedings) ? result.proceedings : [],
+      });
+    } catch (error) {
+      toast({
+        title: "Court proceedings",
+        description: error instanceof Error ? error.message : "Failed to load court proceedings",
+        variant: "destructive",
+      });
+      setCaseProceedingsData({ cases: [], proceedings: [] });
+    } finally {
+      setCaseProceedingsLoading(false);
+    }
+  };
+
+  const handleOpenCourtCase = async (row: RecoveryLoanRow) => {
+    const key = `${row.loanId}:court-case`;
+    setActionKey(key);
+    setCourtCaseTarget(row);
+    setCourtCaseData(null);
+    setCourtCaseForm(buildCourtCaseForm(row));
+    try {
+      await loadCourtCaseData(row);
+    } finally {
+      setActionKey(null);
+    }
+  };
 
   const handleSendReminder = async (row: RecoveryLoanRow) => {
     const key = `${row.loanId}:reminder`;
@@ -500,7 +678,7 @@ export function RecoveriesDashboard() {
   };
 
   const handleSubmitCourtCase = async () => {
-    if (!courtCaseTarget) return;
+    if (!courtCaseTarget || !courtCaseFormValid) return;
     setActionKey("court-case");
     try {
       const response = await fetch(`/api/recoveries/loans/${courtCaseTarget.loanId}/court/cases`, {
@@ -511,9 +689,10 @@ export function RecoveriesDashboard() {
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Failed to create court case");
 
-      toast({ title: "Court process recorded" });
-      setCourtCaseTarget(null);
-      setCourtCaseForm(emptyCourtCaseForm);
+      toast({ title: "Court case recorded" });
+      courtRowsCacheRef.current = null;
+      setCourtCaseForm(buildCourtCaseForm(courtCaseTarget));
+      await loadCourtCaseData(courtCaseTarget);
       refreshCurrentTab();
     } catch (error) {
       toast({
@@ -527,7 +706,7 @@ export function RecoveriesDashboard() {
   };
 
   const handleSubmitProceeding = async () => {
-    if (!proceedingTarget) return;
+    if (!proceedingTarget || !proceedingFormValid) return;
     setActionKey("proceeding");
     try {
       const response = await fetch(`/api/recoveries/loans/${proceedingTarget.loanId}/court/proceedings`, {
@@ -539,6 +718,7 @@ export function RecoveriesDashboard() {
       if (!response.ok) throw new Error(result.error || "Failed to create court proceeding");
 
       toast({ title: "Court proceeding recorded" });
+      courtRowsCacheRef.current = null;
       setProceedingTarget(null);
       setProceedingForm(emptyProceedingForm);
       refreshCurrentTab();
@@ -551,6 +731,15 @@ export function RecoveriesDashboard() {
     } finally {
       setActionKey(null);
     }
+  };
+
+  const handleAddProceedingFromCase = () => {
+    if (!courtCaseTarget || !courtCaseData?.cases.length) return;
+    const caseNumber = courtCaseData.cases[0]?.case_number || courtCaseTarget.accountNo;
+    setProceedingTarget(courtCaseTarget);
+    setProceedingForm(buildProceedingForm(courtCaseTarget, caseNumber));
+    setCourtCaseTarget(null);
+    setCourtCaseData(null);
   };
 
   return (
@@ -627,7 +816,11 @@ export function RecoveriesDashboard() {
 
           <div className="mt-4">
             {activeTab === "court" ? (
-              <CourtProceedingsTable rows={courtRows} loading={courtLoading} />
+              <CourtCasesTable
+                rows={courtRows}
+                loading={courtLoading}
+                onViewProceedings={handleViewCaseProceedings}
+              />
             ) : activeTab === "performance" ? (
               <BranchPerformanceTable rows={summary?.byOffice || []} currencyCode={displayedCurrency} loading={loading} />
             ) : (
@@ -643,20 +836,7 @@ export function RecoveriesDashboard() {
                   setNoteTarget(row);
                   setNoteText("");
                 }}
-                onStartCourt={(row) => {
-                  setCourtCaseTarget(row);
-                  setCourtCaseForm({
-                    ...emptyCourtCaseForm,
-                    caseNumber: row.accountNo,
-                  });
-                }}
-                onAddProceeding={(row) => {
-                  setProceedingTarget(row);
-                  setProceedingForm({
-                    ...emptyProceedingForm,
-                    caseNumber: row.accountNo,
-                  });
-                }}
+                onOpenCourtCase={handleOpenCourtCase}
                 onWriteOff={(row) => {
                   setWriteOffTarget(row);
                   setWriteOffNote("");
@@ -745,21 +925,120 @@ export function RecoveriesDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(courtCaseTarget)} onOpenChange={(open) => !open && setCourtCaseTarget(null)}>
-        <DialogContent className="sm:max-w-2xl">
+      <Dialog
+        open={Boolean(courtCaseTarget)}
+        onOpenChange={(open) => {
+          if (!open && !courtCaseLoading) {
+            setCourtCaseTarget(null);
+            setCourtCaseData(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Start Court Process</DialogTitle>
+            <DialogTitle>Court Case</DialogTitle>
             <DialogDescription>
               {courtCaseTarget ? `${courtCaseTarget.clientName} - ${courtCaseTarget.accountNo}` : ""}
             </DialogDescription>
           </DialogHeader>
-          <CourtCaseFields form={courtCaseForm} setForm={setCourtCaseForm} />
+          {courtCaseLoading || !courtCaseData ? (
+            <div className="space-y-3 py-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-28 w-full" />
+            </div>
+          ) : courtCaseData.cases.length === 0 ? (
+            <>
+              <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                No court case has been started for this loan.
+              </div>
+              <CourtCaseFields form={courtCaseForm} setForm={setCourtCaseForm} />
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCourtCaseTarget(null);
+                    setCourtCaseData(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleSubmitCourtCase} disabled={!courtCaseFormValid || actionKey === "court-case"}>
+                  {actionKey === "court-case" && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Create Case
+                </Button>
+              </DialogFooter>
+            </>
+          ) : courtCaseTarget ? (
+            <>
+              <CourtCaseDetails data={courtCaseData} />
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCourtCaseTarget(null);
+                    setCourtCaseData(null);
+                  }}
+                >
+                  Close
+                </Button>
+                <Button onClick={handleAddProceedingFromCase}>
+                  <MessageSquarePlus className="h-4 w-4" />
+                  Add Proceeding
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(caseProceedingsTarget)}
+        onOpenChange={(open) => {
+          if (!open && !caseProceedingsLoading) {
+            setCaseProceedingsTarget(null);
+            setCaseProceedingsData(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Court Proceedings</DialogTitle>
+            <DialogDescription>
+              {caseProceedingsTarget
+                ? `${caseProceedingsTarget.client_name || "Client"} - ${caseProceedingsTarget.case_number || caseProceedingsTarget.loan_account_no || ""}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {caseProceedingsLoading || !caseProceedingsData ? (
+            <div className="space-y-3 py-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-28 w-full" />
+            </div>
+          ) : (
+            <CourtCaseDetails
+              data={caseProceedingsData}
+              caseNumber={caseProceedingsTarget?.case_number}
+              fallbackCase={caseProceedingsTarget ?? undefined}
+            />
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCourtCaseTarget(null)}>Cancel</Button>
-            <Button onClick={handleSubmitCourtCase} disabled={actionKey === "court-case"}>
-              {actionKey === "court-case" && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save Case
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCaseProceedingsTarget(null);
+                setCaseProceedingsData(null);
+              }}
+            >
+              Close
             </Button>
+            {caseProceedingsTarget?.client_id && caseProceedingsTarget.loan_id && (
+              <Button asChild>
+                <Link href={`/clients/${caseProceedingsTarget.client_id}/loans/${caseProceedingsTarget.loan_id}`}>
+                  <ExternalLink className="h-4 w-4" />
+                  Open Loan
+                </Link>
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -775,7 +1054,7 @@ export function RecoveriesDashboard() {
           <ProceedingFields form={proceedingForm} setForm={setProceedingForm} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setProceedingTarget(null)}>Cancel</Button>
-            <Button onClick={handleSubmitProceeding} disabled={actionKey === "proceeding"}>
+            <Button onClick={handleSubmitProceeding} disabled={!proceedingFormValid || actionKey === "proceeding"}>
               {actionKey === "proceeding" && <Loader2 className="h-4 w-4 animate-spin" />}
               Save Proceeding
             </Button>
@@ -795,8 +1074,7 @@ function ArrearsTable({
   onPageChange,
   onSendReminder,
   onAddNote,
-  onStartCourt,
-  onAddProceeding,
+  onOpenCourtCase,
   onWriteOff,
 }: {
   rows: RecoveryLoanRow[];
@@ -807,8 +1085,7 @@ function ArrearsTable({
   onPageChange: (page: number) => void;
   onSendReminder: (row: RecoveryLoanRow) => void;
   onAddNote: (row: RecoveryLoanRow) => void;
-  onStartCourt: (row: RecoveryLoanRow) => void;
-  onAddProceeding: (row: RecoveryLoanRow) => void;
+  onOpenCourtCase: (row: RecoveryLoanRow) => void;
   onWriteOff: (row: RecoveryLoanRow) => void;
 }) {
   if (loading) {
@@ -881,7 +1158,7 @@ function ArrearsTable({
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="ml-auto flex w-[104px] justify-between gap-2">
                     Action
-                    {actionKey === `${row.loanId}:reminder` ? (
+                    {actionKey?.startsWith(`${row.loanId}:`) ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <ChevronDown className="h-4 w-4" />
@@ -891,6 +1168,17 @@ function ArrearsTable({
                 <DropdownMenuContent align="end" className="w-56">
                   {isNpaView ? (
                     <>
+                      <DropdownMenuItem
+                        onClick={() => onOpenCourtCase(row)}
+                        disabled={actionKey === `${row.loanId}:court-case`}
+                      >
+                        {actionKey === `${row.loanId}:court-case` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Gavel className="h-4 w-4" />
+                        )}
+                        Court case
+                      </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <Link href={row.loanDetailUrl}>
                           <ExternalLink className="h-4 w-4" />
@@ -919,14 +1207,6 @@ function ArrearsTable({
                       <DropdownMenuItem onClick={() => onAddNote(row)}>
                         <StickyNote className="h-4 w-4" />
                         Add follow-up note
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onStartCourt(row)}>
-                        <Gavel className="h-4 w-4" />
-                        Start court process
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onAddProceeding(row)}>
-                        <MessageSquarePlus className="h-4 w-4" />
-                        Add court proceeding
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem asChild>
@@ -1053,7 +1333,7 @@ function BranchPerformanceTable({
           <TableHead className="text-right">NPA</TableHead>
           <TableHead className="text-right">Overdue</TableHead>
           <TableHead className="text-right">PAR30 Exposure</TableHead>
-          <TableHead className="text-right">Current Rate</TableHead>
+          <TableHead className="text-right">Active Loans Not In Arrears</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -1086,7 +1366,7 @@ function BranchPerformanceSkeleton() {
           <TableHead className="text-right">PAR60</TableHead>
           <TableHead className="text-right">PAR90</TableHead>
           <TableHead className="text-right">NPA</TableHead>
-          <TableHead className="text-right">Current Rate</TableHead>
+          <TableHead className="text-right">Active Loans Not In Arrears</TableHead>
           <TableHead className="text-right">PAR30 Exposure</TableHead>
         </TableRow>
       </TableHeader>
@@ -1108,15 +1388,23 @@ function BranchPerformanceSkeleton() {
   );
 }
 
-function CourtProceedingsTable({ rows, loading }: { rows: CourtReportRow[]; loading: boolean }) {
+function CourtCasesTable({
+  rows,
+  loading,
+  onViewProceedings,
+}: {
+  rows: CourtReportRow[];
+  loading: boolean;
+  onViewProceedings: (row: CourtReportRow) => void;
+}) {
   if (loading) {
-    return <CourtProceedingsSkeleton />;
+    return <CourtCasesSkeleton />;
   }
 
   if (rows.length === 0) {
     return (
       <div className="py-14 text-center text-sm text-muted-foreground">
-        No court proceedings found. Run the recovery report setup if this is the first time using this module.
+        No court cases found. Run the recovery report setup if this is the first time using this module.
       </div>
     );
   }
@@ -1128,11 +1416,12 @@ function CourtProceedingsTable({ rows, loading }: { rows: CourtReportRow[]; load
           <TableHead>Account</TableHead>
           <TableHead>Client</TableHead>
           <TableHead>Case</TableHead>
-          <TableHead>Date</TableHead>
+          <TableHead>Court</TableHead>
+          <TableHead>Started</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Next Hearing</TableHead>
           <TableHead>Outcome</TableHead>
-          <TableHead className="text-right">Loan</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -1148,23 +1437,42 @@ function CourtProceedingsTable({ rows, loading }: { rows: CourtReportRow[]; load
             </TableCell>
             <TableCell>
               <div className="font-medium">{row.case_number || "-"}</div>
-              <div className="text-xs text-muted-foreground">{row.proceeding_type || "Proceeding"}</div>
+              <div className="text-xs text-muted-foreground">{row.lawyer_name || "No lawyer recorded"}</div>
             </TableCell>
-            <TableCell>{formatDate(row.proceeding_date)}</TableCell>
-            <TableCell><Badge variant="secondary">{row.status || "Recorded"}</Badge></TableCell>
+            <TableCell>{row.court_name || "-"}</TableCell>
+            <TableCell>{formatDate(row.started_on_date)}</TableCell>
+            <TableCell><Badge variant="secondary">{row.status || "Started"}</Badge></TableCell>
             <TableCell>{formatDate(row.next_hearing_date)}</TableCell>
             <TableCell className="max-w-[220px] truncate">{row.outcome || row.notes || "-"}</TableCell>
             <TableCell className="text-right">
-              {row.client_id && row.loan_id ? (
-                <Button size="sm" variant="ghost" asChild>
-                  <Link href={`/clients/${row.client_id}/loans/${row.loan_id}`}>
-                    <ExternalLink className="h-4 w-4" />
-                    Open
-                  </Link>
-                </Button>
-              ) : (
-                "-"
-              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="ml-auto flex w-[104px] justify-between gap-2">
+                    Action
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => onViewProceedings(row)} disabled={!row.loan_id}>
+                    <MessageSquarePlus className="h-4 w-4" />
+                    View proceedings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {row.client_id && row.loan_id ? (
+                    <DropdownMenuItem asChild>
+                      <Link href={`/clients/${row.client_id}/loans/${row.loan_id}`}>
+                        <ExternalLink className="h-4 w-4" />
+                        Open loan
+                      </Link>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem disabled>
+                      <ExternalLink className="h-4 w-4" />
+                      Open loan
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </TableCell>
           </TableRow>
         ))}
@@ -1173,7 +1481,7 @@ function CourtProceedingsTable({ rows, loading }: { rows: CourtReportRow[]; load
   );
 }
 
-function CourtProceedingsSkeleton() {
+function CourtCasesSkeleton() {
   return (
     <Table>
       <TableHeader>
@@ -1181,16 +1489,17 @@ function CourtProceedingsSkeleton() {
           <TableHead>Account</TableHead>
           <TableHead>Client</TableHead>
           <TableHead>Case</TableHead>
-          <TableHead>Date</TableHead>
+          <TableHead>Court</TableHead>
+          <TableHead>Started</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Next Hearing</TableHead>
           <TableHead>Outcome</TableHead>
-          <TableHead className="text-right">Loan</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {Array.from({ length: 8 }).map((_, index) => (
-          <TableRow key={`court-proceeding-skeleton-${index}`}>
+          <TableRow key={`court-case-skeleton-${index}`}>
             <TableCell>
               <Skeleton className="h-4 w-24" />
               <Skeleton className="mt-2 h-3 w-32" />
@@ -1203,16 +1512,132 @@ function CourtProceedingsSkeleton() {
               <Skeleton className="h-4 w-24" />
               <Skeleton className="mt-2 h-3 w-20" />
             </TableCell>
+            <TableCell><Skeleton className="h-4 w-24" /></TableCell>
             <TableCell><Skeleton className="h-4 w-20" /></TableCell>
             <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
             <TableCell><Skeleton className="h-4 w-20" /></TableCell>
             <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-            <TableCell><Skeleton className="ml-auto h-8 w-20" /></TableCell>
+            <TableCell><Skeleton className="ml-auto h-8 w-36" /></TableCell>
           </TableRow>
         ))}
       </TableBody>
     </Table>
   );
+}
+
+function normalizeCaseNumber(value?: string) {
+  return value?.trim().toLowerCase() || "";
+}
+
+function CourtCaseDetails({
+  data,
+  caseNumber,
+  fallbackCase,
+}: {
+  data: LoanCourtData;
+  caseNumber?: string;
+  fallbackCase?: CourtReportRow;
+}) {
+  const normalizedCaseNumber = normalizeCaseNumber(caseNumber);
+  const fallbackCourtCase: CourtCaseRecord | undefined = fallbackCase
+    ? {
+        id: fallbackCase.id,
+        loan_id: fallbackCase.loan_id,
+        case_number: fallbackCase.case_number,
+        court_name: fallbackCase.court_name,
+        filing_date: fallbackCase.filing_date,
+        lawyer_name: fallbackCase.lawyer_name,
+        status: fallbackCase.status,
+        court_process_started: fallbackCase.court_process_started,
+        started_on_date: fallbackCase.started_on_date,
+        started_by: fallbackCase.started_by,
+        next_hearing_date: fallbackCase.next_hearing_date,
+        outcome: fallbackCase.outcome,
+        notes: fallbackCase.notes,
+      }
+    : undefined;
+  const courtCase = normalizedCaseNumber
+    ? data.cases.find((item) => normalizeCaseNumber(item.case_number) === normalizedCaseNumber) || fallbackCourtCase || data.cases[0]
+    : data.cases[0] || fallbackCourtCase;
+  const proceedings = normalizedCaseNumber
+    ? data.proceedings.filter((proceeding) => normalizeCaseNumber(proceeding.case_number) === normalizedCaseNumber)
+    : data.proceedings;
+
+  if (!courtCase) return null;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="font-medium">{courtCase.case_number || "Court case"}</div>
+            <div className="text-sm text-muted-foreground">{courtCase.court_name || "Court not recorded"}</div>
+          </div>
+          <Badge variant="secondary">{courtCase.status || "STARTED"}</Badge>
+        </div>
+        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          <CourtDetail label="Started" value={formatDate(courtCase.started_on_date)} />
+          <CourtDetail label="Started By" value={courtCase.started_by || "-"} />
+          <CourtDetail label="Filing Date" value={formatDate(courtCase.filing_date)} />
+          <CourtDetail label="Next Hearing" value={formatDate(courtCase.next_hearing_date)} />
+          <CourtDetail label="Lawyer / Agent" value={courtCase.lawyer_name || "-"} />
+          <CourtDetail label="Outcome" value={courtCase.outcome || "-"} />
+        </div>
+        {courtCase.notes && (
+          <div className="mt-4 rounded-md bg-muted p-3 text-sm">
+            {courtCase.notes}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="text-sm font-medium">Proceedings</div>
+        {proceedings.length === 0 ? (
+          <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+            No proceedings have been recorded for this case.
+          </div>
+        ) : (
+          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+            {proceedings.map((proceeding, index) => (
+              <div key={proceeding.id ?? `${proceeding.proceeding_date}-${index}`} className="rounded-md border p-3 text-sm">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="font-medium">{proceeding.proceeding_type || "Proceeding"}</div>
+                    <div className="text-muted-foreground">{formatDate(proceeding.proceeding_date)}</div>
+                  </div>
+                  <Badge variant="outline">{proceeding.status || "RECORDED"}</Badge>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <CourtDetail label="Next Hearing" value={formatDate(proceeding.next_hearing_date)} />
+                  <CourtDetail label="Recorded By" value={proceeding.recorded_by || "-"} />
+                  <CourtDetail label="Outcome" value={proceeding.outcome || "-"} />
+                  <CourtDetail label="Case Number" value={proceeding.case_number || courtCase.case_number || "-"} />
+                </div>
+                {proceeding.notes && (
+                  <div className="mt-3 rounded-md bg-muted p-2 text-muted-foreground">
+                    {proceeding.notes}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CourtDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="font-medium">{value || "-"}</div>
+    </div>
+  );
+}
+
+function requiredControlClass(value: string) {
+  return value.trim() ? undefined : "border-destructive focus-visible:ring-destructive/30";
 }
 
 function CourtCaseFields({
@@ -1224,11 +1649,23 @@ function CourtCaseFields({
 }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Case Number" id="caseNumber">
-        <Input id="caseNumber" value={form.caseNumber} onChange={(event) => setForm({ ...form, caseNumber: event.target.value })} />
+      <Field label="Case Number" id="caseNumber" required>
+        <Input
+          id="caseNumber"
+          value={form.caseNumber}
+          onChange={(event) => setForm({ ...form, caseNumber: event.target.value })}
+          className={requiredControlClass(form.caseNumber)}
+          required
+        />
       </Field>
-      <Field label="Court Name" id="courtName">
-        <Input id="courtName" value={form.courtName} onChange={(event) => setForm({ ...form, courtName: event.target.value })} />
+      <Field label="Court Name" id="courtName" required>
+        <Input
+          id="courtName"
+          value={form.courtName}
+          onChange={(event) => setForm({ ...form, courtName: event.target.value })}
+          className={requiredControlClass(form.courtName)}
+          required
+        />
       </Field>
       <Field label="Filing Date" id="filingDate">
         <Input id="filingDate" type="date" value={form.filingDate} onChange={(event) => setForm({ ...form, filingDate: event.target.value })} />
@@ -1236,9 +1673,9 @@ function CourtCaseFields({
       <Field label="Lawyer / Agent" id="lawyerName">
         <Input id="lawyerName" value={form.lawyerName} onChange={(event) => setForm({ ...form, lawyerName: event.target.value })} />
       </Field>
-      <Field label="Status" id="caseStatus">
+      <Field label="Status" id="caseStatus" required>
         <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value })}>
-          <SelectTrigger id="caseStatus"><SelectValue /></SelectTrigger>
+          <SelectTrigger id="caseStatus" className={requiredControlClass(form.status)}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="STARTED">Started</SelectItem>
             <SelectItem value="FILED">Filed</SelectItem>
@@ -1248,8 +1685,15 @@ function CourtCaseFields({
           </SelectContent>
         </Select>
       </Field>
-      <Field label="Started On" id="startedOnDate">
-        <Input id="startedOnDate" type="date" value={form.startedOnDate} onChange={(event) => setForm({ ...form, startedOnDate: event.target.value })} />
+      <Field label="Started On" id="startedOnDate" required>
+        <Input
+          id="startedOnDate"
+          type="date"
+          value={form.startedOnDate}
+          onChange={(event) => setForm({ ...form, startedOnDate: event.target.value })}
+          className={requiredControlClass(form.startedOnDate)}
+          required
+        />
       </Field>
       <Field label="Next Hearing" id="nextHearingDate">
         <Input id="nextHearingDate" type="date" value={form.nextHearingDate} onChange={(event) => setForm({ ...form, nextHearingDate: event.target.value })} />
@@ -1275,18 +1719,38 @@ function ProceedingFields({
 }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="Case Number" id="proceedingCaseNumber">
-        <Input id="proceedingCaseNumber" value={form.caseNumber} onChange={(event) => setForm({ ...form, caseNumber: event.target.value })} />
+      <Field label="Case Number" id="proceedingCaseNumber" required>
+        <Input
+          id="proceedingCaseNumber"
+          value={form.caseNumber}
+          onChange={(event) => setForm({ ...form, caseNumber: event.target.value })}
+          className={requiredControlClass(form.caseNumber)}
+          required
+        />
       </Field>
-      <Field label="Proceeding Date" id="proceedingDate">
-        <Input id="proceedingDate" type="date" value={form.proceedingDate} onChange={(event) => setForm({ ...form, proceedingDate: event.target.value })} />
+      <Field label="Proceeding Date" id="proceedingDate" required>
+        <Input
+          id="proceedingDate"
+          type="date"
+          value={form.proceedingDate}
+          onChange={(event) => setForm({ ...form, proceedingDate: event.target.value })}
+          className={requiredControlClass(form.proceedingDate)}
+          required
+        />
       </Field>
-      <Field label="Type" id="proceedingType">
-        <Input id="proceedingType" value={form.proceedingType} onChange={(event) => setForm({ ...form, proceedingType: event.target.value })} placeholder="Hearing, filing, judgement..." />
+      <Field label="Type" id="proceedingType" required>
+        <Input
+          id="proceedingType"
+          value={form.proceedingType}
+          onChange={(event) => setForm({ ...form, proceedingType: event.target.value })}
+          placeholder="Hearing, filing, judgement..."
+          className={requiredControlClass(form.proceedingType)}
+          required
+        />
       </Field>
-      <Field label="Status" id="proceedingStatus">
+      <Field label="Status" id="proceedingStatus" required>
         <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value })}>
-          <SelectTrigger id="proceedingStatus"><SelectValue /></SelectTrigger>
+          <SelectTrigger id="proceedingStatus" className={requiredControlClass(form.status)}><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="RECORDED">Recorded</SelectItem>
             <SelectItem value="ADJOURNED">Adjourned</SelectItem>
@@ -1314,15 +1778,20 @@ function ProceedingFields({
 function Field({
   id,
   label,
+  required = false,
   children,
 }: {
   id: string;
   label: string;
+  required?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>
+        {label}
+        {required && <span className="ml-1 text-destructive">*</span>}
+      </Label>
       {children}
     </div>
   );

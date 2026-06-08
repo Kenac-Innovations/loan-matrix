@@ -83,6 +83,7 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
         href="/loans"
         subMenuItems={[
           { label: "All Loans", href: "/loans" },
+          { label: "Recoveries", href: "/loans/recoveries" },
           ...(isEnabled("hasCreditFacility")
             ? [{ label: "Credit Facilities", href: "/credit-facilities" }]
             : []),
@@ -105,7 +106,7 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
         href="/collections"
         subMenuItems={[
           { label: "Expected Payments", href: "/collections" },
-          { label: "Recoveries", href: "/collections/recoveries" },
+          { label: "Branch Performance", href: "/collections/branch-performance" },
           { label: "Bulk Receipting", href: "/collections/bulk-receipting" },
           { label: "Loan Product Eligibility", href: "/collections/loan-product-eligibility" },
         ]}

@@ -14,6 +14,23 @@ export async function POST(
     }
 
     const body = await request.json();
+    const requiredFields = [
+      ["caseNumber", "Case number"],
+      ["courtName", "Court name"],
+      ["status", "Status"],
+      ["startedOnDate", "Started on date"],
+    ] as const;
+    const missingFields = requiredFields
+      .filter(([field]) => !(typeof body[field] === "string" && body[field].trim()))
+      .map(([, label]) => label);
+
+    if (missingFields.length > 0) {
+      return NextResponse.json(
+        { error: `Required fields missing: ${missingFields.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
     const result = await createCourtCase(
       loanId,
       {

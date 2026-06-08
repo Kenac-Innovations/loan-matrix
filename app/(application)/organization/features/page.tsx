@@ -18,6 +18,7 @@ import {
   setupCreditFacilityDatatables,
   setupCreditFacilityReports,
 } from "@/app/actions/credit-facility-actions";
+import { setupBranchCollectionPerformanceReports } from "@/app/actions/collection-actions";
 import {
   setupRecoveryDatatables,
   setupRecoveriesReports,
@@ -128,6 +129,8 @@ export default function FeaturesSettingsPage() {
   const [recoverySetupError, setRecoverySetupError] = useState<string | null>(null);
   const [recoveryReportsStatus, setRecoveryReportsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [recoveryReportsError, setRecoveryReportsError] = useState<string | null>(null);
+  const [collectionReportsStatus, setCollectionReportsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [collectionReportsError, setCollectionReportsError] = useState<string | null>(null);
 
   const fetchFeatures = useCallback(async () => {
     try {
@@ -225,6 +228,19 @@ export default function FeaturesSettingsPage() {
     } else {
       setRecoveryReportsStatus("error");
       setRecoveryReportsError(result.error ?? "Setup failed");
+    }
+  };
+
+  const handleSetupCollectionReports = async () => {
+    setCollectionReportsStatus("loading");
+    setCollectionReportsError(null);
+    const result = await setupBranchCollectionPerformanceReports();
+    if (result.success) {
+      setCollectionReportsStatus("success");
+      setTimeout(() => setCollectionReportsStatus("idle"), 3000);
+    } else {
+      setCollectionReportsStatus("error");
+      setCollectionReportsError(result.error ?? "Setup failed");
     }
   };
 
@@ -326,7 +342,7 @@ export default function FeaturesSettingsPage() {
               {recoverySetupStatus === "success" ? "Done" : "Run Setup"}
             </Button>
           </div>
-          <div className="flex items-start justify-between gap-4 py-2">
+          <div className="flex items-start justify-between gap-4 py-2 border-b">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">Recovery Reports</p>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -346,6 +362,28 @@ export default function FeaturesSettingsPage() {
               {recoveryReportsStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
               {recoveryReportsStatus === "success" && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />}
               {recoveryReportsStatus === "success" ? "Done" : "Run Setup"}
+            </Button>
+          </div>
+          <div className="flex items-start justify-between gap-4 py-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Collection Performance Reports</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Register the branch collection performance report for expected versus actual collections.
+              </p>
+              {collectionReportsStatus === "error" && collectionReportsError && (
+                <p className="text-xs text-destructive mt-1">{collectionReportsError}</p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSetupCollectionReports}
+              disabled={collectionReportsStatus === "loading"}
+              className="shrink-0"
+            >
+              {collectionReportsStatus === "loading" && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
+              {collectionReportsStatus === "success" && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1.5" />}
+              {collectionReportsStatus === "success" ? "Done" : "Run Setup"}
             </Button>
           </div>
         </CardContent>
