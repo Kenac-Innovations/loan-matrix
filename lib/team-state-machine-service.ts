@@ -19,6 +19,13 @@ import {
   recordMobileMoneyPayout,
   reverseMobileMoneyPayout,
 } from "./mobile-money-transactions";
+import {
+  getDisbursementBlockReason,
+  getOriginatorAssignmentData,
+  getTenantLeadPolicyFlags,
+  isApprovalActionStage,
+  isDisbursementActionStage,
+} from "./lead-policy";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -359,6 +366,8 @@ export class TeamAwareStateMachineService {
         return { success: false, message: "Lead not found" };
       }
 
+      const tenantLeadPolicy = await getTenantLeadPolicyFlags(lead.tenantId);
+
       // 1. Validate the transition (stage rules + team permissions)
       const validation = await this.validateTransitionWithTeams(
         lead.currentStageId,
@@ -449,8 +458,9 @@ export class TeamAwareStateMachineService {
 
       // 1d. Execute Fineract actions from skipped stages in pipeline order
       const skippedActionResults: string[] = [];
+      let skippedStageRecords: any[] = [];
       if (skippedStages.length > 0 && lead.fineractLoanId) {
-        const skippedStageRecords = await prisma.pipelineStage.findMany({
+        skippedStageRecords = await prisma.pipelineStage.findMany({
           where: { id: { in: skippedStages } },
           orderBy: { order: "asc" },
         });
@@ -499,7 +509,7 @@ export class TeamAwareStateMachineService {
       }
 
       // 2. Determine assignment for the target stage
-      const assignment = await this.resolveAssignment(
+      await this.resolveAssignment(
         request.leadId,
         request.targetStageId,
         lead.tenantId
@@ -514,6 +524,24 @@ export class TeamAwareStateMachineService {
       const currentFineractAction = lead.currentStage?.fineractAction;
       const isBackward = targetStage && lead.currentStage
         && (targetStage.order ?? 999) < (lead.currentStage.order ?? 0);
+      const disbursementBlockReason =
+        !isBackward && isDisbursementActionStage(targetStage)
+          ? getDisbursementBlockReason({
+              onlyOriginatorCanDisburse:
+                tenantLeadPolicy.onlyOriginatorCanDisburse,
+              designatedDisburserUserId: lead.designatedDisburserUserId,
+              designatedDisburserUserName: lead.designatedDisburserUserName,
+              currentFineractUserId: Number.parseInt(request.triggeredBy, 10),
+            })
+          : null;
+
+      if (disbursementBlockReason) {
+        return {
+          success: false,
+          message: disbursementBlockReason,
+        };
+      }
+
       const combinedPayoutWithDisbursement =
         targetStage?.fineractAction === "disburse" &&
         !isBackward &&
@@ -700,16 +728,24 @@ export class TeamAwareStateMachineService {
         }
       }
 
+      const approvalAssignment =
+        tenantLeadPolicy.autoAssignLeadOnApproval &&
+        !isBackward &&
+        (isApprovalActionStage(targetStage) ||
+          skippedStageRecords.some((stage) => isApprovalActionStage(stage)))
+          ? getOriginatorAssignmentData(lead)
+          : null;
+
       // 4. Actions succeeded (or weren't needed) — now commit the DB transition
       const [updatedLead, transition] = await prisma.$transaction([
         prisma.lead.update({
           where: { id: request.leadId },
           data: {
             currentStageId: request.targetStageId,
-            assignedToUserId: null,
-            assignedToUserName: null,
-            assignedAt: null,
-            assignedByUserId: null,
+            assignedToUserId: approvalAssignment?.assignedToUserId ?? null,
+            assignedToUserName: approvalAssignment?.assignedToUserName ?? null,
+            assignedAt: approvalAssignment?.assignedAt ?? null,
+            assignedByUserId: approvalAssignment?.assignedByUserId ?? null,
             stateMetadata: {
               lastTransition: new Date().toISOString(),
               lastTransitionEvent: request.event || "MANUAL_TRANSITION",
@@ -794,9 +830,16 @@ export class TeamAwareStateMachineService {
         : skippedStages.length > 0
         ? ` (${skippedStages.length} stage(s) auto-skipped)`
         : "";
+      const assignmentNote = approvalAssignment?.assignedToUserName
+        ? ` Assigned to ${approvalAssignment.assignedToUserName}.`
+        : approvalAssignment?.assignedToUserId
+          ? ` Assigned to the lead originator.`
+          : !targetStage?.isFinalState
+            ? " Awaiting assignment."
+            : "";
       const baseMsg = fineractResult
-        ? `Lead moved to ${targetStage?.name}. ${fineractResult}${skipNote}`
-        : `Lead moved to ${targetStage?.name} — awaiting assignment${skipNote}`;
+        ? `Lead moved to ${targetStage?.name}. ${fineractResult}${skipNote}${assignmentNote}`
+        : `Lead moved to ${targetStage?.name}.${skipNote}${assignmentNote}`;
 
       // Post transition note to Fineract loan if available
       if (lead.fineractLoanId && request.reason) {

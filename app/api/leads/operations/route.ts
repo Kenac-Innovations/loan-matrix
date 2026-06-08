@@ -10,6 +10,7 @@ import {
   extractTenantSlug,
 } from "@/lib/tenant-service";
 import { formatMobileForFineract } from "@/lib/phone-utils";
+import { getOriginatorDesignatedDisburserData } from "@/lib/lead-policy";
 
 // Helper to resolve the current tenant, optionally using the raw request
 // so we can read middleware-set and proxy-set headers directly.
@@ -481,6 +482,13 @@ async function handleSaveDraft(data: any, leadId?: string) {
       throw new Error("User not authenticated");
     }
     const userId = session.user.id;
+    const createdByUserName =
+      session.user.name || session.user.email || userId;
+    const designatedDisburserDefaults = getOriginatorDesignatedDisburserData({
+      originatorUserId: userId,
+      originatorUserName: createdByUserName,
+      assignedByFineractUserId: session.user.userId ?? userId,
+    });
 
     // Resolve current tenant from subdomain/headers
     const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
@@ -546,6 +554,8 @@ async function handleSaveDraft(data: any, leadId?: string) {
       const newLead = await prisma.lead.create({
         data: {
           userId,
+          createdByUserName,
+          ...(designatedDisburserDefaults ?? {}),
           tenantId,
           currentStageId: initialStageId,
           officeId: validatedData.officeId,
@@ -1017,6 +1027,14 @@ async function handleCreateLeadWithClient(data: any) {
               throw new Error("User not authenticated");
             }
             const userId = session.user.id;
+            const createdByUserName =
+              session.user.name || session.user.email || userId;
+            const designatedDisburserDefaults =
+              getOriginatorDesignatedDisburserData({
+                originatorUserId: userId,
+                originatorUserName: createdByUserName,
+                assignedByFineractUserId: session.user.userId ?? userId,
+              });
 
             // Resolve current tenant from subdomain/headers
             const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
@@ -1027,6 +1045,8 @@ async function handleCreateLeadWithClient(data: any) {
             const newLead = await tx.lead.create({
               data: {
                 userId,
+                createdByUserName,
+                ...(designatedDisburserDefaults ?? {}),
                 tenantId,
                 currentStageId: initialStageId,
                 officeId: validatedData.officeId,
@@ -1163,6 +1183,15 @@ async function handleCreateLeadWithClient(data: any) {
         throw new Error("User not authenticated");
       }
       const userId = session.user.id;
+      const createdByUserName =
+        session.user.name || session.user.email || userId;
+      const designatedDisburserDefaults = getOriginatorDesignatedDisburserData(
+        {
+          originatorUserId: userId,
+          originatorUserName: createdByUserName,
+          assignedByFineractUserId: session.user.userId ?? userId,
+        }
+      );
 
       // Resolve current tenant from subdomain/headers
       const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
@@ -1173,6 +1202,8 @@ async function handleCreateLeadWithClient(data: any) {
       const newLead = await tx.lead.create({
         data: {
           userId,
+          createdByUserName,
+          ...(designatedDisburserDefaults ?? {}),
           tenantId,
           currentStageId: initialStageId,
           officeId: validatedData.officeId,
@@ -1477,6 +1508,13 @@ async function handleCreateLeadForExistingClient(data: any) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
+    const createdByUserName =
+      session.user.name || session.user.email || session.user.id;
+    const designatedDisburserDefaults = getOriginatorDesignatedDisburserData({
+      originatorUserId: session.user.id,
+      originatorUserName: createdByUserName,
+      assignedByFineractUserId: session.user.userId ?? session.user.id,
+    });
 
     const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
     const initialStageId = await getInitialStageId(currentTenant.id);
@@ -1491,6 +1529,8 @@ async function handleCreateLeadForExistingClient(data: any) {
     const newLead = await prisma.lead.create({
       data: {
         userId: session.user.id,
+        createdByUserName,
+        ...(designatedDisburserDefaults ?? {}),
         tenantId: currentTenant.id,
         currentStageId: initialStageId,
         officeId: client.officeId,

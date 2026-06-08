@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  getOriginatorAssignmentData,
+  getTenantLeadPolicyFlags,
+} from "@/lib/lead-policy";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 
 /**
@@ -235,7 +239,7 @@ async function handleLoanCreated(payload: FineractLoanWebhookPayload, tenantId: 
  * and automatically assign the loan to the originator
  */
 async function handleLoanApproved(payload: FineractLoanWebhookPayload, tenantId: string) {
-  const { response, request, createdBy, createdByFullName } = payload;
+  const { response, createdBy, createdByFullName } = payload;
   const loanId = response.loanId;
   const externalId = response.resourceExternalId;
   
@@ -270,6 +274,7 @@ async function handleLoanApproved(payload: FineractLoanWebhookPayload, tenantId:
           firstname: true,
           lastname: true,
           userId: true,
+          createdByUserName: true,
           assignedToUserId: true,
         },
       })
@@ -297,21 +302,27 @@ async function handleLoanApproved(payload: FineractLoanWebhookPayload, tenantId:
     }
   }
 
+  const tenantLeadPolicy = await getTenantLeadPolicyFlags(tenantId);
+
   // === AUTO-ASSIGN LOAN TO ORIGINATOR (Local DB only) ===
-  if (originatorMifosId && leadId) {
+  if (tenantLeadPolicy.autoAssignLeadOnApproval && loanRecord && leadId) {
     try {
-      console.log(`Assigning lead ${leadId} to originator (Mifos ID: ${originatorMifosId})`);
-      
-      // Update local lead record with assignment
-      await prisma.lead.update({
-        where: { id: leadId },
-        data: {
-          assignedToUserId: originatorMifosId,
-          assignedAt: new Date(),
-        },
-      });
-      
-      console.log(`Successfully assigned lead ${leadId} to originator (Mifos ID: ${originatorMifosId})`);
+      const assignment = getOriginatorAssignmentData(loanRecord);
+
+      if (assignment) {
+        console.log(
+          `Assigning lead ${leadId} to originator (Mifos ID: ${assignment.assignedToUserId})`
+        );
+
+        await prisma.lead.update({
+          where: { id: leadId },
+          data: assignment,
+        });
+
+        console.log(
+          `Successfully assigned lead ${leadId} to originator (Mifos ID: ${assignment.assignedToUserId})`
+        );
+      }
     } catch (assignError) {
       console.error("Failed to auto-assign lead to originator:", assignError);
       // Continue with alerts even if assignment fails
@@ -343,7 +354,7 @@ async function handleLoanApproved(payload: FineractLoanWebhookPayload, tenantId:
           externalId,
           leadId,
           approvedBy: createdByFullName,
-          autoAssigned: !!originatorMifosId,
+          autoAssigned: tenantLeadPolicy.autoAssignLeadOnApproval && !!originatorMifosId,
           action: "APPROVE",
         },
         createdBy: "System",

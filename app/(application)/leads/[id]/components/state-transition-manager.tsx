@@ -43,6 +43,7 @@ import {
   BarChart3,
   Hand,
   UserCheck,
+  UserX,
   Banknote,
   ShieldCheck,
   Smartphone,
@@ -80,10 +81,24 @@ interface StateTransitionManagerProps {
   currentStage: string;
   currentStageColor?: string;
   preferredPaymentMethod?: string | null;
-  assignedToUserId?: number | null;
   currentUserId?: string;
   isUserInStageTeam?: boolean;
+  canManageLead?: boolean;
   onTransitionComplete?: () => void;
+}
+
+interface DisbursementPolicy {
+  onlyOriginatorCanDisburse: boolean;
+  canOverrideInitiatorDisbursement?: boolean;
+  designatedDisburserUserId?: number | null;
+  designatedDisburserUserName?: string | null;
+  blockReason?: string | null;
+}
+
+interface MifosUser {
+  id: number;
+  displayName: string;
+  officeName?: string;
 }
 
 const strategyLabels: Record<string, { label: string; icon: React.ReactNode }> = {
@@ -112,14 +127,23 @@ export default function StateTransitionManager({
   currentStage,
   currentStageColor,
   preferredPaymentMethod,
-  assignedToUserId,
   currentUserId,
+  isUserInStageTeam,
+  canManageLead = true,
   onTransitionComplete,
 }: StateTransitionManagerProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchingTransitions, setFetchingTransitions] = useState(false);
   const [transitions, setTransitions] = useState<AvailableTransition[]>([]);
+  const [disbursementPolicy, setDisbursementPolicy] =
+    useState<DisbursementPolicy | null>(null);
+  const [mifosUsers, setMifosUsers] = useState<MifosUser[]>([]);
+  const [selectedDesignatedUserId, setSelectedDesignatedUserId] =
+    useState("");
+  const [updatingDesignatedDisburser, setUpdatingDesignatedDisburser] =
+    useState(false);
+  const [loadingMifosUsers, setLoadingMifosUsers] = useState(false);
   const [selectedTransition, setSelectedTransition] = useState<AvailableTransition | null>(null);
   const [reason, setReason] = useState("");
   const [fineractDate, setFineractDate] = useState(new Date().toISOString().split("T")[0]);
@@ -273,6 +297,7 @@ export default function StateTransitionManager({
       if (response.ok) {
         const data = await response.json();
         setTransitions(data.transitions || []);
+        setDisbursementPolicy(data.disbursementPolicy || null);
       }
     } catch (error) {
       console.error("Error fetching available transitions:", error);
@@ -337,6 +362,9 @@ export default function StateTransitionManager({
       setPayoutNotes("");
       setTellers([]);
       setCashiers([]);
+      setMifosUsers([]);
+      setSelectedDesignatedUserId("");
+      setDisbursementPolicy(null);
       setPaymentTypeResolutionError(null);
       setOverrideValidations(false);
       setOverrideReason("");
@@ -380,6 +408,47 @@ export default function StateTransitionManager({
         .catch(() => {});
     }
   }, [currentCashierContext?.isCashier, effectiveAction, normalizedPreferredPaymentMethod, paymentTypes.length]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      effectiveAction !== "disburse" ||
+      !disbursementPolicy?.onlyOriginatorCanDisburse ||
+      !disbursementPolicy?.canOverrideInitiatorDisbursement ||
+      mifosUsers.length > 0
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingMifosUsers(true);
+    fetch("/api/fineract/users")
+      .then((response) => (response.ok ? response.json() : { users: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        setMifosUsers(data.users || []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMifosUsers([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingMifosUsers(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    disbursementPolicy?.canOverrideInitiatorDisbursement,
+    disbursementPolicy?.onlyOriginatorCanDisburse,
+    effectiveAction,
+    mifosUsers.length,
+    open,
+  ]);
 
   useEffect(() => {
     if (effectiveAction !== "disburse") return;
@@ -459,15 +528,119 @@ export default function StateTransitionManager({
     selectedPaymentTypeIsCash,
   ]);
 
-  const isAssigned =
-    currentUserId != null &&
-    assignedToUserId != null &&
-    String(assignedToUserId) === currentUserId;
+  const canSeeButton = Boolean(currentUserId && isUserInStageTeam && canManageLead);
+  const disbursementBlocked =
+    effectiveAction === "disburse" &&
+    Boolean(disbursementPolicy?.onlyOriginatorCanDisburse) &&
+    Boolean(disbursementPolicy?.blockReason);
+  const transitionBlockedByDisbursementPolicy =
+    !selectedTransition?.isBackward && disbursementBlocked;
 
-  const canSeeButton = isAssigned;
+  const handleSetDesignatedDisburser = async () => {
+    if (!selectedDesignatedUserId) return;
+
+    const selectedUser = mifosUsers.find(
+      (user) => String(user.id) === selectedDesignatedUserId
+    );
+
+    if (!selectedUser) {
+      toast({
+        title: "Selection Error",
+        description: "Selected designated disburser was not found.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUpdatingDesignatedDisburser(true);
+    try {
+      const response = await fetch(`/api/leads/${leadId}/designated-disburser`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mifosUserId: selectedUser.id,
+          mifosUserName: selectedUser.displayName,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast({
+          title: "Update Failed",
+          description:
+            result.error || "Could not update the designated disburser.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setSelectedDesignatedUserId("");
+      await fetchAvailableTransitions();
+      toast({
+        title: "Designated Disburser Updated",
+        description: `${selectedUser.displayName} can now disburse this loan.`,
+      });
+    } catch (error) {
+      console.error("Error updating designated disburser:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update the designated disburser.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingDesignatedDisburser(false);
+    }
+  };
+
+  const handleClearDesignatedDisburser = async () => {
+    setUpdatingDesignatedDisburser(true);
+    try {
+      const response = await fetch(`/api/leads/${leadId}/designated-disburser`, {
+        method: "DELETE",
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast({
+          title: "Clear Failed",
+          description:
+            result.error || "Could not clear the designated disburser.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await fetchAvailableTransitions();
+      toast({
+        title: "Designated Disburser Cleared",
+        description: "This loan now requires a designated disburser before it can be disbursed.",
+      });
+    } catch (error) {
+      console.error("Error clearing designated disburser:", error);
+      toast({
+        title: "Error",
+        description: "Failed to clear the designated disburser.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingDesignatedDisburser(false);
+    }
+  };
 
   const handleTransition = async () => {
     if (!selectedTransition) return;
+
+    if (disbursementBlocked) {
+      toast({
+        title: "Disbursement Blocked",
+        description:
+          disbursementPolicy?.blockReason ||
+          "This loan cannot be disbursed right now.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     if (effectiveAction === "disburse") {
       if (normalizedPreferredPaymentMethod && !resolvedPreferredPaymentType) {
@@ -670,11 +843,25 @@ export default function StateTransitionManager({
         <DialogHeader>
           <DialogTitle>Move Lead to Next Stage</DialogTitle>
           <DialogDescription>
-            Select a stage to move this lead to. The lead will be automatically assigned to the receiving team.
+            Select a stage to move this lead forward or back. Team permissions and tenant rules are applied when the transition runs.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-4">
+
+        {disbursementBlocked && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="space-y-1">
+                <p className="font-medium">Disbursement is blocked</p>
+                <p>
+                  {disbursementPolicy?.blockReason}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Multi-approval panel — inside dialog */}
         {needsMultiApproval && (
@@ -1080,6 +1267,97 @@ export default function StateTransitionManager({
 
               {effectiveAction === "disburse" && (
                 <>
+                  {disbursementPolicy?.onlyOriginatorCanDisburse &&
+                    disbursementPolicy?.blockReason && (
+                    <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900 dark:bg-amber-950/30">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-900 flex items-center justify-center">
+                          <ShieldCheck className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                            Designated Disburser
+                          </p>
+                          <p className="font-medium">
+                            {disbursementPolicy.designatedDisburserUserName || "Not set"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Only the designated disburser can complete disbursement for this lead.
+                          </p>
+                          {disbursementPolicy.blockReason && (
+                            <p className="text-sm text-amber-800 dark:text-amber-300">
+                              {disbursementPolicy.blockReason}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {disbursementPolicy.canOverrideInitiatorDisbursement && (
+                        <div className="space-y-3 border-t border-amber-200 pt-3 dark:border-amber-900">
+                          <div className="flex gap-2">
+                            <Select
+                              value={selectedDesignatedUserId}
+                              onValueChange={setSelectedDesignatedUserId}
+                              disabled={loadingMifosUsers || updatingDesignatedDisburser}
+                            >
+                              <SelectTrigger className="flex-1">
+                                <SelectValue
+                                  placeholder={
+                                    loadingMifosUsers
+                                      ? "Loading users..."
+                                      : "Select designated disburser..."
+                                  }
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {mifosUsers.map((user) => (
+                                  <SelectItem key={user.id} value={String(user.id)}>
+                                    <div className="flex items-center gap-2">
+                                      <span>{user.displayName}</span>
+                                      {user.officeName && (
+                                        <span className="text-xs text-muted-foreground">
+                                          ({user.officeName})
+                                        </span>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleSetDesignatedDisburser}
+                              disabled={
+                                !selectedDesignatedUserId ||
+                                loadingMifosUsers ||
+                                updatingDesignatedDisburser
+                              }
+                            >
+                              {updatingDesignatedDisburser ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <ShieldCheck className="h-4 w-4" />
+                              )}
+                            </Button>
+                            {disbursementPolicy.designatedDisburserUserId != null && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={handleClearDesignatedDisburser}
+                                disabled={updatingDesignatedDisburser}
+                                title="Clear designated disburser"
+                              >
+                                <UserX className="h-4 w-4 text-red-500" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label className="text-sm">Payment Type</Label>
                     {normalizedPreferredPaymentMethod ? (
@@ -1538,7 +1816,9 @@ export default function StateTransitionManager({
             onClick={handleTransition}
             disabled={
               loading ||
+              updatingDesignatedDisburser ||
               !selectedTransition ||
+              transitionBlockedByDisbursementPolicy ||
               (!!approvalBlocked && !selectedTransition?.isBackward) ||
               (hasBlockingValidations && !selectedTransition?.isBackward && !overrideValidations) ||
               (hasBlockingValidations && !selectedTransition?.isBackward && overrideValidations && !overrideReason?.trim()) ||

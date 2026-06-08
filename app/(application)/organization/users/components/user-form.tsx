@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Loader2, PenLine, Save, Trash2, Upload } from "lucide-react";
+import {
+  AlertCircle,
+  Building2,
+  Loader2,
+  PenLine,
+  Save,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import {
   createUserAction,
   getStaffOptionsAction,
@@ -14,8 +22,17 @@ import {
   saveUserSignatureAction,
 } from "@/app/actions/user-signature-actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/searchable-select";
@@ -33,6 +50,12 @@ import {
   getNumericPhoneValidationError,
   USER_LOGIN_PHONE_MAX_LENGTH,
 } from "@/lib/phone-utils";
+import {
+  collapseVisibleLeadOfficeSelection,
+  expandVisibleLeadOfficeSelection,
+  getHeadOfficeOption,
+  isHeadOfficeOffice,
+} from "@/shared/user-management/lead-branch-visibility";
 import type {
   StaffOption,
   UserDetail,
@@ -59,8 +82,10 @@ type FormState = {
   lastname: string;
   sendPasswordToEmail: boolean;
   passwordNeverExpires: boolean;
+  canOverrideInitiatorDisbursement: boolean;
   officeId: string;
   staffId: string;
+  visibleLeadOfficeIds: number[];
   roles: string[];
   password: string;
   repeatPassword: string;
@@ -82,8 +107,11 @@ function buildInitialState(
     lastname: initialUser?.lastname ?? "",
     sendPasswordToEmail: true,
     passwordNeverExpires: initialUser?.passwordNeverExpires ?? false,
+    canOverrideInitiatorDisbursement:
+      initialUser?.canOverrideInitiatorDisbursement ?? false,
     officeId: initialUser?.officeId ? String(initialUser.officeId) : "",
     staffId: initialUser?.staff?.id ? String(initialUser.staff.id) : "",
+    visibleLeadOfficeIds: initialUser?.visibleLeadOffices.map((office) => office.id) ?? [],
     roles: initialUser?.selectedRoles.map((role) => String(role.id)) ?? [],
     password: "",
     repeatPassword: "",
@@ -92,6 +120,13 @@ function buildInitialState(
 
 function firstError(errors: FieldErrors, field: string) {
   return errors[field]?.[0];
+}
+
+function areNumberArraysEqual(left: number[], right: number[]) {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }
 
 function readSignatureFile(file: File): Promise<string> {
@@ -155,6 +190,10 @@ export function UserForm({
     mode === "edit" && Boolean(initialUser?.id)
   );
   const [signatureError, setSignatureError] = useState<string | null>(null);
+  const [isLeadBranchDialogOpen, setIsLeadBranchDialogOpen] = useState(false);
+  const [leadBranchSelectionDraft, setLeadBranchSelectionDraft] = useState<
+    number[]
+  >([]);
   const countryCodeOptions = useMemo(
     () =>
       AFRICAN_COUNTRY_CODES.map((entry) => ({
@@ -163,6 +202,80 @@ export function UserForm({
       })),
     []
   );
+  const headOffice = useMemo(
+    () => getHeadOfficeOption(template.allowedOffices),
+    [template.allowedOffices]
+  );
+  const orderedLeadBranchOffices = useMemo(() => {
+    if (!headOffice) {
+      return template.allowedOffices;
+    }
+
+    return [
+      headOffice,
+      ...template.allowedOffices.filter((office) => office.id !== headOffice.id),
+    ];
+  }, [headOffice, template.allowedOffices]);
+  const visibleLeadOfficeSelection = useMemo(
+    () =>
+      collapseVisibleLeadOfficeSelection(
+        form.visibleLeadOfficeIds,
+        template.allowedOffices
+      ),
+    [form.visibleLeadOfficeIds, template.allowedOffices]
+  );
+  const collapsedLeadBranchDraftSelection = useMemo(
+    () =>
+      collapseVisibleLeadOfficeSelection(
+        leadBranchSelectionDraft,
+        template.allowedOffices
+      ),
+    [leadBranchSelectionDraft, template.allowedOffices]
+  );
+  const expandedVisibleLeadOfficeSelection = useMemo(
+    () =>
+      expandVisibleLeadOfficeSelection(
+        visibleLeadOfficeSelection,
+        template.allowedOffices
+      ),
+    [template.allowedOffices, visibleLeadOfficeSelection]
+  );
+  const expandedLeadBranchDraftSelection = useMemo(
+    () =>
+      expandVisibleLeadOfficeSelection(
+        collapsedLeadBranchDraftSelection,
+        template.allowedOffices
+      ),
+    [collapsedLeadBranchDraftSelection, template.allowedOffices]
+  );
+  const displayVisibleLeadOffices = useMemo(() => {
+    const officesById = new Map(
+      template.allowedOffices.map((office) => [office.id, office])
+    );
+
+    return expandedVisibleLeadOfficeSelection
+      .map((officeId) => officesById.get(officeId))
+      .filter((office): office is NonNullable<typeof office> => Boolean(office));
+  }, [expandedVisibleLeadOfficeSelection, template.allowedOffices]);
+  const isHeadOfficeSelection =
+    Boolean(headOffice) && visibleLeadOfficeSelection.includes(headOffice.id);
+  const isHeadOfficeDraftSelection =
+    Boolean(headOffice) &&
+    collapsedLeadBranchDraftSelection.includes(headOffice.id);
+  const initialVisibleLeadOfficeSelection = useMemo(
+    () =>
+      collapseVisibleLeadOfficeSelection(
+        initialUser?.visibleLeadOffices.map((office) => office.id) ?? [],
+        template.allowedOffices
+      ),
+    [initialUser, template.allowedOffices]
+  );
+  const hasUnsavedLeadBranchChanges =
+    template.restrictLeadVisibilityToBranches &&
+    !areNumberArraysEqual(
+      initialVisibleLeadOfficeSelection,
+      visibleLeadOfficeSelection
+    );
 
   useEffect(() => {
     if (mode !== "edit" || !initialUser?.id) {
@@ -203,6 +316,30 @@ export function UserForm({
       isCancelled = true;
     };
   }, [initialUser?.id, mode]);
+
+  useEffect(() => {
+    if (!template.restrictLeadVisibilityToBranches) {
+      return;
+    }
+
+    const normalizedSelection = collapseVisibleLeadOfficeSelection(
+      form.visibleLeadOfficeIds,
+      template.allowedOffices
+    );
+
+    if (areNumberArraysEqual(form.visibleLeadOfficeIds, normalizedSelection)) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      visibleLeadOfficeIds: normalizedSelection,
+    }));
+  }, [
+    form.visibleLeadOfficeIds,
+    template.allowedOffices,
+    template.restrictLeadVisibilityToBranches,
+  ]);
 
   const handleChange = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((current) => ({
@@ -280,6 +417,55 @@ export function UserForm({
     }));
   };
 
+  const updateLeadBranchSelection = (
+    currentSelection: number[],
+    officeId: number,
+    checked: boolean
+  ) => {
+    const normalizedCurrentSelection = collapseVisibleLeadOfficeSelection(
+      currentSelection,
+      template.allowedOffices
+    );
+    const hasHeadOfficeSelected =
+      Boolean(headOffice) &&
+      normalizedCurrentSelection.includes(headOffice.id);
+
+    if (headOffice && officeId === headOffice.id) {
+      return checked ? [headOffice.id] : [];
+    }
+
+    if (headOffice && hasHeadOfficeSelected) {
+      if (checked) {
+        return [headOffice.id];
+      }
+
+      const nextSelection = template.allowedOffices
+        .filter(
+          (office) => office.id !== headOffice.id && office.id !== officeId
+        )
+        .map((office) => office.id);
+
+      return collapseVisibleLeadOfficeSelection(
+        nextSelection,
+        template.allowedOffices
+      );
+    }
+
+    const selectionWithoutHeadOffice = headOffice
+      ? normalizedCurrentSelection.filter((value) => value !== headOffice.id)
+      : normalizedCurrentSelection;
+    const nextSelection = checked
+      ? selectionWithoutHeadOffice.includes(officeId)
+        ? selectionWithoutHeadOffice
+        : [...selectionWithoutHeadOffice, officeId]
+      : selectionWithoutHeadOffice.filter((value) => value !== officeId);
+
+    return collapseVisibleLeadOfficeSelection(
+      nextSelection,
+      template.allowedOffices
+    );
+  };
+
   const handleSignatureSelect = async (file: File) => {
     try {
       setSignatureError(null);
@@ -297,6 +483,22 @@ export function UserForm({
     setSignatureError(null);
     setSignatureData(null);
     setSignatureMarkedForRemoval(hadExistingSignature);
+  };
+
+  const openLeadBranchDialog = () => {
+    setLeadBranchSelectionDraft(visibleLeadOfficeSelection);
+    setIsLeadBranchDialogOpen(true);
+  };
+
+  const applyLeadBranchSelection = () => {
+    handleChange(
+      "visibleLeadOfficeIds",
+      collapseVisibleLeadOfficeSelection(
+        leadBranchSelectionDraft,
+        template.allowedOffices
+      )
+    );
+    setIsLeadBranchDialogOpen(false);
   };
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -320,8 +522,10 @@ export function UserForm({
       lastname: form.lastname,
       sendPasswordToEmail: form.sendPasswordToEmail,
       passwordNeverExpires: form.passwordNeverExpires,
+      canOverrideInitiatorDisbursement: form.canOverrideInitiatorDisbursement,
       officeId: form.officeId,
       staffId: form.staffId || null,
+      visibleLeadOfficeIds: form.visibleLeadOfficeIds,
       roles: form.roles,
       password: form.password,
       repeatPassword: form.repeatPassword,
@@ -586,8 +790,8 @@ export function UserForm({
             <p className="text-sm text-muted-foreground">
               Keep this user exempt from password expiry.
             </p>
-          </div>
-        </label>
+            </div>
+          </label>
 
         {mode === "create" && (
           <label className="flex items-start gap-3 rounded-lg border p-4">
@@ -606,6 +810,231 @@ export function UserForm({
           </label>
         )}
       </div>
+
+      <div className="space-y-4 rounded-xl border p-6">
+        <div className="space-y-1">
+          <h3 className="font-semibold">Lead Access</h3>
+          <p className="text-sm text-muted-foreground">
+            Manage lead visibility restrictions and disbursement override access
+            for this user.
+          </p>
+        </div>
+
+        <label className="flex items-start gap-3 rounded-lg border p-4">
+          <Checkbox
+            checked={form.canOverrideInitiatorDisbursement}
+            onCheckedChange={(checked) =>
+              handleChange("canOverrideInitiatorDisbursement", checked === true)
+            }
+          />
+          <div className="space-y-1">
+            <span className="font-medium">Can override designated disburser</span>
+            <p className="text-sm text-muted-foreground">
+              Allow this user to set or change the designated disburser on a lead.
+            </p>
+          </div>
+        </label>
+
+        <div className="space-y-3 rounded-lg border p-4">
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-medium">Visible Lead Branches</span>
+              <span className="text-xs text-muted-foreground">
+                {template.restrictLeadVisibilityToBranches
+                  ? "Restriction enabled"
+                  : "Restriction disabled"}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {template.restrictLeadVisibilityToBranches
+                ? "Select the branches whose leads this user is allowed to view."
+                : "Branch-based lead visibility is disabled for this tenant."}
+            </p>
+          </div>
+
+          {template.restrictLeadVisibilityToBranches ? (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">
+                    {isHeadOfficeSelection
+                      ? "All branches selected through Head Office"
+                      : displayVisibleLeadOffices.length > 0
+                        ? `${displayVisibleLeadOffices.length} branch${
+                            displayVisibleLeadOffices.length === 1 ? "" : "es"
+                          } selected`
+                        : "No branches selected"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {isHeadOfficeSelection
+                      ? "This user can view leads from every branch."
+                      : displayVisibleLeadOffices.length > 0
+                        ? "These are the branches whose leads this user can view."
+                        : "This user will not see leads until at least one branch is selected."}
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={openLeadBranchDialog}
+                >
+                  <Building2 className="h-4 w-4" />
+                  Select Branches
+                </Button>
+              </div>
+
+              {displayVisibleLeadOffices.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {displayVisibleLeadOffices.map((office) => (
+                    <Badge key={office.id} variant="outline">
+                      {office.name}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
+                  No branch visibility has been configured for this user.
+                </div>
+              )}
+
+              {headOffice && (
+                <p className="text-xs text-muted-foreground">
+                  Selecting {headOffice.name} grants access to every branch.
+                </p>
+              )}
+
+              {hasUnsavedLeadBranchChanges && (
+                <div className="rounded-md border border-dashed px-3 py-3 text-sm text-muted-foreground">
+                  Visible branch changes are staged. Click Save Changes to persist
+                  them.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
+              All leads remain visible while branch restriction is off.
+            </div>
+          )}
+
+          {firstError(fieldErrors, "visibleLeadOfficeIds") && (
+            <p className="text-sm text-destructive">
+              {firstError(fieldErrors, "visibleLeadOfficeIds")}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <Dialog
+        open={isLeadBranchDialogOpen}
+        onOpenChange={(open) => {
+          setIsLeadBranchDialogOpen(open);
+          if (open) {
+            setLeadBranchSelectionDraft(visibleLeadOfficeSelection);
+            return;
+          }
+
+          setLeadBranchSelectionDraft(visibleLeadOfficeSelection);
+        }}
+      >
+        <DialogContent className="sm:max-w-xl max-h-[90vh] flex flex-col overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b px-6 py-5">
+            <DialogTitle>Visible Lead Branches</DialogTitle>
+            <DialogDescription>
+              Select the branches whose leads this user can view.
+              {headOffice
+                ? ` Choosing ${headOffice.name} is treated as access to every branch.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+            <div className="flex flex-wrap items-center gap-2">
+              {expandedLeadBranchDraftSelection.length > 0 ? (
+                expandedLeadBranchDraftSelection.map((officeId) => {
+                  const office = template.allowedOffices.find(
+                    (item) => item.id === officeId
+                  );
+
+                  if (!office) {
+                    return null;
+                  }
+
+                  return (
+                    <Badge key={office.id} variant="outline">
+                      {office.name}
+                    </Badge>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No branches selected yet.
+                </p>
+              )}
+            </div>
+
+            <div className="grid gap-3">
+              {orderedLeadBranchOffices.map((office) => {
+                const isSelected = isHeadOfficeDraftSelection
+                  ? true
+                  : expandedLeadBranchDraftSelection.includes(office.id);
+                const isHeadOffice = isHeadOfficeOffice(office);
+
+                return (
+                  <label
+                    key={office.id}
+                    className="flex items-start gap-3 rounded-md border px-4 py-3"
+                  >
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(checked) =>
+                        setLeadBranchSelectionDraft((current) =>
+                          updateLeadBranchSelection(
+                            current,
+                            office.id,
+                            checked === true
+                          )
+                        )
+                      }
+                    />
+                    <div className="space-y-1">
+                      <span className="text-sm font-medium">{office.name}</span>
+                      {isHeadOffice ? (
+                        <p className="text-xs text-muted-foreground">
+                          Selecting this branch grants access to all branches.
+                        </p>
+                      ) : null}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <DialogFooter className="shrink-0 border-t px-6 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setLeadBranchSelectionDraft(visibleLeadOfficeSelection);
+                setIsLeadBranchDialogOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLeadBranchSelectionDraft([])}
+            >
+              Clear Selection
+            </Button>
+            <Button type="button" onClick={applyLeadBranchSelection}>
+              Apply Branches
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {mode === "create" && !form.sendPasswordToEmail && (
         <div className="grid grid-cols-1 gap-6 rounded-xl border p-6 lg:grid-cols-2">

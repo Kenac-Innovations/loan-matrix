@@ -11,6 +11,7 @@ import { LeadAssignment } from "./lead-assignment";
 
 interface LeadSidebarProps {
   leadId: string;
+  canManageLead?: boolean;
 }
 
 interface TeamMember {
@@ -66,7 +67,10 @@ interface SessionUser {
   id?: string;
 }
 
-export function LeadSidebar({ leadId }: LeadSidebarProps) {
+export function LeadSidebar({
+  leadId,
+  canManageLead = true,
+}: LeadSidebarProps) {
   const { data: session } = useSession();
   const [data, setData] = useState<SidebarData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -168,6 +172,7 @@ export function LeadSidebar({ leadId }: LeadSidebarProps) {
           isSubmitted={data.isSubmitted}
           currentAssignment={data.assignment}
           currentUserId={currentMifosUserId}
+          canManageLead={canManageLead}
           onAssignmentChange={fetchSidebarData}
           loanActionInfo={data.loanActionInfo}
         />

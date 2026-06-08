@@ -58,6 +58,7 @@ interface LeadAssignmentProps {
     assignedAt: string | null;
   };
   currentUserId?: number; // Current logged-in Mifos user ID
+  canManageLead?: boolean;
   onAssignmentChange?: () => void;
   loanActionInfo?: LoanActionInfo;
 }
@@ -67,6 +68,7 @@ export function LeadAssignment({
   isSubmitted,
   currentAssignment,
   currentUserId,
+  canManageLead = true,
   onAssignmentChange,
   loanActionInfo,
 }: LeadAssignmentProps) {
@@ -80,10 +82,6 @@ export function LeadAssignment({
     userName: string | null;
     assignedAt: string | null;
   } | null>(currentAssignment || null);
-
-  // Check if current user is the assigned user
-  const isCurrentUserAssigned =
-    currentUserId && assignedUser?.userId === currentUserId;
 
   // Check if loan is disbursed (active status means disbursed)
   const isDisbursed =
@@ -111,10 +109,10 @@ export function LeadAssignment({
   };
 
   useEffect(() => {
-    if (isSubmitted) {
+    if (isSubmitted && canManageLead) {
       fetchUsers();
     }
-  }, [isSubmitted]);
+  }, [canManageLead, isSubmitted]);
 
   // Update local state when currentAssignment changes
   useEffect(() => {
@@ -374,7 +372,7 @@ export function LeadAssignment({
         )}
 
         {/* Assignment Controls - Only show if not disbursed */}
-        {!isDisbursed && (
+        {!isDisbursed && canManageLead && (
           <>
             {isAssigned && assignedUser?.userName ? (
               <div className="pt-2 border-t">
@@ -483,6 +481,12 @@ export function LeadAssignment({
               </div>
             )}
           </>
+        )}
+
+        {!isDisbursed && !canManageLead && (
+          <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+            This lead is outside your visible lead branches. You can view it, but assignment and stage actions are unavailable.
+          </div>
         )}
       </CardContent>
     </Card>

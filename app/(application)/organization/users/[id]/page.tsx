@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { hasPermissionServer } from "@/lib/authorization";
+import { requireCurrentTenant } from "@/lib/user-login-service";
 import { SpecificPermission } from "@/shared/types/auth";
 
 type UserDetailPageProps = {
@@ -41,14 +42,22 @@ export default async function UserDetailPage({
   }
 
   try {
-    const [user, { signatureData }] = await Promise.all([
+    const [user, { signatureData }, tenant] = await Promise.all([
       getUserAction(userId),
       getUserSignatureAction(userId),
+      requireCurrentTenant(),
     ]);
 
     return (
       <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <Button asChild variant="outline" className="w-fit">
+          <Link href="/organization/users">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Users
+          </Link>
+        </Button>
+
+        <div className="flex flex-col gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-3xl font-bold">{user.displayName}</h1>
@@ -60,13 +69,6 @@ export default async function UserDetailPage({
               View user profile, assigned roles, and administration actions.
             </p>
           </div>
-
-          <Button asChild variant="outline">
-            <Link href="/organization/users">
-              <ArrowLeft className="h-4 w-4" />
-              Back to Users
-            </Link>
-          </Button>
         </div>
 
         <UserDetailActions
@@ -74,7 +76,13 @@ export default async function UserDetailPage({
           canUpdate={canUpdate}
         />
 
-        <UserDetailTabs user={user} signatureData={signatureData} />
+        <UserDetailTabs
+          user={user}
+          signatureData={signatureData}
+          restrictLeadVisibilityToBranches={
+            tenant.restrictLeadVisibilityToBranches ?? false
+          }
+        />
       </div>
     );
   } catch (error) {
@@ -82,7 +90,14 @@ export default async function UserDetailPage({
       error instanceof Error ? error.message : "Failed to load user";
 
     return (
-      <div className="space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <Button asChild variant="outline" className="w-fit">
+          <Link href="/organization/users">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Users
+          </Link>
+        </Button>
+
         <div>
           <h1 className="text-3xl font-bold">User Details</h1>
           <p className="mt-1 text-muted-foreground">

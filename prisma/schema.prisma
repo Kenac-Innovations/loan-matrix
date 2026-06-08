@@ -18,6 +18,9 @@ model Tenant {
   logoLinkId             String?                 // Document service link ID (UUID) for logo
   logoFileUrl            String?                 // Document service file URL for display
   isActive               Boolean                 @default(true)
+  restrictLeadVisibilityToBranches Boolean       @default(false)
+  onlyOriginatorCanDisburse Boolean              @default(false)
+  autoAssignLeadOnApproval Boolean               @default(false)
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   alerts                 Alert[]
@@ -38,6 +41,7 @@ model Tenant {
   usedReceipts           UsedReceipt[]
   loanContractTemplates  LoanContractTemplate[]
   requiredDocuments      RequiredDocument[]
+  leadBranchAccesses     UserLeadBranchAccess[]
   mobileMoneyTransactions MobileMoneyTransaction[]
   invoiceDiscountingCases InvoiceDiscountingCase[]
   invoiceDiscountingInvoices InvoiceDiscountingInvoice[]
@@ -291,6 +295,10 @@ model Lead {
   assignedToUserName         String?             // Mifos/Fineract user display name
   assignedAt                 DateTime?           // When the lead was assigned
   assignedByUserId           String?             // App user who made the assignment
+  designatedDisburserUserId  Int?
+  designatedDisburserUserName String?
+  designatedDisburserAssignedByUserId String?
+  designatedDisburserAssignedAt DateTime?
   familyMembers              FamilyMember[]
   entityStakeholders         EntityStakeholder[]
   entityBankAccounts         EntityBankAccount[]
@@ -1174,6 +1182,7 @@ model UserLogin {
   email                String?
   phone                String?
   countryCode          String?
+  canOverrideInitiatorDisbursement Boolean  @default(false)
   isBlocked            Boolean              @default(false)
   blockedAt            DateTime?
   blockedSource        String?
@@ -1187,12 +1196,31 @@ model UserLogin {
   updatedAt            DateTime             @updatedAt
   tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   blockEvents          UserLoginBlockEvent[]
+  leadBranchAccesses   UserLeadBranchAccess[]
 
   @@unique([tenantId, fineractUserId])
   @@unique([tenantId, username])
   @@index([tenantId, email])
   @@index([tenantId, phone])
   @@index([tenantId, isBlocked])
+}
+
+model UserLeadBranchAccess {
+  id            String    @id @default(cuid())
+  tenantId      String
+  userLoginId   String
+  fineractUserId Int
+  officeId      Int
+  officeName    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userLogin     UserLogin @relation(fields: [userLoginId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, fineractUserId, officeId])
+  @@index([tenantId, fineractUserId])
+  @@index([tenantId, officeId])
+  @@index([userLoginId])
 }
 
 model UserLoginBlockEvent {

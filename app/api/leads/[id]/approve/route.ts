@@ -2,6 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession as getCustomSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import {
+  applyLeadVisibilityScope,
+  getLeadViewerAccessContext,
+} from "@/lib/lead-policy";
+
+async function getAccessibleLeadWhere(
+  leadId: string,
+  fineractUserId: number
+) {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { tenantId: true },
+  });
+
+  if (!lead) {
+    return null;
+  }
+
+  const leadAccess = await getLeadViewerAccessContext(
+    lead.tenantId,
+    fineractUserId
+  );
+
+  return applyLeadVisibilityScope(
+    {
+      id: leadId,
+      tenantId: lead.tenantId,
+    },
+    leadAccess.visibleOfficeIds
+  );
+}
 
 async function resolveLoanAmount(lead: { requestedAmount: number | null; fineractLoanId: number | null }): Promise<number | null> {
   if (lead.requestedAmount != null) return lead.requestedAmount;
@@ -26,16 +57,25 @@ export async function GET(
   try {
     const { id: leadId } = await context.params;
     const session = await getCustomSession();
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session.user.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    const scopedWhere = await getAccessibleLeadWhere(leadId, session.user.userId);
+    if (!scopedWhere) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: scopedWhere,
       include: { currentStage: true },
     });
 
-    if (!lead || !lead.currentStageId || !lead.currentStage) {
+    if (!lead) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    if (!lead.currentStageId || !lead.currentStage) {
       return NextResponse.json({
         requiredApprovals: 1,
         approvals: [],
@@ -132,15 +172,20 @@ export async function POST(
   try {
     const { id: leadId } = await context.params;
     const session = await getCustomSession();
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session.user.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json().catch(() => ({}));
     const { note } = body as { note?: string };
 
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    const scopedWhere = await getAccessibleLeadWhere(leadId, session.user.userId);
+    if (!scopedWhere) {
+      return NextResponse.json({ error: "Lead or stage not found" }, { status: 404 });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: scopedWhere,
       include: { currentStage: true },
     });
 
@@ -250,12 +295,17 @@ export async function DELETE(
   try {
     const { id: leadId } = await context.params;
     const session = await getCustomSession();
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session.user.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    const scopedWhere = await getAccessibleLeadWhere(leadId, session.user.userId);
+    if (!scopedWhere) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: scopedWhere,
       select: { currentStageId: true },
     });
 

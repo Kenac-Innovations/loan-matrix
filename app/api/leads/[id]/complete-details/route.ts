@@ -18,6 +18,11 @@ export async function GET(
   try {
     const params = await context.params;
     const { id: leadId } = params;
+    const session = await getSession();
+
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const tenantSlug = extractTenantSlugFromRequest(request);
 
@@ -25,9 +30,21 @@ export async function GET(
     console.log("Lead ID:", leadId);
     console.log("Tenant Slug:", tenantSlug);
 
-    // Fetch lead from database
-    const lead = await prisma.lead.findUnique({
+    const leadTenant = await prisma.lead.findUnique({
       where: { id: leadId },
+      select: { tenantId: true },
+    });
+
+    if (!leadTenant) {
+      console.error("Lead not found in database:", leadId);
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: {
+        id: leadId,
+        tenantId: leadTenant.tenantId,
+      },
       include: {
         tenant: {
           select: {
@@ -183,7 +200,6 @@ export async function GET(
     try {
       fineractService = await getFineractServiceWithSession();
       // Get session token for raw fetch calls
-      const session = await getSession();
       accessToken =
         session?.base64EncodedAuthenticationKey || session?.accessToken || null;
       // Fallback to service token for raw fetch calls too

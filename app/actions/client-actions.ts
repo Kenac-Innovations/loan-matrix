@@ -6,6 +6,10 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { getTenantFromHeaders, getOrCreateDefaultTenant } from "@/lib/tenant-service";
 import { fetchFineractAPI } from "@/lib/api";
+import {
+  getLeadViewerAccessContext,
+  getOriginatorDesignatedDisburserData,
+} from "@/lib/lead-policy";
 
 // Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
@@ -122,6 +126,11 @@ export async function saveDraft(
     }
     const userId = session.user.id;
     const createdByUserName = session.user.name || session.user.email || userId;
+    const designatedDisburserDefaults = getOriginatorDesignatedDisburserData({
+      originatorUserId: userId,
+      originatorUserName: createdByUserName,
+      assignedByFineractUserId: session.user.userId ?? userId,
+    });
     console.log("==========> User ID from session:", userId);
     console.log("==========> Created by user name:", createdByUserName);
 
@@ -200,6 +209,7 @@ export async function saveDraft(
         data: {
           userId,
           createdByUserName,
+          ...(designatedDisburserDefaults ?? {}),
           tenantId,
           currentStageId: initialStageId,
           officeId: validatedData.officeId,
@@ -612,7 +622,25 @@ export async function getClientTemplateData() {
 export async function getOffices(): Promise<Office[]> {
   try {
     const result = await getClientTemplateData();
-    return result.data.offices;
+    const offices = result.data.offices;
+    const tenant = (await getTenantFromHeaders()) || (await getOrCreateDefaultTenant());
+    const session = await getSession();
+
+    if (!tenant || !session?.user?.userId) {
+      return offices;
+    }
+
+    const leadAccess = await getLeadViewerAccessContext(
+      tenant.id,
+      session.user.userId
+    );
+
+    if (leadAccess.visibleOfficeIds === null) {
+      return offices;
+    }
+
+    const visibleOfficeIds = new Set(leadAccess.visibleOfficeIds);
+    return offices.filter((office) => visibleOfficeIds.has(Number(office.id)));
   } catch (error) {
     console.error("Error getting offices:", error);
     return [];

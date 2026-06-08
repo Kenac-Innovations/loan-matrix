@@ -1,6 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import {
+  applyLeadVisibilityScope,
+  getLeadViewerAccessContext,
+} from "@/lib/lead-policy";
+
+async function getAccessibleLead(leadId: string, fineractUserId: number) {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      tenantId: true,
+    },
+  });
+
+  if (!lead) {
+    return null;
+  }
+
+  const leadAccess = await getLeadViewerAccessContext(
+    lead.tenantId,
+    fineractUserId
+  );
+
+  return prisma.lead.findFirst({
+    where: applyLeadVisibilityScope(
+      {
+        id: leadId,
+        tenantId: lead.tenantId,
+      },
+      leadAccess.visibleOfficeIds
+    ),
+    select: {
+      id: true,
+      tenantId: true,
+      status: true,
+      loanSubmittedToFineract: true,
+      assignedToUserId: true,
+      assignedToUserName: true,
+      firstname: true,
+      lastname: true,
+      requestedAmount: true,
+      fineractLoanId: true,
+    },
+  });
+}
 
 // POST /api/leads/[id]/assign - Assign or reassign a lead to a Mifos user
 export async function POST(
@@ -16,6 +61,10 @@ export async function POST(
     const session = await getSession();
     const assignedByName = session?.user?.name || "System";
 
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     if (!mifosUserId || !mifosUserName) {
       return NextResponse.json(
         { error: "mifosUserId and mifosUserName are required" },
@@ -23,22 +72,7 @@ export async function POST(
       );
     }
 
-    // Check if lead exists and is submitted
-    const lead = await prisma.lead.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        tenantId: true,
-        status: true,
-        loanSubmittedToFineract: true,
-        assignedToUserId: true,
-        assignedToUserName: true,
-        firstname: true,
-        lastname: true,
-        requestedAmount: true,
-        fineractLoanId: true,
-      },
-    });
+    const lead = await getAccessibleLead(id, session.user.userId);
 
     if (!lead) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
@@ -118,11 +152,13 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const session = await getSession();
 
-    const lead = await prisma.lead.findUnique({
-      where: { id },
-      select: { id: true },
-    });
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const lead = await getAccessibleLead(id, session.user.userId);
 
     if (!lead) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
 import prisma from '@/lib/prisma';
+import { getSession } from '@/lib/auth';
+import {
+  applyLeadVisibilityScope,
+  getDisbursementBlockReason,
+  getLeadViewerAccessContext,
+} from '@/lib/lead-policy';
 import { applyTopupDisbursementCharges } from '@/lib/topup-disbursement-charge-service';
 import { extractTenantSlugFromRequest, getTenantBySlug } from '@/lib/tenant-service';
 
@@ -15,6 +21,73 @@ export async function POST(
   try {
     const { id } = await params;
     const payload = await request.json();
+    const session = await getSession();
+
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const tenantSlug = extractTenantSlugFromRequest(request);
+    const tenant = await getTenantBySlug(tenantSlug);
+
+    if (tenant) {
+      const leadAccess = await getLeadViewerAccessContext(
+        tenant.id,
+        session.user.userId
+      );
+      const leadRecord = await prisma.lead.findFirst({
+        where: {
+          tenantId: tenant.id,
+          fineractLoanId: Number(id),
+        },
+        select: {
+          id: true,
+          designatedDisburserUserId: true,
+          designatedDisburserUserName: true,
+        },
+      });
+
+      const linkedLead = leadRecord
+        ? await prisma.lead.findFirst({
+            where: applyLeadVisibilityScope(
+              {
+                id: leadRecord.id,
+                tenantId: tenant.id,
+              },
+              leadAccess.visibleOfficeIds
+            ),
+            select: {
+              id: true,
+              designatedDisburserUserId: true,
+              designatedDisburserUserName: true,
+            },
+          })
+        : null;
+
+      if (leadRecord && !linkedLead) {
+        return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+      }
+
+      if (leadAccess.flags.onlyOriginatorCanDisburse && linkedLead) {
+        const blockReason = getDisbursementBlockReason({
+          onlyOriginatorCanDisburse:
+            leadAccess.flags.onlyOriginatorCanDisburse,
+          designatedDisburserUserId: linkedLead.designatedDisburserUserId,
+          designatedDisburserUserName: linkedLead.designatedDisburserUserName,
+          currentFineractUserId: session.user.userId,
+        });
+
+        if (blockReason) {
+          return NextResponse.json(
+            {
+              error: blockReason,
+              leadId: linkedLead.id,
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
 
     // Try to enrich payload using USSD application linked via loan externalId
     let ussdPhone: string | undefined;
@@ -64,8 +137,6 @@ export async function POST(
 
     // Non-blocking: do not fail disbursement if charge application fails.
     try {
-      const tenantSlug = extractTenantSlugFromRequest(request);
-      const tenant = await getTenantBySlug(tenantSlug);
       if (tenant) {
         await applyTopupDisbursementCharges({
           loanId: Number(id),
@@ -87,23 +158,35 @@ export async function POST(
     }
 
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error disbursing loan:', error);
 
+    const structuredError =
+      typeof error === 'object' && error !== null
+        ? (error as {
+            status?: number;
+            message?: string;
+            errorData?: unknown;
+          })
+        : null;
+
     // Return structured backend error when available
-    if (error.status && error.errorData) {
+    if (structuredError?.status && structuredError.errorData) {
       return NextResponse.json(
         {
-          error: error.message || 'API error',
-          status: error.status,
-          errorData: error.errorData,
+          error: structuredError.message || 'API error',
+          status: structuredError.status,
+          errorData: structuredError.errorData,
         },
-        { status: error.status }
+        { status: structuredError.status }
       );
     }
 
     return NextResponse.json(
-      { error: error.message || 'Unknown error' },
+      {
+        error:
+          error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }

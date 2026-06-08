@@ -56,20 +56,20 @@ export default async function EditUserPage({
 
     return (
       <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <Button asChild variant="outline" className="w-fit">
+          <Link href={`/organization/users/${user.id}`}>
+            <ArrowLeft className="h-4 w-4" />
+            Back to User
+          </Link>
+        </Button>
+
+        <div className="flex flex-col gap-4">
           <div>
             <h1 className="text-3xl font-bold">Edit User</h1>
             <p className="mt-1 text-muted-foreground">
               Update user details, office assignment, and role access.
             </p>
           </div>
-
-          <Button asChild variant="outline">
-            <Link href={`/organization/users/${user.id}`}>
-              <ArrowLeft className="h-4 w-4" />
-              Back to User
-            </Link>
-          </Button>
         </div>
 
         <Card>
@@ -99,7 +99,14 @@ export default async function EditUserPage({
       error instanceof Error ? error.message : "Failed to load user";
 
     return (
-      <div className="space-y-6">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <Button asChild variant="outline" className="w-fit">
+          <Link href={`/organization/users/${userId}`}>
+            <ArrowLeft className="h-4 w-4" />
+            Back to User
+          </Link>
+        </Button>
+
         <div>
           <h1 className="text-3xl font-bold">Edit User</h1>
           <p className="mt-1 text-muted-foreground">

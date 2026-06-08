@@ -3,6 +3,7 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getLeadViewerAccessContext } from "@/lib/lead-policy";
 import { getTenantFeatures } from "@/lib/tenant-features";
 import { isOmamaTenantSlug } from "@/lib/omama-tenant";
 import {
@@ -37,6 +38,12 @@ export async function GET(request: NextRequest) {
     });
     const tenantFeatures = getTenantFeatures(tenant?.settings);
     const session = await getSession();
+    const leadAccess =
+      tenant &&
+      (await getLeadViewerAccessContext(
+        tenant.id,
+        session?.user?.userId ?? null
+      ));
     const userOfficeName =
       ((session?.user as any)?.officeName as string | undefined) || null;
     const userRoles = ((session?.user as any)?.roles || []) as Array<{
@@ -97,7 +104,7 @@ export async function GET(request: NextRequest) {
         tenantId: tenant?.id ?? null,
         tenantSlug,
         allowOpenDateRange,
-        officeNameFilter: effectiveOfficeNameFilter,
+        draftOwnerUserId: session?.user?.id ?? null,
       });
     }
 
@@ -174,6 +181,13 @@ export async function GET(request: NextRequest) {
           const leads = await prisma.lead.findMany({
             where: {
               tenantId: tenant.id,
+              ...(Array.isArray(leadAccess?.visibleOfficeIds)
+                ? {
+                    officeId: {
+                      in: leadAccess?.visibleOfficeIds ?? [],
+                    },
+                  }
+                : {}),
               OR: [
                 ...(loanIds.length > 0 ? [{ fineractLoanId: { in: loanIds.map((id: any) => Number(id)) } }] : []),
                 ...(externalIds.length > 0 ? [{ id: { in: externalIds.map(String) } }] : []),
@@ -298,6 +312,10 @@ export async function GET(request: NextRequest) {
             return enrichedRow;
           });
 
+          if (Array.isArray(leadAccess?.visibleOfficeIds)) {
+            result = result.filter((row: any) => row.lead_id != null);
+          }
+
           if (effectiveOfficeNameFilter) {
             result = result.filter((row: any) =>
               matchesOfficeName(
@@ -369,14 +387,14 @@ async function getDraftsFromLocalDB({
   tenantId,
   tenantSlug,
   allowOpenDateRange,
-  officeNameFilter,
+  draftOwnerUserId,
 }: {
   startDate: string | null;
   endDate: string | null;
   tenantId: string | null;
   tenantSlug: string;
   allowOpenDateRange: boolean;
-  officeNameFilter?: string | null;
+  draftOwnerUserId?: string | null;
 }) {
   try {
     if (!tenantId) {
@@ -384,6 +402,13 @@ async function getDraftsFromLocalDB({
       return NextResponse.json(
         { error: `Tenant not found: ${tenantSlug}` },
         { status: 404 }
+      );
+    }
+
+    if (!draftOwnerUserId) {
+      return NextResponse.json(
+        { data: [], count: 0, report: "drafts", reportName: "Draft Leads (Local)" },
+        { status: 200 }
       );
     }
 
@@ -448,11 +473,9 @@ async function getDraftsFromLocalDB({
     const drafts = await prisma.lead.findMany({
       where: {
         tenantId,
+        userId: draftOwnerUserId,
         loanSubmittedToFineract: false,
         status: "DRAFT",
-        ...(officeNameFilter
-          ? { officeName: { equals: officeNameFilter, mode: "insensitive" } }
-          : {}),
         ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
       },
       orderBy: { createdAt: "desc" },
