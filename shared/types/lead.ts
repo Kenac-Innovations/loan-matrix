@@ -29,6 +29,9 @@ export interface Lead {
   assignedToUserId?: number | null;
   assignedToUserName?: string | null;
   assignedAt?: Date | null;
+  designatedDisburserUserId?: number | null;
+  designatedDisburserUserName?: string | null;
+  designatedDisburserAssignedAt?: Date | null;
   // Payout status (for disbursed loans)
   payoutStatus?: string | null; // PENDING, PAID, VOIDED
   /** Preferred payment type from affordability: CASH, MOBILE_MONEY, BANK_TRANSFER */

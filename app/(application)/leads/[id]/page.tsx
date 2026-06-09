@@ -45,6 +45,10 @@ import {
 import { canPrintLoanContract } from "@/lib/loan-contract-print";
 import { getFacilityLoanLink } from "@/lib/fineract-credit-facility";
 import { isCreditFacilityEnabled } from "@/lib/tenant-features";
+import {
+  canUserAccessLeadOffice,
+  getLeadViewerAccessContext,
+} from "@/lib/lead-policy";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -322,6 +326,7 @@ async function getLeadData(leadId: string) {
   const headersList = await headers();
   const host = headersList.get("host") || "localhost:3000";
   const tenantSlug = extractTenantSlug(host);
+  const session = await getSession();
 
   const emptyResult = {
     lead: null,
@@ -337,16 +342,43 @@ async function getLeadData(leadId: string) {
     loanDocuments: [],
     tenantSlug,
     hasCreditFacility: false,
+    canManageLead: false,
   };
 
-  let lead: Awaited<ReturnType<typeof prisma.lead.findUnique>>;
+  if (!session?.user?.userId) {
+    return emptyResult;
+  }
+
+  const leadRecord = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { tenantId: true },
+  });
+
+  if (!leadRecord) {
+    return emptyResult;
+  }
+
+  const leadAccess = await getLeadViewerAccessContext(
+    leadRecord.tenantId,
+    session.user.userId
+  );
+
+  let lead: Awaited<ReturnType<typeof prisma.lead.findFirst>>;
+  let canManageLead = false;
   try {
-    lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    lead = await prisma.lead.findFirst({
+      where: {
+        id: leadId,
+        tenantId: leadRecord.tenantId,
+      },
       include: {
         currentStage: true,
       },
     });
+    canManageLead = canUserAccessLeadOffice(
+      lead?.officeId,
+      leadAccess.visibleOfficeIds
+    );
   } catch (error) {
     console.error("Error fetching base lead record:", error);
     return emptyResult;
@@ -445,6 +477,7 @@ async function getLeadData(leadId: string) {
     datatableData,
     tenantSlug,
     hasCreditFacility,
+    canManageLead,
   };
 }
 
@@ -468,6 +501,7 @@ export default async function LeadDetailPage({
     loanDocuments,
     tenantSlug,
     hasCreditFacility,
+    canManageLead,
   } = await getLeadData(id);
 
   const session = await getSession();
@@ -480,7 +514,7 @@ export default async function LeadDetailPage({
     currentUserId != null &&
     lead?.assignedToUserId != null &&
     String(lead.assignedToUserId) === currentUserId;
-  const isReadOnly = !isAssignedUser;
+  const isReadOnly = !isAssignedUser || !canManageLead;
   const canEditPendingLoanTerms =
     isPendingLoanApplicationEditTenant(tenantSlug) &&
     canEditPendingLoanApplication(session, fineractLoanStatus);
@@ -500,9 +534,11 @@ export default async function LeadDetailPage({
       },
       include: { members: { where: { isActive: true } } },
     });
-    isUserInStageTeam = stageTeams.some((team) =>
-      team.members.some((m: { userId: string }) => String(m.userId) === currentUserId)
-    );
+    isUserInStageTeam =
+      stageTeams.length === 0 ||
+      stageTeams.some((team) =>
+        team.members.some((m: { userId: string }) => String(m.userId) === currentUserId)
+      );
   }
 
   // Construct client name from lead data
@@ -607,9 +643,9 @@ export default async function LeadDetailPage({
                     currentStage={currentStage}
                     currentStageColor={lead.currentStage?.color}
                     preferredPaymentMethod={lead.preferredPaymentMethod ?? null}
-                    assignedToUserId={lead.assignedToUserId}
                     currentUserId={currentUserId}
                     isUserInStageTeam={isUserInStageTeam}
+                    canManageLead={canManageLead}
                   />
                 )}
                 {lead.facilityType === "REVOLVING_CREDIT" ? (
@@ -717,7 +753,7 @@ export default async function LeadDetailPage({
           />
         </div>
         <div className="mt-10">
-          <LeadSidebar leadId={id} />
+          <LeadSidebar leadId={id} canManageLead={canManageLead} />
         </div>
       </div>
     </div>

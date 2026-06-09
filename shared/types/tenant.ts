@@ -125,6 +125,9 @@ export interface TenantInfo {
   domain?: string | null;
   settings?: TenantSettings;
   notificationServiceTenantId?: string | null;
+  restrictLeadVisibilityToBranches?: boolean;
+  onlyOriginatorCanDisburse?: boolean;
+  autoAssignLeadOnApproval?: boolean;
   /** Document service file URL for org logo (when set) */
   logoFileUrl?: string | null;
   /** Document service link ID (UUID) for logo */

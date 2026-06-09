@@ -55,6 +55,8 @@ export interface UserBlockHistoryPage {
 export interface UserDetail extends UserSummary {
   passwordNeverExpires: boolean;
   isSelfServiceUser: boolean;
+  canOverrideInitiatorDisbursement: boolean;
+  visibleLeadOffices: OfficeOption[];
   blockedSource?: UserLoginBlockSource | null;
   blockedNote?: string | null;
   blockedByActorName?: string | null;
@@ -67,6 +69,7 @@ export interface UsersTemplate {
   allowedOffices: OfficeOption[];
   availableRoles: UserRoleOption[];
   defaultCountryCode: string;
+  restrictLeadVisibilityToBranches: boolean;
 }
 
 export interface UserFormInput {
@@ -79,8 +82,10 @@ export interface UserFormInput {
   lastname: string;
   sendPasswordToEmail?: boolean;
   passwordNeverExpires?: boolean;
+  canOverrideInitiatorDisbursement?: boolean;
   officeId: number | string;
   staffId?: number | string | null;
+  visibleLeadOfficeIds?: Array<number | string>;
   roles: Array<number | string>;
   password?: string;
   repeatPassword?: string;

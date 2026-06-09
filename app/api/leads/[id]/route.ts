@@ -1,5 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import {
+  applyLeadVisibilityScope,
+  getLeadViewerAccessContext,
+} from "@/lib/lead-policy";
+
+async function getReadableLeadWhere(leadId: string) {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, tenantId: true },
+  });
+
+  if (!lead) {
+    return null;
+  }
+
+  return {
+    id: leadId,
+    tenantId: lead.tenantId,
+  };
+}
+
+async function getWritableLeadWhere(
+  leadId: string,
+  options: {
+    fineractUserId?: number | null;
+    ownerUserId?: string | null;
+  }
+) {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, tenantId: true, status: true, userId: true },
+  });
+
+  if (!lead) {
+    return null;
+  }
+
+  if (
+    lead.status === "DRAFT" &&
+    options.ownerUserId &&
+    lead.userId === options.ownerUserId
+  ) {
+    return {
+      id: leadId,
+      tenantId: lead.tenantId,
+    };
+  }
+
+  const leadAccess = await getLeadViewerAccessContext(
+    lead.tenantId,
+    options.fineractUserId
+  );
+
+  return applyLeadVisibilityScope(
+    {
+      id: leadId,
+      tenantId: lead.tenantId,
+    },
+    leadAccess.visibleOfficeIds
+  );
+}
 
 export async function GET(
   request: NextRequest,
@@ -7,15 +69,20 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const session = await getSession();
 
-    // Fetch lead by ID without tenant filter.
-    // The middleware that sets x-tenant-slug does not run for API routes,
-    // so client-side fetches would default to the wrong tenant.
-    // Lead IDs are UUIDs and globally unique, so tenant filtering is unnecessary here.
-    const lead = await prisma.lead.findUnique({
-      where: {
-        id,
-      },
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const scopedWhere = await getReadableLeadWhere(id);
+
+    if (!scopedWhere) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: scopedWhere,
       include: {
         currentStage: true,
         familyMembers: true,
@@ -104,13 +171,34 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
+    const session = await getSession();
+
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await request.json();
+    const scopedWhere = await getWritableLeadWhere(id, {
+      fineractUserId: session.user.userId,
+      ownerUserId: session.user.id,
+    });
 
-    // Update lead by ID (without tenant filter to support cross-tenant client-side fetches)
+    if (!scopedWhere) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const existingLead = await prisma.lead.findFirst({
+      where: scopedWhere,
+      select: { id: true },
+    });
+
+    if (!existingLead) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
     const updatedLead = await prisma.lead.update({
       where: {
-        id,
+        id: existingLead.id,
       },
       data: {
         ...body,
@@ -144,6 +232,11 @@ export async function PATCH(
   try {
     const paramsResolved = await params;
     const { id: leadId } = paramsResolved;
+    const session = await getSession();
+
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     console.log("=== PATCH LEAD ===");
     console.log("Lead ID:", leadId);
@@ -151,9 +244,17 @@ export async function PATCH(
     const body = await request.json();
     console.log("Update data:", body);
 
-    // Find the lead first (without tenant filter to avoid issues)
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    const scopedWhere = await getWritableLeadWhere(leadId, {
+      fineractUserId: session.user.userId,
+      ownerUserId: session.user.id,
+    });
+
+    if (!scopedWhere) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const lead = await prisma.lead.findFirst({
+      where: scopedWhere,
       select: { id: true, tenantId: true },
     });
 
@@ -173,10 +274,9 @@ export async function PATCH(
       updateData.loanSubmissionDate = new Date(updateData.loanSubmissionDate);
     }
 
-    // Update lead (without tenant filter)
     const updatedLead = await prisma.lead.update({
       where: {
-        id: leadId,
+        id: lead.id,
       },
       data: {
         ...updateData,

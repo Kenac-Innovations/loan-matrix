@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
+import {
+  applyLeadVisibilityScope,
+  getLeadViewerAccessContext,
+} from "@/lib/lead-policy";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 
 export async function GET(request: NextRequest) {
@@ -20,6 +24,11 @@ export async function GET(request: NextRequest) {
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
+
+    const leadAccess = await getLeadViewerAccessContext(
+      tenant.id,
+      session?.user?.userId ?? null
+    );
 
     const { searchParams } = new URL(request.url);
     const stage = searchParams.get("stage");
@@ -54,9 +63,11 @@ export async function GET(request: NextRequest) {
       where.status = status;
     }
 
+    const scopedWhere = applyLeadVisibilityScope(where, leadAccess.visibleOfficeIds);
+
     // Get leads with related data
     const leads = await prisma.lead.findMany({
-      where,
+      where: scopedWhere,
       include: {
         currentStage: true,
         stateTransitions: {
@@ -215,7 +226,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get total count for pagination
-    const totalCount = await prisma.lead.count({ where });
+    const totalCount = await prisma.lead.count({ where: scopedWhere });
 
     return NextResponse.json({
       leads: transformedLeads,

@@ -96,6 +96,7 @@ type UpsertUserLoginInput = {
   email?: string | null;
   phone?: string | null;
   countryCode?: string | null;
+  canOverrideInitiatorDisbursement?: boolean;
   lastLoginAt?: Date | null;
   lastMfaChannel?: string | null;
   lastMfaSentAt?: Date | null;
@@ -109,6 +110,7 @@ export async function upsertUserLogin(input: UpsertUserLoginInput) {
     email,
     phone,
     countryCode,
+    canOverrideInitiatorDisbursement,
     lastLoginAt,
     lastMfaChannel,
     lastMfaSentAt,
@@ -156,6 +158,11 @@ export async function upsertUserLogin(input: UpsertUserLoginInput) {
     updateData.lastMfaSentAt = lastMfaSentAt;
   }
 
+  if (canOverrideInitiatorDisbursement !== undefined) {
+    updateData.canOverrideInitiatorDisbursement =
+      canOverrideInitiatorDisbursement;
+  }
+
   return prisma.userLogin.upsert({
     where: {
       tenantId_fineractUserId: {
@@ -171,6 +178,8 @@ export async function upsertUserLogin(input: UpsertUserLoginInput) {
       email: normalizedEmail,
       phone: normalizedPhone,
       countryCode: normalizedCountryCode,
+      canOverrideInitiatorDisbursement:
+        canOverrideInitiatorDisbursement ?? false,
       lastLoginAt: lastLoginAt ?? null,
       lastMfaChannel: lastMfaChannel ?? null,
       lastMfaSentAt: lastMfaSentAt ?? null,

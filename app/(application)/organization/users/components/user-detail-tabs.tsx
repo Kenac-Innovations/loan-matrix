@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Ban, PenLine, ShieldCheck, UserRound } from "lucide-react";
+import { Ban, Building2, PenLine, ShieldCheck, UserRound } from "lucide-react";
 import { getUserBlockHistoryAction } from "@/app/actions/user-management-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatPhoneWithCountryCode } from "@/lib/phone-utils";
+import { isHeadOfficeOffice } from "@/shared/user-management/lead-branch-visibility";
 import type {
   UserBlockHistoryPage,
   UserDetail,
@@ -24,6 +25,7 @@ import type {
 interface UserDetailTabsProps {
   user: UserDetail;
   signatureData: string | null;
+  restrictLeadVisibilityToBranches: boolean;
 }
 
 function DetailField({
@@ -193,6 +195,7 @@ function BlockHistoryContent({
 export function UserDetailTabs({
   user,
   signatureData,
+  restrictLeadVisibilityToBranches,
 }: Readonly<UserDetailTabsProps>) {
   const [activeTab, setActiveTab] = useState("details");
   const [blockHistoryPage, setBlockHistoryPage] = useState<UserBlockHistoryPage | null>(
@@ -202,6 +205,9 @@ export function UserDetailTabs({
   const [isPending, startTransition] = useTransition();
   const phoneDisplay =
     formatPhoneWithCountryCode(user.phone, user.countryCode) || "Not set";
+  const hasHeadOfficeVisibility = user.visibleLeadOffices.some((office) =>
+    isHeadOfficeOffice(office)
+  );
 
   const loadBlockHistoryPage = (page: number) => {
     if (
@@ -246,8 +252,9 @@ export function UserDetailTabs({
       onValueChange={handleTabChange}
       className="space-y-4"
     >
-      <TabsList className="grid w-full max-w-md grid-cols-2">
+      <TabsList className="grid w-full max-w-lg grid-cols-3">
         <TabsTrigger value="details">Details</TabsTrigger>
+        <TabsTrigger value="lead-access">Lead Access</TabsTrigger>
         <TabsTrigger value="mfa">MFA</TabsTrigger>
       </TabsList>
 
@@ -338,6 +345,74 @@ export function UserDetailTabs({
                   </Badge>
                 ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="lead-access" className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Lead Configuration
+            </CardTitle>
+            <CardDescription>
+              Lead-specific access and disbursement settings for this user.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <DetailField
+              label="Can Override Designated Disburser"
+              value={user.canOverrideInitiatorDisbursement ? "Yes" : "No"}
+            />
+            <DetailField
+              label="Lead Visibility"
+              value={
+                restrictLeadVisibilityToBranches
+                  ? "Restricted by selected branches"
+                  : "All leads visible"
+              }
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Visible Lead Branches</CardTitle>
+            <CardDescription>
+              {restrictLeadVisibilityToBranches
+                ? "These branch selections control which leads this user can view."
+                : "Branch-based lead visibility is disabled for this tenant."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!restrictLeadVisibilityToBranches ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                This tenant is not using branch-based lead visibility. The user can
+                view all leads allowed by the rest of the system.
+              </div>
+            ) : user.visibleLeadOffices.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                No branches are assigned. This user will not be able to view
+                branch-scoped leads until branches are configured.
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {user.visibleLeadOffices.map((office) => (
+                    <Badge key={office.id} variant="outline">
+                      {office.name}
+                    </Badge>
+                  ))}
+                </div>
+
+                {hasHeadOfficeVisibility && (
+                  <p className="text-sm text-muted-foreground">
+                    Head Office grants visibility across all branches.
+                  </p>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

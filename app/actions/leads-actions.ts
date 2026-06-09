@@ -11,6 +11,10 @@ import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
 import { Lead, PipelineStage } from "@/shared/types/lead";
 import { getSession } from "@/lib/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import {
+  applyLeadVisibilityScope,
+  getLeadViewerAccessContext,
+} from "@/lib/lead-policy";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -91,6 +95,12 @@ export async function getLeadsMetricsOnly(
       throw new Error("Tenant not found");
     }
 
+    const session = await getSession();
+    const leadAccess = await getLeadViewerAccessContext(
+      tenant.id,
+      session?.user?.userId ?? null
+    );
+
     // Build where clause
     const where: any = {
       tenantId: tenant.id,
@@ -104,13 +114,15 @@ export async function getLeadsMetricsOnly(
       where.officeId = officeId;
     }
 
+    const scopedWhere = applyLeadVisibilityScope(where, leadAccess.visibleOfficeIds);
+
     // Get total count
-    const totalLeads = await prisma.lead.count({ where });
+    const totalLeads = await prisma.lead.count({ where: scopedWhere });
 
     // Get counts by stage using groupBy
     const stageCounts = await prisma.lead.groupBy({
       by: ['currentStageId'],
-      where,
+      where: scopedWhere,
       _count: true,
     });
 
@@ -212,6 +224,12 @@ export async function getLeadsData(
       throw new Error("Tenant not found");
     }
 
+    const session = await getSession();
+    const leadAccess = await getLeadViewerAccessContext(
+      tenant.id,
+      session?.user?.userId ?? null
+    );
+
     // Build where clause
     const where: any = {
       tenantId: tenant.id,
@@ -265,9 +283,11 @@ export async function getLeadsData(
       }
     }
 
+    const scopedWhere = applyLeadVisibilityScope(where, leadAccess.visibleOfficeIds);
+
     // Get leads with related data
     const leads = await prisma.lead.findMany({
-      where,
+      where: scopedWhere,
       include: {
         currentStage: true,
         stateTransitions: {
@@ -577,7 +597,7 @@ export async function getLeadsData(
     }
 
     // Get total count for pagination
-    const totalCount = await prisma.lead.count({ where });
+    const totalCount = await prisma.lead.count({ where: scopedWhere });
 
     // Calculate metrics
     const activeLeads = transformedLeads.filter(

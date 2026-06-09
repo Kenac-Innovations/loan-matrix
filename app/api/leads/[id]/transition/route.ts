@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
 import { getSession as getCustomSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  applyLeadVisibilityScope,
+  getDisbursementBlockReason,
+  getLeadViewerAccessContext,
+} from "@/lib/lead-policy";
 
 /**
  * POST /api/leads/[id]/transition
@@ -16,8 +21,42 @@ export async function POST(
     const { id: leadId } = params;
     const session = await getCustomSession();
 
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session.user.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const leadRecord = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: {
+        tenantId: true,
+        fineractClientId: true,
+      },
+    });
+
+    if (!leadRecord) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const leadAccess = await getLeadViewerAccessContext(
+      leadRecord.tenantId,
+      session.user.userId ?? null
+    );
+    const accessibleLead = await prisma.lead.findFirst({
+      where: applyLeadVisibilityScope(
+        {
+          id: leadId,
+          tenantId: leadRecord.tenantId,
+        },
+        leadAccess.visibleOfficeIds
+      ),
+      select: {
+        tenantId: true,
+        fineractClientId: true,
+      },
+    });
+
+    if (!accessibleLead) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
     const body = await request.json();
@@ -25,7 +64,6 @@ export async function POST(
       targetStageName,
       targetStageId,
       reason,
-      metadata,
       fineractOverrides,
       overrideValidations,
       overrideReason,
@@ -48,18 +86,9 @@ export async function POST(
     let resolvedStageId = targetStageId;
 
     if (!resolvedStageId && targetStageName) {
-      const lead = await prisma.lead.findUnique({
-        where: { id: leadId },
-        select: { tenantId: true },
-      });
-
-      if (!lead) {
-        return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-      }
-
       const stage = await prisma.pipelineStage.findFirst({
         where: {
-          tenantId: lead.tenantId,
+          tenantId: accessibleLead.tenantId,
           name: targetStageName,
           isActive: true,
         },
@@ -77,10 +106,7 @@ export async function POST(
 
     // Check required documents before allowing transition
     let overriddenDocs: string[] = [];
-    const leadForDocs = await prisma.lead.findUnique({
-      where: { id: leadId },
-      select: { tenantId: true, fineractClientId: true },
-    });
+    const leadForDocs = accessibleLead;
 
     if (leadForDocs) {
       const requiredDocs = await prisma.requiredDocument.findMany({
@@ -101,7 +127,9 @@ export async function POST(
               `/clients/${leadForDocs.fineractClientId}/documents`
             );
             const docs = Array.isArray(clientDocs) ? clientDocs : clientDocs?.pageItems || [];
-            fineractDocs = docs.map((d: any) => ({ name: d.name || d.fileName || "" }));
+            fineractDocs = docs.map((d: { name?: string; fileName?: string }) => ({
+              name: d.name || d.fileName || "",
+            }));
           } catch {
             // If Fineract is unreachable, just check local docs
           }
@@ -213,8 +241,43 @@ export async function GET(
     const { id: leadId } = params;
     const session = await getCustomSession();
 
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session.user.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const leadRecord = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: {
+        tenantId: true,
+        designatedDisburserUserId: true,
+        designatedDisburserUserName: true,
+      },
+    });
+
+    if (!leadRecord) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const leadAccess = await getLeadViewerAccessContext(
+      leadRecord.tenantId,
+      session.user.userId ?? null
+    );
+    const accessibleLead = await prisma.lead.findFirst({
+      where: applyLeadVisibilityScope(
+        {
+          id: leadId,
+          tenantId: leadRecord.tenantId,
+        },
+        leadAccess.visibleOfficeIds
+      ),
+      select: {
+        designatedDisburserUserId: true,
+        designatedDisburserUserName: true,
+      },
+    });
+
+    if (!accessibleLead) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
     const transitions =
@@ -223,7 +286,23 @@ export async function GET(
         session.user.id
       );
 
-    return NextResponse.json({ transitions });
+    return NextResponse.json({
+      transitions,
+      disbursementPolicy: {
+        onlyOriginatorCanDisburse: leadAccess.flags.onlyOriginatorCanDisburse,
+        canOverrideInitiatorDisbursement:
+          leadAccess.canOverrideInitiatorDisbursement,
+        designatedDisburserUserId: accessibleLead.designatedDisburserUserId,
+        designatedDisburserUserName: accessibleLead.designatedDisburserUserName,
+        blockReason: getDisbursementBlockReason({
+          onlyOriginatorCanDisburse:
+            leadAccess.flags.onlyOriginatorCanDisburse,
+          designatedDisburserUserId: accessibleLead.designatedDisburserUserId,
+          designatedDisburserUserName: accessibleLead.designatedDisburserUserName,
+          currentFineractUserId: session.user.userId ?? null,
+        }),
+      },
+    });
   } catch (error) {
     console.error("Error getting available transitions:", error);
     return NextResponse.json(

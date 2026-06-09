@@ -127,6 +127,9 @@ export async function getTenantBySlug(
         domain: true,
         settings: true,
         notificationServiceTenantId: true,
+        restrictLeadVisibilityToBranches: true,
+        onlyOriginatorCanDisburse: true,
+        autoAssignLeadOnApproval: true,
         logoFileUrl: true,
         logoLinkId: true,
       },
@@ -175,6 +178,9 @@ export async function getOrCreateDefaultTenant(): Promise<TenantInfo> {
           domain: true,
           settings: true,
           notificationServiceTenantId: true,
+          restrictLeadVisibilityToBranches: true,
+          onlyOriginatorCanDisburse: true,
+          autoAssignLeadOnApproval: true,
         },
       });
     } catch (error: unknown) {
@@ -222,6 +228,9 @@ export async function createTenant(data: {
       domain: true,
       settings: true,
       notificationServiceTenantId: true,
+      restrictLeadVisibilityToBranches: true,
+      onlyOriginatorCanDisburse: true,
+      autoAssignLeadOnApproval: true,
     },
   });
 

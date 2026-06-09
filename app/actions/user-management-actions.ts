@@ -20,6 +20,11 @@ import {
   unblockUserLogin,
   upsertUserLogin,
 } from "@/lib/user-login-service";
+import {
+  collapseVisibleLeadOfficeSelection,
+  expandVisibleLeadOfficeSelection,
+  isHeadOfficeOffice,
+} from "@/shared/user-management/lead-branch-visibility";
 import { SpecificPermission } from "@/shared/types/auth";
 import type {
   UserBlockHistoryInput,
@@ -67,10 +72,14 @@ const createUserSchema = z
       ),
     sendPasswordToEmail: z.boolean().default(true),
     passwordNeverExpires: z.boolean().default(false),
+    canOverrideInitiatorDisbursement: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
       .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
       .transform((value) => (typeof value === "number" ? value : undefined)),
+    visibleLeadOfficeIds: z
+      .array(z.coerce.number().int().positive())
+      .default([]),
     roles: z
       .array(z.coerce.number().int().positive())
       .min(1, "At least one role must be selected"),
@@ -164,10 +173,14 @@ const updateUserSchema = z
         "Last name cannot begin with a special character or number"
       ),
     passwordNeverExpires: z.boolean().default(false),
+    canOverrideInitiatorDisbursement: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
       .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
       .transform((value) => (typeof value === "number" ? value : null)),
+    visibleLeadOfficeIds: z
+      .array(z.coerce.number().int().positive())
+      .default([]),
     roles: z
       .array(z.coerce.number().int().positive())
       .min(1, "At least one role must be selected"),
@@ -344,6 +357,19 @@ function mapStaffOption(staff: unknown): StaffOption {
   };
 }
 
+function mapVisibleLeadOffice(
+  officeId: number,
+  officeName: string | null | undefined,
+  officesById: Map<number, OfficeOption>
+): OfficeOption {
+  const mappedOffice = officesById.get(officeId);
+
+  return {
+    id: officeId,
+    name: officeName || mappedOffice?.name || `Office ${officeId}`,
+  };
+}
+
 function mapUserSummary(user: unknown): UserSummary {
   const userRecord = asObject(user);
   const firstname = asString(userRecord.firstname);
@@ -418,6 +444,8 @@ function mapUserDetail(user: unknown): UserDetail {
     ...summary,
     passwordNeverExpires: Boolean(userRecord.passwordNeverExpires),
     isSelfServiceUser: Boolean(userRecord.isSelfServiceUser),
+    canOverrideInitiatorDisbursement: false,
+    visibleLeadOffices: [],
     blockedSource: null,
     blockedNote: null,
     blockedByActorName: null,
@@ -425,6 +453,68 @@ function mapUserDetail(user: unknown): UserDetail {
     staff: staffSource ? mapStaffOption(staffSource) : null,
     blockHistory: [],
   };
+}
+
+async function syncUserLeadBranchAccess(input: {
+  tenantId: string;
+  userLoginId: string;
+  fineractUserId: number;
+  visibleLeadOfficeIds: number[];
+  allowedOffices: OfficeOption[];
+}) {
+  const expandedOfficeIds = expandVisibleLeadOfficeSelection(
+    input.visibleLeadOfficeIds,
+    input.allowedOffices
+  );
+  const uniqueOfficeIds = [...new Set(expandedOfficeIds)];
+  const officesById = new Map(
+    input.allowedOffices.map((office) => [office.id, office])
+  );
+
+  await prisma.userLeadBranchAccess.deleteMany({
+    where: {
+      tenantId: input.tenantId,
+      userLoginId: input.userLoginId,
+    },
+  });
+
+  if (uniqueOfficeIds.length === 0) {
+    return;
+  }
+
+  await prisma.userLeadBranchAccess.createMany({
+    data: uniqueOfficeIds.map((officeId) => ({
+      tenantId: input.tenantId,
+      userLoginId: input.userLoginId,
+      fineractUserId: input.fineractUserId,
+      officeId,
+      officeName: officesById.get(officeId)?.name ?? null,
+    })),
+    skipDuplicates: true,
+  });
+}
+
+function mapAllowedUserOffices(template: unknown) {
+  const templateRecord = asObject(template);
+  const allowedOffices = Array.isArray(templateRecord.allowedOffices)
+    ? templateRecord.allowedOffices
+    : [];
+  const mappedOffices = allowedOffices.map(mapOfficeOption);
+  const headOffice = mappedOffices.find((office) => isHeadOfficeOffice(office));
+
+  if (!headOffice) {
+    return mappedOffices;
+  }
+
+  return [
+    headOffice,
+    ...mappedOffices.filter((office) => office.id !== headOffice.id),
+  ];
+}
+
+async function getAllowedUserOffices() {
+  const template = await fetchFineractAPI("/users/template");
+  return mapAllowedUserOffices(template);
 }
 
 function toFieldErrorResult<T = undefined>(
@@ -557,15 +647,44 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
       blockedSource: true,
       blockedNote: true,
       blockedByActorName: true,
+      canOverrideInitiatorDisbursement: true,
+      leadBranchAccesses: {
+        orderBy: {
+          officeId: "asc",
+        },
+        select: {
+          officeId: true,
+          officeName: true,
+        },
+      },
     },
   });
   const mappedUser = mapUserDetail(user);
+  const allowedOffices = await getAllowedUserOffices();
+  const officesById = new Map(allowedOffices.map((office) => [office.id, office]));
+  const storedVisibleLeadOffices = localLogin?.leadBranchAccesses ?? [];
+  const visibleLeadOfficeNamesById = new Map(
+    storedVisibleLeadOffices.map((branch) => [branch.officeId, branch.officeName])
+  );
+  const collapsedVisibleLeadOfficeIds = collapseVisibleLeadOfficeSelection(
+    storedVisibleLeadOffices.map((branch) => branch.officeId),
+    allowedOffices
+  );
 
   return {
     ...mappedUser,
     email: localLogin?.email || mappedUser.email,
     phone: localLogin?.phone || undefined,
     countryCode: localLogin?.countryCode || undefined,
+    canOverrideInitiatorDisbursement:
+      localLogin?.canOverrideInitiatorDisbursement ?? false,
+    visibleLeadOffices: collapsedVisibleLeadOfficeIds.map((officeId) =>
+      mapVisibleLeadOffice(
+        officeId,
+        visibleLeadOfficeNamesById.get(officeId),
+        officesById
+      )
+    ),
     isBlocked: localLogin?.isBlocked ?? false,
     blockedAt: localLogin?.blockedAt?.toISOString() ?? null,
     blockedSource:
@@ -642,13 +761,13 @@ export async function getUsersTemplateAction(): Promise<UsersTemplate> {
   ]);
 
   return {
-    allowedOffices: Array.isArray(template?.allowedOffices)
-      ? template.allowedOffices.map(mapOfficeOption)
-      : [],
+    allowedOffices: mapAllowedUserOffices(template),
     availableRoles: Array.isArray(template?.availableRoles)
       ? template.availableRoles.map(mapRoleOption)
       : [],
     defaultCountryCode: getTenantDefaultCountryCode(tenant.settings),
+    restrictLeadVisibilityToBranches:
+      tenant.restrictLeadVisibilityToBranches ?? false,
   };
 }
 
@@ -705,6 +824,9 @@ export async function createUserAction(
       ? getAfricanCountryDialCodeOrDefault(parsed.data.countryCode)
       : undefined;
     const tenant = await requireCurrentTenant();
+    const allowedOffices = tenant.restrictLeadVisibilityToBranches
+      ? await getAllowedUserOffices()
+      : [];
     const payload: Record<string, unknown> = {
       username: parsed.data.username,
       firstname: parsed.data.firstname,
@@ -738,14 +860,26 @@ export async function createUserAction(
     );
 
     if (Number.isFinite(userId)) {
-      await upsertUserLogin({
+      const userLogin = await upsertUserLogin({
         tenantId: tenant.id,
         fineractUserId: userId,
         username: parsed.data.username,
         email,
         phone,
         countryCode,
+        canOverrideInitiatorDisbursement:
+          parsed.data.canOverrideInitiatorDisbursement,
       });
+
+      if (tenant.restrictLeadVisibilityToBranches) {
+        await syncUserLeadBranchAccess({
+          tenantId: tenant.id,
+          userLoginId: userLogin.id,
+          fineractUserId: userId,
+          visibleLeadOfficeIds: parsed.data.visibleLeadOfficeIds,
+          allowedOffices,
+        });
+      }
     }
 
     revalidateUserPaths(Number.isFinite(userId) ? userId : undefined);
@@ -780,6 +914,9 @@ export async function updateUserAction(
     }
 
     const tenant = await requireCurrentTenant();
+    const allowedOffices = tenant.restrictLeadVisibilityToBranches
+      ? await getAllowedUserOffices()
+      : [];
     const payload = {
       username: parsed.data.username,
       email: parsed.data.email,
@@ -796,7 +933,7 @@ export async function updateUserAction(
       body: JSON.stringify(payload),
     });
 
-    await upsertUserLogin({
+    const userLogin = await upsertUserLogin({
       tenantId: tenant.id,
       fineractUserId: parsed.data.userId,
       username: parsed.data.username,
@@ -805,7 +942,19 @@ export async function updateUserAction(
       countryCode: parsed.data.phone
         ? getAfricanCountryDialCodeOrDefault(parsed.data.countryCode)
         : null,
+      canOverrideInitiatorDisbursement:
+        parsed.data.canOverrideInitiatorDisbursement,
     });
+
+    if (tenant.restrictLeadVisibilityToBranches) {
+      await syncUserLeadBranchAccess({
+        tenantId: tenant.id,
+        userLoginId: userLogin.id,
+        fineractUserId: parsed.data.userId,
+        visibleLeadOfficeIds: parsed.data.visibleLeadOfficeIds,
+        allowedOffices,
+      });
+    }
 
     revalidateUserPaths(parsed.data.userId);
 

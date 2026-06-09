@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import {
+  getDisbursementBlockReason,
+  getLeadViewerAccessContext,
+} from "@/lib/lead-policy";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
@@ -13,6 +17,19 @@ interface LoanActionInfo {
   disbursedOnDate: string | null;
   loanStatus: string | null;
 }
+
+type ValidationApiResponse = {
+  validations?: Array<{
+    name?: string;
+    status?: string;
+  }>;
+};
+
+type TenantLocaleSettings = {
+  locale?: {
+    emailOptional?: boolean;
+  };
+};
 
 export async function GET(
   request: NextRequest,
@@ -34,8 +51,19 @@ export async function GET(
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
+    const session = await getSession();
+
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const leadAccess = await getLeadViewerAccessContext(
+      tenant.id,
+      session.user.userId
+    );
+
     // Fetch lead data with related information
-    const lead = await prisma.lead.findUnique({
+    const lead = await prisma.lead.findFirst({
       where: {
         id: leadId,
         tenantId: tenant.id,
@@ -244,9 +272,10 @@ export async function GET(
       );
 
       if (validationsResponse.ok) {
-        const validationsData = await validationsResponse.json();
+        const validationsData =
+          (await validationsResponse.json()) as ValidationApiResponse;
         validations =
-          validationsData.validations?.map((v: any) => ({
+          validationsData.validations?.map((v) => ({
             name: v.name,
             status:
               v.status === "passed"
@@ -259,7 +288,7 @@ export async function GET(
     } catch (error) {
       console.error("Error fetching validations:", error);
       // Fallback validations based on lead data
-      const tenantSettings = tenant.settings as any;
+      const tenantSettings = tenant.settings as TenantLocaleSettings;
       const emailOptional = !!tenantSettings?.locale?.emailOptional;
       validations = [
         {
@@ -277,7 +306,7 @@ export async function GET(
     }
 
     // Fetch loan action info from Fineract if loan is submitted
-    let loanActionInfo: LoanActionInfo = {
+    const loanActionInfo: LoanActionInfo = {
       approvedBy: null,
       approvedOnDate: null,
       disbursedBy: null,
@@ -289,8 +318,7 @@ export async function GET(
       try {
         const session = await getSession();
         const accessToken =
-          (session as any)?.base64EncodedAuthenticationKey ||
-          (session as any)?.accessToken;
+          session?.base64EncodedAuthenticationKey || session?.accessToken;
 
         if (accessToken) {
           const fineractTenantId = await getFineractTenantId();
@@ -386,6 +414,26 @@ export async function GET(
         userId: lead.assignedToUserId,
         userName: lead.assignedToUserName,
         assignedAt: lead.assignedAt?.toISOString() || null,
+      },
+      designatedDisburser: {
+        userId: lead.designatedDisburserUserId,
+        userName: lead.designatedDisburserUserName,
+        assignedAt: lead.designatedDisburserAssignedAt?.toISOString() || null,
+      },
+      leadPolicy: {
+        restrictLeadVisibilityToBranches:
+          leadAccess.flags.restrictLeadVisibilityToBranches,
+        onlyOriginatorCanDisburse:
+          leadAccess.flags.onlyOriginatorCanDisburse,
+        canOverrideInitiatorDisbursement:
+          leadAccess.canOverrideInitiatorDisbursement,
+        disbursementBlockReason: getDisbursementBlockReason({
+          onlyOriginatorCanDisburse:
+            leadAccess.flags.onlyOriginatorCanDisburse,
+          designatedDisburserUserId: lead.designatedDisburserUserId,
+          designatedDisburserUserName: lead.designatedDisburserUserName,
+          currentFineractUserId: session.user.userId,
+        }),
       },
       // Loan action info
       loanActionInfo,
