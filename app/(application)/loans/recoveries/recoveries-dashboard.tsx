@@ -220,8 +220,7 @@ type ProceedingForm = {
 const TABS: Array<{ value: BucketTab; label: string; icon: ReactNode }> = [
   { value: "30", label: "30 Days", icon: <Bell className="h-4 w-4" /> },
   { value: "60", label: "60 Days", icon: <ShieldAlert className="h-4 w-4" /> },
-  { value: "90", label: "90+", icon: <ShieldAlert className="h-4 w-4" /> },
-  { value: "npa", label: "NPA", icon: <Scale className="h-4 w-4" /> },
+  { value: "npa", label: "NPA (90+)", icon: <Scale className="h-4 w-4" /> },
   { value: "court", label: "Court", icon: <Gavel className="h-4 w-4" /> },
   { value: "performance", label: "Branches", icon: <Building2 className="h-4 w-4" /> },
 ];
@@ -804,7 +803,7 @@ export function RecoveriesDashboard() {
         </CardHeader>
         <CardContent className="pt-4">
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as BucketTab)}>
-            <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-3 xl:grid-cols-6">
+            <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-3 xl:grid-cols-5">
               {TABS.map((tab) => (
                 <TabsTrigger key={tab.value} value={tab.value} className="h-10 gap-2">
                   {tab.icon}
