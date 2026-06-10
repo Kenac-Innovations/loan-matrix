@@ -21,6 +21,27 @@ export interface BulkRepaymentMessage {
   dateFormat: string;
 }
 
+type RecoverableQueuedItem = {
+  id: string;
+  uploadId: string;
+  loanId: number;
+  amount: unknown;
+  paymentTypeId: number | null;
+  accountNumber: string | null;
+  chequeNumber: string | null;
+  routingCode: string | null;
+  receiptNumber: string | null;
+  bankNumber: string | null;
+  note: string | null;
+  transactionDate: Date | null;
+  upload: {
+    tenantId: string;
+    tenant: {
+      slug: string;
+    } | null;
+  };
+};
+
 type RepaymentBody = {
   dateFormat: string;
   locale: string;
@@ -96,6 +117,86 @@ export class BulkRepaymentQueueService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000;
+
+  private async updateItemStatusSafe(
+    itemId: string,
+    data: Parameters<typeof prisma.bulkRepaymentItem.updateMany>[0]["data"],
+    context: string
+  ): Promise<boolean> {
+    const result = await prisma.bulkRepaymentItem.updateMany({
+      where: { id: itemId },
+      data,
+    });
+
+    if (result.count > 0) {
+      return true;
+    }
+
+    const currentItem = await prisma.bulkRepaymentItem.findUnique({
+      where: { id: itemId },
+      select: { id: true, status: true, updatedAt: true },
+    });
+
+    console.warn(
+      `[BulkRepayment] ${context}: could not update item=${itemId} (current=${
+        currentItem?.status ?? "missing"
+      }, updatedAt=${currentItem?.updatedAt?.toISOString() ?? "n/a"})`
+    );
+
+    return false;
+  }
+
+  public async recoverStaleQueuedItems(limit = 25): Promise<number> {
+    const cutoff = new Date(Date.now() - 2 * 60 * 1000);
+    const staleItems = await prisma.bulkRepaymentItem.findMany({
+      where: {
+        status: "QUEUED",
+        updatedAt: { lt: cutoff },
+      },
+      include: {
+        upload: {
+          select: {
+            tenantId: true,
+            tenant: {
+              select: {
+                slug: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: "asc",
+      },
+      take: limit,
+    });
+
+    if (staleItems.length === 0) {
+      return 0;
+    }
+
+    console.warn(
+      `[BulkRepayment] Recovering ${staleItems.length} stale queued item(s) directly from the database backlog`
+    );
+
+    let recovered = 0;
+
+    for (const item of staleItems as RecoverableQueuedItem[]) {
+      try {
+        await this.processRepaymentMessage(this.buildMessageFromItem(item), {
+          source: "db-recovery",
+        });
+        recovered++;
+      } catch (error) {
+        console.error(
+          `[BulkRepayment] DB recovery failed for item=${item.id}:`,
+          error
+        );
+      }
+    }
+
+    return recovered;
+  }
 
   public async connect(): Promise<void> {
     try {
@@ -251,14 +352,15 @@ export class BulkRepaymentQueueService {
           // failed), mark the item FAILED here so it never stays stuck as QUEUED.
           try {
             const message: BulkRepaymentMessage = JSON.parse(msg.content.toString());
-            await prisma.bulkRepaymentItem.update({
-              where: { id: message.itemId },
-              data: {
+            await this.updateItemStatusSafe(
+              message.itemId,
+              {
                 status: "FAILED",
                 errorMessage: "Unexpected processing error - please retry",
                 processedAt: new Date(),
               },
-            });
+              "Fallback status update"
+            );
             await refreshBulkRepaymentUploadStats(message.uploadId);
           } catch (fallbackError) {
             console.error("[BulkRepayment] Fallback status update failed:", fallbackError);
@@ -273,22 +375,70 @@ export class BulkRepaymentQueueService {
     console.log("[BulkRepayment] Consumer started");
   }
 
+  private buildMessageFromItem(item: RecoverableQueuedItem): BulkRepaymentMessage {
+    return {
+      itemId: item.id,
+      uploadId: item.uploadId,
+      tenantSlug: item.upload.tenant?.slug || "goodfellow",
+      loanId: item.loanId,
+      amount: Number(item.amount),
+      transactionDate: item.transactionDate
+        ? item.transactionDate.toISOString().split("T")[0]
+        : new Date().toISOString().split("T")[0],
+      paymentTypeId: item.paymentTypeId || undefined,
+      accountNumber: item.accountNumber || undefined,
+      chequeNumber: item.chequeNumber || undefined,
+      routingCode: item.routingCode || undefined,
+      receiptNumber: item.receiptNumber || undefined,
+      bankNumber: item.bankNumber || undefined,
+      note: item.note || "Bulk repayment",
+      locale: "en",
+      dateFormat: "yyyy-MM-dd",
+    };
+  }
+
+  private async reserveQueuedItem(itemId: string): Promise<boolean> {
+    const reserved = await prisma.bulkRepaymentItem.updateMany({
+      where: {
+        id: itemId,
+        status: "QUEUED",
+      },
+      data: {
+        status: "PROCESSING",
+      },
+    });
+
+    return reserved.count > 0;
+  }
+
   private async processMessage(msg: ConsumeMessage): Promise<void> {
-    const message: BulkRepaymentMessage = JSON.parse(
-      msg.content.toString()
-    );
+    const message: BulkRepaymentMessage = JSON.parse(msg.content.toString());
+    await this.processRepaymentMessage(message, { source: "queue" });
+  }
+
+  public async processRepaymentMessage(
+    message: BulkRepaymentMessage,
+    options?: { source?: "queue" | "db-recovery" }
+  ): Promise<void> {
+    const source = options?.source || "queue";
 
     console.log(
-      `[BulkRepayment] Processing: item=${message.itemId} loan=${message.loanId} amount=${message.amount}`
+      `[BulkRepayment] Processing (${source}): item=${message.itemId} loan=${message.loanId} amount=${message.amount}`
     );
 
     try {
-      // Mark as PROCESSING inside the try block so any DB failure is caught
-      // and the item gets marked FAILED instead of staying stuck as QUEUED
-      await prisma.bulkRepaymentItem.update({
-        where: { id: message.itemId },
-        data: { status: "PROCESSING" },
-      });
+      const reserved = await this.reserveQueuedItem(message.itemId);
+      if (!reserved) {
+        const currentItem = await prisma.bulkRepaymentItem.findUnique({
+          where: { id: message.itemId },
+          select: { status: true },
+        });
+
+        console.warn(
+          `[BulkRepayment] Skipping item=${message.itemId}; could not reserve from QUEUED state (current=${currentItem?.status ?? "missing"})`
+        );
+        return;
+      }
 
       const repaymentBody: RepaymentBody = {
         dateFormat: message.dateFormat,
@@ -315,9 +465,9 @@ export class BulkRepaymentQueueService {
       );
 
       // Success
-      await prisma.bulkRepaymentItem.update({
-        where: { id: message.itemId },
-        data: {
+      await this.updateItemStatusSafe(
+        message.itemId,
+        {
           status: "SUCCESS",
           fineractTxnId: result.resourceId
             ? String(result.resourceId)
@@ -327,29 +477,31 @@ export class BulkRepaymentQueueService {
           processedAt: new Date(),
           errorMessage: null,
         },
-      });
+        "Success status update"
+      );
 
       await refreshBulkRepaymentUploadStats(message.uploadId);
 
       console.log(
-        `[BulkRepayment] Success: item=${message.itemId} txnId=${result.resourceId || result.transactionId}`
+        `[BulkRepayment] Success (${source}): item=${message.itemId} txnId=${result.resourceId || result.transactionId}`
       );
     } catch (error: unknown) {
       const errorMsg = getQueueErrorMessage(error);
 
-      await prisma.bulkRepaymentItem.update({
-        where: { id: message.itemId },
-        data: {
+      await this.updateItemStatusSafe(
+        message.itemId,
+        {
           status: "FAILED",
           errorMessage: errorMsg,
           processedAt: new Date(),
         },
-      });
+        "Failure status update"
+      );
 
       await refreshBulkRepaymentUploadStats(message.uploadId);
 
       console.error(
-        `[BulkRepayment] Failed: item=${message.itemId} error=${errorMsg}`
+        `[BulkRepayment] Failed (${source}): item=${message.itemId} error=${errorMsg}`
       );
     }
   }
@@ -427,6 +579,22 @@ export class BulkRepaymentQueueService {
 
   public isHealthy(): boolean {
     return this.isConnected && this.connection !== null && this.channel !== null;
+  }
+
+  public getStatus(): {
+    isRunning: boolean;
+    isHealthy: boolean;
+    queueHealthy: boolean;
+    isConnected: boolean;
+    isConsuming: boolean;
+  } {
+    return {
+      isRunning: this.isConsuming,
+      isHealthy: this.isHealthy(),
+      queueHealthy: this.isHealthy(),
+      isConnected: this.isConnected,
+      isConsuming: this.isConsuming,
+    };
   }
 }
 

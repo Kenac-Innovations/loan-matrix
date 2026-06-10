@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getBulkRepaymentQueueService } from "@/lib/bulk-repayment-queue-service";
+import { Prisma } from "@prisma/client";
 
 export async function POST(
   request: NextRequest,
@@ -11,7 +12,10 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const itemIds: string[] | undefined = body.itemIds;
 
-    const where: any = { uploadId: id, status: "FAILED" };
+    const where: Prisma.BulkRepaymentItemWhereInput = {
+      uploadId: id,
+      status: "FAILED",
+    };
     if (itemIds && itemIds.length > 0) {
       where.id = { in: itemIds };
     }
@@ -47,6 +51,29 @@ export async function POST(
 
     for (const item of failedItems) {
       try {
+        const requeued = await prisma.bulkRepaymentItem.updateMany({
+          where: { id: item.id, status: "FAILED" },
+          data: {
+            status: "QUEUED",
+            errorMessage: null,
+            processedAt: null,
+          },
+        });
+
+        if (requeued.count === 0) {
+          const currentItem = await prisma.bulkRepaymentItem.findUnique({
+            where: { id: item.id },
+            select: { status: true, updatedAt: true },
+          });
+
+          console.warn(
+            `[BulkRepayment] Retry skipped item=${item.id}; could not move FAILED -> QUEUED (current=${
+              currentItem?.status ?? "missing"
+            }, updatedAt=${currentItem?.updatedAt?.toISOString() ?? "n/a"})`
+          );
+          continue;
+        }
+
         await queueService.publishRepayment({
           itemId: item.id,
           uploadId: id,
@@ -66,14 +93,10 @@ export async function POST(
           locale: "en",
           dateFormat: "yyyy-MM-dd",
         });
-        await prisma.bulkRepaymentItem.update({
-          where: { id: item.id },
-          data: { status: "QUEUED", errorMessage: null, processedAt: null },
-        });
         publishedCount++;
       } catch (err) {
         console.error(`Failed to re-queue item ${item.id}:`, err);
-        await prisma.bulkRepaymentItem.update({
+        await prisma.bulkRepaymentItem.updateMany({
           where: { id: item.id },
           data: {
             status: "FAILED",
