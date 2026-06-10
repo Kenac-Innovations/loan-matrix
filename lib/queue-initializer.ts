@@ -10,6 +10,7 @@ import { refreshBulkRepaymentUploadStats } from './bulk-repayment-upload-stats';
 // Prevent multiple initializations using global variable
 declare global {
   var __queueConsumerInitialized: boolean | undefined;
+  var __bulkRepaymentRecoveryIntervalStarted: boolean | undefined;
 }
 
 async function cleanupOrphanedItems(): Promise<void> {
@@ -48,6 +49,41 @@ async function cleanupOrphanedItems(): Promise<void> {
   }
 }
 
+function startBulkRepaymentRecoveryLoop(): void {
+  if (global.__bulkRepaymentRecoveryIntervalStarted) {
+    return;
+  }
+
+  global.__bulkRepaymentRecoveryIntervalStarted = true;
+
+  const intervalMs = 60 * 1000;
+
+  const timer = setInterval(() => {
+    const bulkService = getBulkRepaymentQueueService();
+    bulkService
+      .recoverStaleQueuedItems()
+      .then((count) => {
+        if (count > 0) {
+          console.warn(
+            `[Startup] Recovered ${count} stale bulk repayment item(s) from queued backlog`
+          );
+        }
+      })
+      .catch((error) => {
+        console.error(
+          "[Startup] Failed to recover stale bulk repayment items:",
+          error
+        );
+      });
+  }, intervalMs);
+
+  timer.unref?.();
+
+  console.log(
+    `[Startup] Bulk repayment recovery loop started (interval ${intervalMs}ms)`
+  );
+}
+
 // Initialize the queue consumers only once
 if (process.env.NODE_ENV !== 'test' && !global.__queueConsumerInitialized) {
   global.__queueConsumerInitialized = true;
@@ -79,6 +115,8 @@ if (process.env.NODE_ENV !== 'test' && !global.__queueConsumerInitialized) {
   } catch (error) {
     console.error('Failed to initialize bulk repayment consumer:', error);
   }
+
+  startBulkRepaymentRecoveryLoop();
 
   // Bulk Repayment reversal consumer
   try {
