@@ -16,7 +16,21 @@ export interface BulkRepaymentReversalMessage {
 
 declare global {
   var __bulkRepaymentReversalConsumerActive: boolean | undefined;
+  var __bulkRepaymentReversalRecoveryIntervalStarted: boolean | undefined;
 }
+
+type RecoverableReversalItem = {
+  id: string;
+  uploadId: string;
+  loanId: number;
+  amount: unknown;
+  fineractTxnId: string | null;
+  transactionDate: Date | null;
+  reversedBy: string | null;
+  upload: {
+    tenantId: string;
+  };
+};
 
 type BulkRepaymentReversalQueueConfig = {
   exchangeName: string;
@@ -68,6 +82,34 @@ export class BulkRepaymentReversalQueueService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000;
+
+  private async updateReversalStatusSafe(
+    itemId: string,
+    data: Parameters<typeof prisma.bulkRepaymentItem.updateMany>[0]["data"],
+    context: string
+  ): Promise<boolean> {
+    const result = await prisma.bulkRepaymentItem.updateMany({
+      where: { id: itemId },
+      data,
+    });
+
+    if (result.count > 0) {
+      return true;
+    }
+
+    const currentItem = await prisma.bulkRepaymentItem.findUnique({
+      where: { id: itemId },
+      select: { id: true, reversalStatus: true, updatedAt: true },
+    });
+
+    console.warn(
+      `[BulkRepaymentReversal] ${context}: could not update item=${itemId} (current=${
+        currentItem?.reversalStatus ?? "missing"
+      }, updatedAt=${currentItem?.updatedAt?.toISOString() ?? "n/a"})`
+    );
+
+    return false;
+  }
 
   public async connect(): Promise<void> {
     try {
@@ -225,9 +267,88 @@ export class BulkRepaymentReversalQueueService {
 
   private async processMessage(msg: ConsumeMessage): Promise<void> {
     const message: BulkRepaymentReversalMessage = JSON.parse(msg.content.toString());
+    await this.processReversalPayload(message, { source: "queue" });
+  }
+
+  public async recoverStaleQueuedReversals(limit = 25): Promise<number> {
+    const staleItems = await prisma.bulkRepaymentItem.findMany({
+      where: {
+        reversalStatus: "QUEUED",
+      },
+      include: {
+        upload: {
+          select: {
+            tenantId: true,
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: "asc",
+      },
+      take: limit,
+    });
+
+    if (staleItems.length === 0) {
+      return 0;
+    }
+
+    console.warn(
+      `[BulkRepaymentReversal] Recovering ${staleItems.length} stale queued reversal item(s) directly from the database backlog`
+    );
+
+    let recovered = 0;
+
+    for (const item of staleItems as RecoverableReversalItem[]) {
+      try {
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: item.upload.tenantId },
+          select: { slug: true },
+        });
+
+        const fineractTxnId = item.fineractTxnId?.trim();
+        if (!tenant?.slug || !fineractTxnId) {
+          console.warn(
+            `[BulkRepaymentReversal] Skipping recovery for item=${item.id}; missing tenant slug or fineractTxnId`
+          );
+          continue;
+        }
+
+        await this.processReversalPayload(
+          {
+            itemId: item.id,
+            uploadId: item.uploadId,
+            tenantSlug: tenant.slug,
+            loanId: item.loanId,
+            fineractTransactionId: fineractTxnId,
+            transactionDate: (
+              item.transactionDate ??
+              new Date()
+            ).toISOString(),
+            amount: Number(item.amount),
+            reversedBy: item.reversedBy ?? "system-recovery",
+          },
+          { source: "db-recovery" }
+        );
+        recovered++;
+      } catch (error) {
+        console.error(
+          `[BulkRepaymentReversal] DB recovery failed for item=${item.id}:`,
+          error
+        );
+      }
+    }
+
+    return recovered;
+  }
+
+  private async processReversalPayload(
+    message: BulkRepaymentReversalMessage,
+    options?: { source?: "queue" | "db-recovery" }
+  ): Promise<void> {
+    const source = options?.source || "queue";
 
     console.log(
-      `[BulkRepaymentReversal] Processing: item=${message.itemId} loan=${message.loanId} txn=${message.fineractTransactionId}`
+      `[BulkRepaymentReversal] Processing (${source}): item=${message.itemId} loan=${message.loanId} txn=${message.fineractTransactionId}`
     );
 
     const item = await prisma.bulkRepaymentItem.findUnique({
@@ -251,13 +372,18 @@ export class BulkRepaymentReversalQueueService {
       return;
     }
 
-    await prisma.bulkRepaymentItem.update({
-      where: { id: message.itemId },
-      data: {
+    const reserved = await this.updateReversalStatusSafe(
+      message.itemId,
+      {
         reversalStatus: "PROCESSING",
         reversalErrorMessage: null,
       },
-    });
+      "Processing reservation"
+    );
+
+    if (!reserved) {
+      return;
+    }
 
     try {
       await undoLoanRepaymentTransaction({
@@ -268,15 +394,16 @@ export class BulkRepaymentReversalQueueService {
         amount: message.amount,
       });
 
-      await prisma.bulkRepaymentItem.update({
-        where: { id: message.itemId },
-        data: {
+      await this.updateReversalStatusSafe(
+        message.itemId,
+        {
           reversalStatus: "REVERSED",
           reversalErrorMessage: null,
           reversedAt: new Date(),
           reversedBy: message.reversedBy,
         },
-      });
+        "Reversal success"
+      );
 
       await refreshBulkRepaymentUploadStats(message.uploadId);
 
@@ -284,13 +411,14 @@ export class BulkRepaymentReversalQueueService {
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error);
 
-      await prisma.bulkRepaymentItem.update({
-        where: { id: message.itemId },
-        data: {
+      await this.updateReversalStatusSafe(
+        message.itemId,
+        {
           reversalStatus: "FAILED",
           reversalErrorMessage: errorMessage,
         },
-      });
+        "Reversal failure"
+      );
 
       await refreshBulkRepaymentUploadStats(message.uploadId);
 
