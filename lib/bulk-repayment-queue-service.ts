@@ -111,6 +111,7 @@ export class BulkRepaymentQueueService {
   private channel: Channel | null = null;
   private isConnected = false;
   private isConsuming = false;
+  private consumerRequested = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000;
@@ -237,6 +238,10 @@ export class BulkRepaymentQueueService {
       this.reconnectAttempts = 0;
 
       console.log("[BulkRepayment] Connected and queue setup complete");
+
+      if (this.consumerRequested && !this.isConsuming) {
+        await this.startConsumer();
+      }
     } catch (error) {
       console.error("[BulkRepayment] Failed to connect:", error);
       this.handleReconnect();
@@ -286,39 +291,7 @@ export class BulkRepaymentQueueService {
     setTimeout(() => this.connect(), this.reconnectDelay);
   }
 
-  public async publishRepayment(
-    message: BulkRepaymentMessage
-  ): Promise<void> {
-    const { exchangeName, routingKey } = getQueueConfig();
-
-    if (!this.channel || !this.isConnected) {
-      await this.connect();
-    }
-
-    if (!this.channel) {
-      throw new Error("Unable to connect to AMQP broker");
-    }
-
-    const messageBuffer = Buffer.from(JSON.stringify(message));
-    const published = this.channel.publish(
-      exchangeName,
-      routingKey,
-      messageBuffer,
-      {
-        persistent: true,
-        timestamp: Date.now(),
-        messageId: message.itemId,
-      }
-    );
-
-    if (!published) {
-      throw new Error("Failed to publish message to queue");
-    }
-
-    console.log(`[BulkRepayment] Published: ${message.itemId} (loan ${message.loanId})`);
-  }
-
-  public async startConsuming(): Promise<void> {
+  private async startConsumer(): Promise<void> {
     const { queueName } = getQueueConfig();
 
     if (global.__bulkRepaymentConsumerActive) {
@@ -328,18 +301,11 @@ export class BulkRepaymentQueueService {
 
     if (this.isConsuming) return;
 
-    if (!this.isConnected) {
-      await this.connect();
-    }
-
-    let attempts = 0;
-    while ((!this.channel || !this.isConnected) && attempts < 30) {
-      await new Promise((r) => setTimeout(r, 1000));
-      attempts++;
-    }
-
     if (!this.channel || !this.isConnected) {
-      throw new Error("Not connected to AMQP broker after waiting");
+      console.warn(
+        "[BulkRepayment] Consumer start deferred until AMQP connection is available"
+      );
+      return;
     }
 
     await this.channel.prefetch(3);
@@ -380,6 +346,55 @@ export class BulkRepaymentQueueService {
     this.isConsuming = true;
     global.__bulkRepaymentConsumerActive = true;
     console.log("[BulkRepayment] Consumer started");
+  }
+
+  public async publishRepayment(
+    message: BulkRepaymentMessage
+  ): Promise<void> {
+    const { exchangeName, routingKey } = getQueueConfig();
+
+    if (!this.channel || !this.isConnected) {
+      await this.connect();
+    }
+
+    if (!this.channel) {
+      throw new Error("Unable to connect to AMQP broker");
+    }
+
+    const messageBuffer = Buffer.from(JSON.stringify(message));
+    const published = this.channel.publish(
+      exchangeName,
+      routingKey,
+      messageBuffer,
+      {
+        persistent: true,
+        timestamp: Date.now(),
+        messageId: message.itemId,
+      }
+    );
+
+    if (!published) {
+      throw new Error("Failed to publish message to queue");
+    }
+
+    console.log(`[BulkRepayment] Published: ${message.itemId} (loan ${message.loanId})`);
+  }
+
+  public async startConsuming(): Promise<void> {
+    this.consumerRequested = true;
+
+    if (!this.isConnected) {
+      await this.connect();
+    }
+
+    if (!this.channel || !this.isConnected) {
+      console.warn(
+        "[BulkRepayment] AMQP broker unavailable; consumer will start automatically after reconnect"
+      );
+      return;
+    }
+
+    await this.startConsumer();
   }
 
   private buildMessageFromItem(

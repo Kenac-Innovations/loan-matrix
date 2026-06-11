@@ -79,6 +79,7 @@ export class BulkRepaymentReversalQueueService {
   private channel: Channel | null = null;
   private isConnected = false;
   private isConsuming = false;
+  private consumerRequested = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000;
@@ -143,6 +144,10 @@ export class BulkRepaymentReversalQueueService {
       this.reconnectAttempts = 0;
 
       console.log("[BulkRepaymentReversal] Connected and queue setup complete");
+
+      if (this.consumerRequested && !this.isConsuming) {
+        await this.startConsumer();
+      }
     } catch (error) {
       console.error("[BulkRepaymentReversal] Failed to connect:", error);
       this.handleReconnect();
@@ -193,6 +198,44 @@ export class BulkRepaymentReversalQueueService {
     setTimeout(() => this.connect(), this.reconnectDelay);
   }
 
+  private async startConsumer(): Promise<void> {
+    const { queueName } = getQueueConfig();
+
+    if (global.__bulkRepaymentReversalConsumerActive) {
+      console.log("[BulkRepaymentReversal] Consumer already active, skipping");
+      return;
+    }
+
+    if (this.isConsuming) return;
+
+    if (!this.channel || !this.isConnected) {
+      console.warn(
+        "[BulkRepaymentReversal] Consumer start deferred until AMQP connection is available"
+      );
+      return;
+    }
+
+    await this.channel.prefetch(1);
+
+    console.log(`[BulkRepaymentReversal] Starting consumer on ${queueName}`);
+
+    await this.channel.consume(queueName, async (msg: ConsumeMessage | null) => {
+      if (!msg) return;
+
+      try {
+        await this.processMessage(msg);
+        this.channel?.ack(msg);
+      } catch (error) {
+        console.error("[BulkRepaymentReversal] Processing error:", error);
+        this.channel?.nack(msg, false, false);
+      }
+    });
+
+    this.isConsuming = true;
+    global.__bulkRepaymentReversalConsumerActive = true;
+    console.log("[BulkRepaymentReversal] Consumer started");
+  }
+
   public async publishReversal(message: BulkRepaymentReversalMessage): Promise<void> {
     const { exchangeName, routingKey } = getQueueConfig();
 
@@ -221,48 +264,20 @@ export class BulkRepaymentReversalQueueService {
   }
 
   public async startConsuming(): Promise<void> {
-    const { queueName } = getQueueConfig();
-
-    if (global.__bulkRepaymentReversalConsumerActive) {
-      console.log("[BulkRepaymentReversal] Consumer already active, skipping");
-      return;
-    }
-
-    if (this.isConsuming) return;
+    this.consumerRequested = true;
 
     if (!this.isConnected) {
       await this.connect();
     }
 
-    let attempts = 0;
-    while ((!this.channel || !this.isConnected) && attempts < 30) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      attempts++;
-    }
-
     if (!this.channel || !this.isConnected) {
-      throw new Error("Not connected to AMQP broker after waiting");
+      console.warn(
+        "[BulkRepaymentReversal] AMQP broker unavailable; consumer will start automatically after reconnect"
+      );
+      return;
     }
 
-    await this.channel.prefetch(1);
-
-    console.log(`[BulkRepaymentReversal] Starting consumer on ${queueName}`);
-
-    await this.channel.consume(queueName, async (msg: ConsumeMessage | null) => {
-      if (!msg) return;
-
-      try {
-        await this.processMessage(msg);
-        this.channel?.ack(msg);
-      } catch (error) {
-        console.error("[BulkRepaymentReversal] Processing error:", error);
-        this.channel?.nack(msg, false, false);
-      }
-    });
-
-    this.isConsuming = true;
-    global.__bulkRepaymentReversalConsumerActive = true;
-    console.log("[BulkRepaymentReversal] Consumer started");
+    await this.startConsumer();
   }
 
   private async processMessage(msg: ConsumeMessage): Promise<void> {
