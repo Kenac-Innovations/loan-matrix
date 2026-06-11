@@ -5,6 +5,7 @@ import {
   generateConsolidatedStatementHTML,
   parseFineractDate,
   mapTransactionType,
+  isCreditBalanceRefundTransaction,
   type ConsolidatedStatementData,
   type ConsolidatedTransaction,
 } from "@/lib/loan-statement-template";
@@ -157,12 +158,13 @@ export async function GET(
       const isAccrual =
         tx.type?.code?.includes("accrual") ||
         tx.type?.value?.toLowerCase().includes("accrual");
+      const isCreditBalanceRefund = isCreditBalanceRefundTransaction(tx.type);
 
       let debit = 0;
       let credit = 0;
       let isHighlighted = false;
 
-      if (isDisbursement) {
+      if (isDisbursement || isCreditBalanceRefund) {
         debit = tx.amount || 0;
         isHighlighted = true;
       } else if (isAccrual) {

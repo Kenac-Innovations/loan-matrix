@@ -669,6 +669,10 @@ export function mapTransactionType(
   const typeCode = typeof type === "string" ? type : type?.code || "";
   const typeValue = typeof type === "string" ? type : type?.value || "";
 
+  if (isCreditBalanceRefundTransaction(type)) {
+    return "Credit Balance Refund";
+  }
+
   if (typeCode.includes("disbursement") || typeValue.toLowerCase().includes("disbursement")) {
     return `Disbursement ${accountNo || ""}`.trim();
   }
@@ -709,6 +713,20 @@ export function mapTransactionType(
   if (typeCode.includes("chargePayment")) return "Fee Payment";
 
   return typeValue || typeCode || "Unknown";
+}
+
+export function isCreditBalanceRefundTransaction(
+  type: { code?: string; value?: string } | string | undefined
+): boolean {
+  const typeCode = typeof type === "string" ? type : type?.code || "";
+  const typeValue = typeof type === "string" ? type : type?.value || "";
+  const normalizedCode = typeCode.toLowerCase();
+  const normalizedValue = typeValue.toLowerCase();
+
+  return (
+    normalizedCode.includes("creditbalancerefund") ||
+    normalizedValue.includes("credit balance refund")
+  );
 }
 
 /**
@@ -785,12 +803,13 @@ export function transformFineractLoanToStatement(
     const isAccrual =
       tx.type?.code?.includes("accrual") ||
       tx.type?.value?.toLowerCase().includes("accrual");
+    const isCreditBalanceRefund = isCreditBalanceRefundTransaction(tx.type);
 
     let debit = 0;
     let credit = 0;
     let isHighlighted = false;
 
-    if (isDisbursement) {
+    if (isDisbursement || isCreditBalanceRefund) {
       debit = tx.amount || 0;
       totalDebits += debit;
       runningBalance += debit;
