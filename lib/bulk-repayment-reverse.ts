@@ -33,6 +33,22 @@ type LoanWithTransactionsResponse = {
   transactions?: FineractLoanTransaction[];
 };
 
+function isTransferDateRestriction(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const apiError = error as FineractApiError & { message?: string };
+  const message =
+    apiError.errors?.[0]?.defaultUserMessage ||
+    apiError.defaultUserMessage ||
+    apiError.developerMessage ||
+    apiError.message ||
+    "";
+
+  return message.includes("client's transfer date to this office");
+}
+
 function normalizeTxnId(value: string | number | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
@@ -252,13 +268,41 @@ export async function undoLoanRepaymentTransaction(params: {
     transactionAmount: 0,
     transactionDate: formatDateForFineractUndo(params.transactionDate),
   };
-  return fetchFineractAPIForTenant(
-    `/loans/${params.loanId}/transactions/${undoTransactionId}?command=undo`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-    params.tenantSlug
-  );
+
+  const undoEndpoint = `/loans/${params.loanId}/transactions/${undoTransactionId}?command=undo`;
+
+  try {
+    return await fetchFineractAPIForTenant(
+      undoEndpoint,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+      params.tenantSlug
+    );
+  } catch (error) {
+    if (!isTransferDateRestriction(error)) {
+      throw error;
+    }
+
+    const fallbackDate = new Date();
+    const fallbackBody = {
+      ...body,
+      transactionDate: formatDateForFineractUndo(fallbackDate),
+    };
+
+    console.warn(
+      `[BulkRepaymentUndo] Retrying undo for loan=${params.loanId} txn=${params.fineractTransactionId} with fallback date ${fallbackBody.transactionDate} after transfer-date restriction`
+    );
+
+    return fetchFineractAPIForTenant(
+      undoEndpoint,
+      {
+        method: "POST",
+        body: JSON.stringify(fallbackBody),
+      },
+      params.tenantSlug
+    );
+  }
 }
 import https from "https";
