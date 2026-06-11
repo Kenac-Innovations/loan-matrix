@@ -36,9 +36,6 @@ type RecoverableQueuedItem = {
   transactionDate: Date | null;
   upload: {
     tenantId: string;
-    tenant: {
-      slug: string;
-    } | null;
   };
 };
 
@@ -157,11 +154,6 @@ export class BulkRepaymentQueueService {
         upload: {
           select: {
             tenantId: true,
-            tenant: {
-              select: {
-                slug: true,
-              },
-            },
           },
         },
       },
@@ -183,9 +175,24 @@ export class BulkRepaymentQueueService {
 
     for (const item of staleItems as RecoverableQueuedItem[]) {
       try {
-        await this.processRepaymentMessage(this.buildMessageFromItem(item), {
-          source: "db-recovery",
+        const tenant = await prisma.tenant.findUnique({
+          where: { id: item.upload.tenantId },
+          select: { slug: true },
         });
+
+        if (!tenant?.slug) {
+          console.warn(
+            `[BulkRepayment] Skipping recovery for item=${item.id}; tenant slug could not be resolved from tenantId=${item.upload.tenantId}`
+          );
+          continue;
+        }
+
+        await this.processRepaymentMessage(
+          this.buildMessageFromItem(item, tenant.slug),
+          {
+          source: "db-recovery",
+          }
+        );
         recovered++;
       } catch (error) {
         console.error(
@@ -375,11 +382,14 @@ export class BulkRepaymentQueueService {
     console.log("[BulkRepayment] Consumer started");
   }
 
-  private buildMessageFromItem(item: RecoverableQueuedItem): BulkRepaymentMessage {
+  private buildMessageFromItem(
+    item: RecoverableQueuedItem,
+    tenantSlug: string
+  ): BulkRepaymentMessage {
     return {
       itemId: item.id,
       uploadId: item.uploadId,
-      tenantSlug: item.upload.tenant?.slug || "goodfellow",
+      tenantSlug,
       loanId: item.loanId,
       amount: Number(item.amount),
       transactionDate: item.transactionDate

@@ -13,7 +13,6 @@ function formatDateForFineract(d: Date): string {
   return `${day.toString().padStart(2, "0")} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-/** POST: Reverse cash payout only (not disbursement). Money returns to cashier; cashier balance increases. */
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -77,16 +76,6 @@ export async function POST(
       );
     }
 
-    if (!payout.cashierId || !payout.tellerId) {
-      return NextResponse.json(
-        {
-          error:
-            "This payout has no cashier linked. Reversal requires the cashier who paid out so their balance can be updated.",
-        },
-        { status: 400 }
-      );
-    }
-
     // Amount to allocate back to cashier = amount paid out for this loan (must be positive)
     const allocationAmount = Number(payout.amount);
     if (!Number.isFinite(allocationAmount) || allocationAmount <= 0) {
@@ -99,94 +88,240 @@ export async function POST(
       );
     }
 
-    const cashier = await prisma.cashier.findFirst({
-      where: { id: payout.cashierId, tenantId: tenant.id },
-      include: { teller: true },
-    });
-    if (!cashier) {
-      return NextResponse.json(
-        { error: "Cashier record not found." },
-        { status: 404 }
-      );
-    }
-    const teller = cashier.teller;
-    if (!teller?.fineractTellerId || cashier.fineractCashierId == null) {
-      return NextResponse.json(
-        { error: "Cashier or teller is missing Fineract ID. Cannot update cashier balance." },
-        { status: 400 }
-      );
-    }
-
     const reversedAt = new Date();
     const txnNote = `Reversal - ${reason}`;
 
-    // Send the payout amount to Fineract so net cash increases by that amount
-    const txnAmountStr = allocationAmount.toFixed(2);
-    console.log("[Reverse payout] Allocating to cashier:", {
-      fineractTellerId: teller.fineractTellerId,
-      fineractCashierId: cashier.fineractCashierId,
-      amount: allocationAmount,
-      txnAmount: txnAmountStr,
-      currency: payout.currency,
-    });
+    const paymentMethod = (payout.paymentMethod || "").toUpperCase();
+    const isCashPayout = paymentMethod === "CASH" || (!paymentMethod && payout.cashierId && payout.tellerId);
+    const isMobileMoney = paymentMethod === "MOBILE_MONEY";
+    const isBankTransfer = paymentMethod === "BANK_TRANSFER";
 
-    try {
-      const fineractService = await getFineractServiceWithSession();
-      const result = await fineractService.allocateCashToCashier(
-        teller.fineractTellerId,
-        cashier.fineractCashierId,
-        {
-          txnDate: formatDateForFineract(reversedAt),
-          currencyCode: payout.currency,
-          txnAmount: txnAmountStr,
-          txnNote,
-          dateFormat: "dd MMMM yyyy",
-          locale: "en",
-        }
-      );
-      const fineractAllocationId = result?.resourceId ?? result?.id ?? null;
-      if (fineractAllocationId != null) {
-        await prisma.cashAllocation.create({
-          data: {
-            tenantId: tenant.id,
-            tellerId: teller.id,
-            cashierId: cashier.id,
-            fineractAllocationId,
-            amount: allocationAmount,
-            currency: payout.currency,
-            allocatedBy: session.user.id,
-            notes: txnNote,
-            status: "ACTIVE",
+    if (isCashPayout) {
+      if (!payout.cashierId || !payout.tellerId) {
+        return NextResponse.json(
+          {
+            error:
+              "This payout has no cashier linked. Reversal requires the cashier who paid out so their balance can be updated.",
           },
-        });
+          { status: 400 }
+        );
       }
-    } catch (err: unknown) {
-      console.error("Fineract allocate (reversal) error:", err);
-      const ax = err as { response?: { data?: { defaultUserMessage?: string; errors?: Array<{ defaultUserMessage?: string }> } } };
-      const msg = ax.response?.data?.defaultUserMessage ?? ax.response?.data?.errors?.[0]?.defaultUserMessage;
-      return NextResponse.json(
-        {
-          error: "Failed to return cash to cashier in Fineract.",
-          details: msg || (err instanceof Error ? (err as Error).message : "Unknown error"),
+
+      const cashier = await prisma.cashier.findFirst({
+        where: { id: payout.cashierId, tenantId: tenant.id },
+        include: { teller: true },
+      });
+      if (!cashier) {
+        return NextResponse.json(
+          { error: "Cashier record not found." },
+          { status: 404 }
+        );
+      }
+      const teller = cashier.teller;
+      if (!teller?.fineractTellerId || cashier.fineractCashierId == null) {
+        return NextResponse.json(
+          { error: "Cashier or teller is missing Fineract ID. Cannot update cashier balance." },
+          { status: 400 }
+        );
+      }
+
+      // Send the payout amount to Fineract so net cash increases by that amount
+      const txnAmountStr = allocationAmount.toFixed(2);
+      console.log("[Reverse payout] Allocating to cashier:", {
+        fineractTellerId: teller.fineractTellerId,
+        fineractCashierId: cashier.fineractCashierId,
+        amount: allocationAmount,
+        txnAmount: txnAmountStr,
+        currency: payout.currency,
+      });
+
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const result = await fineractService.allocateCashToCashier(
+          teller.fineractTellerId,
+          cashier.fineractCashierId,
+          {
+            txnDate: formatDateForFineract(reversedAt),
+            currencyCode: payout.currency,
+            txnAmount: txnAmountStr,
+            txnNote,
+            dateFormat: "dd MMMM yyyy",
+            locale: "en",
+          }
+        );
+        const fineractAllocationId = result?.resourceId ?? result?.id ?? null;
+        if (fineractAllocationId != null) {
+          await prisma.cashAllocation.create({
+            data: {
+              tenantId: tenant.id,
+              tellerId: teller.id,
+              cashierId: cashier.id,
+              fineractAllocationId,
+              amount: allocationAmount,
+              currency: payout.currency,
+              allocatedBy: session.user.id,
+              notes: txnNote,
+              status: "ACTIVE",
+            },
+          });
+        }
+      } catch (err: unknown) {
+        console.error("Fineract allocate (reversal) error:", err);
+        const ax = err as { response?: { data?: { defaultUserMessage?: string; errors?: Array<{ defaultUserMessage?: string }> } } };
+        const msg = ax.response?.data?.defaultUserMessage ?? ax.response?.data?.errors?.[0]?.defaultUserMessage;
+        return NextResponse.json(
+          {
+            error: "Failed to return cash to cashier in Fineract.",
+            details: msg || (err instanceof Error ? (err as Error).message : "Unknown error"),
+          },
+          { status: 502 }
+        );
+      }
+
+      await prisma.loanPayout.update({
+        where: { id: payout.id },
+        data: {
+          status: "REVERSED",
+          voidedAt: reversedAt,
+          voidedBy: reversedBy,
+          voidReason: reason,
         },
-        { status: 502 }
-      );
+      });
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Payout reversed. Cash has been returned to the cashier; their balance and transaction history are updated.",
+        payout: {
+          id: payout.id,
+          fineractLoanId: payout.fineractLoanId,
+          clientName: payout.clientName,
+          amount: payout.amount,
+          currency: payout.currency,
+          status: "REVERSED",
+          voidedAt: reversedAt.toISOString(),
+          voidedBy: reversedBy,
+          cashierId: payout.cashierId,
+        },
+      });
     }
 
-    await prisma.loanPayout.update({
-      where: { id: payout.id },
-      data: {
-        status: "REVERSED",
-        voidedAt: reversedAt,
-        voidedBy: reversedBy,
-        voidReason: reason,
-      },
-    });
+    if (isMobileMoney) {
+      const originalMobileMoneyTransaction = await prisma.mobileMoneyTransaction.findFirst({
+        where: {
+          tenantId: tenant.id,
+          loanPayoutId: payout.id,
+          type: "PAYOUT",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (originalMobileMoneyTransaction?.status === "REVERSED") {
+        return NextResponse.json(
+          { error: "This payout has already been reversed in mobile money." },
+          { status: 400 }
+        );
+      }
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const reversedPayout = await tx.loanPayout.update({
+          where: { id: payout.id },
+          data: {
+            status: "REVERSED",
+            voidedAt: reversedAt,
+            voidedBy: reversedBy,
+            voidReason: reason,
+          },
+        });
+
+        const reverseTransaction = await tx.mobileMoneyTransaction.create({
+          data: {
+            tenantId: tenant.id,
+            loanPayoutId: payout.id,
+            type: "PAYOUT_REVERSAL",
+            amount: allocationAmount,
+            currency: payout.currency,
+            transactionDate: reversedAt,
+            notes: txnNote,
+            status: "ACTIVE",
+            createdBy: reversedBy,
+            reversalOfId: originalMobileMoneyTransaction?.id ?? null,
+            reversedAt: null,
+            reversedBy: null,
+            reversalReason: null,
+            fineractLoanId: payout.fineractLoanId,
+            fineractClientId: payout.fineractClientId,
+            clientName: payout.clientName,
+            loanAccountNo: payout.loanAccountNo,
+          },
+        });
+
+        if (originalMobileMoneyTransaction) {
+          await tx.mobileMoneyTransaction.update({
+            where: { id: originalMobileMoneyTransaction.id },
+            data: {
+              status: "REVERSED",
+              reversedAt,
+              reversedBy,
+              reversalReason: reason,
+            },
+          });
+        }
+
+        return { reversedPayout, reverseTransaction };
+      });
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Mobile money payout reversed successfully. The payout has been marked reversed and a reversal transaction has been recorded.",
+        payout: {
+          id: updated.reversedPayout.id,
+          fineractLoanId: updated.reversedPayout.fineractLoanId,
+          clientName: updated.reversedPayout.clientName,
+          amount: updated.reversedPayout.amount,
+          currency: updated.reversedPayout.currency,
+          status: "REVERSED",
+          voidedAt: reversedAt.toISOString(),
+          voidedBy: reversedBy,
+          paymentMethod: updated.reversedPayout.paymentMethod,
+          mobileMoneyTransactionId: updated.reverseTransaction.id,
+        },
+      });
+    }
+
+    if (isBankTransfer) {
+      await prisma.loanPayout.update({
+        where: { id: payout.id },
+        data: {
+          status: "REVERSED",
+          voidedAt: reversedAt,
+          voidedBy: reversedBy,
+          voidReason: reason,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message:
+          "Bank transfer payout reversed successfully. The payout has been marked reversed.",
+        payout: {
+          id: payout.id,
+          fineractLoanId: payout.fineractLoanId,
+          clientName: payout.clientName,
+          amount: payout.amount,
+          currency: payout.currency,
+          status: "REVERSED",
+          voidedAt: reversedAt.toISOString(),
+          voidedBy: reversedBy,
+          paymentMethod: payout.paymentMethod,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
-      message:
-        "Payout reversed. Cash has been returned to the cashier; their balance and transaction history are updated.",
+      message: "Payout reversed successfully.",
       payout: {
         id: payout.id,
         fineractLoanId: payout.fineractLoanId,
@@ -196,7 +331,7 @@ export async function POST(
         status: "REVERSED",
         voidedAt: reversedAt.toISOString(),
         voidedBy: reversedBy,
-        cashierId: payout.cashierId,
+        paymentMethod: payout.paymentMethod,
       },
     });
   } catch (error) {

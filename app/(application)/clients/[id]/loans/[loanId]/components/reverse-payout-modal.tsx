@@ -25,8 +25,8 @@ interface ReversePayoutModalProps {
 }
 
 /**
- * Reverse payout only (not the disbursement). Marks the LoanPayout as REVERSED
- * so the cashier gets the money back in their transaction history.
+ * Reverse a payout only (not the disbursement). The backend routes the
+ * reversal based on the payment method.
  */
 export function ReversePayoutModal({
   isOpen,
@@ -61,7 +61,7 @@ export function ReversePayoutModal({
       toast({
         title: "Payout reversed",
         description:
-          "Cash will show as returned in the cashier's transaction history.",
+          "The payout reversal has been recorded successfully.",
       });
       onSuccess();
       onClose();
@@ -89,9 +89,10 @@ export function ReversePayoutModal({
             Reverse payout
           </DialogTitle>
           <DialogDescription>
-            Reverse the cash payout for this loan only. The disbursement in
-            Fineract is not changed. The amount will show as returned to the
-            cashier in their transaction history.
+            Reverse the payout for this loan only. The disbursement in
+            Fineract is not changed. Cash payouts return to the cashier,
+            while mobile money and bank transfer payouts are reversed using
+            their own payment flow.
             {clientName && (
               <span className="block mt-2 font-medium text-foreground">
                 Loan / client: {clientName}
