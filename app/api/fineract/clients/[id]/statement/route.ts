@@ -203,7 +203,7 @@ export async function GET(
         trxnId: tx.id?.toString() || "",
         debit,
         credit,
-        cumulativeBalance: Math.max(0, runningBalance),
+        cumulativeBalance: runningBalance,
         isHighlighted,
       });
     }
@@ -255,13 +255,13 @@ export async function GET(
           productName: s.productName,
           totalDebits: s.totalDebits,
           totalCredits: s.totalCredits,
-          closingBalance: Math.max(0, s.closingBalance),
+          closingBalance: s.closingBalance,
         })
       ),
       transactions: consolidatedTxs,
       totalDebits: grandDebits,
       totalCredits: grandCredits,
-      closingBalance: Math.max(0, runningBalance),
+      closingBalance: runningBalance,
       preparedBy,
     };
 

@@ -52,6 +52,11 @@ const formatCurrency = (amount: number, symbol: string = ""): string => {
   return `${symbol}${formatted}`;
 };
 
+const formatBalance = (amount: number, symbol: string = ""): string => {
+  const formatted = formatCurrency(amount, symbol);
+  return amount < 0 ? `${formatted} CR` : formatted;
+};
+
 
 export function generateLoanStatementHTML(data: LoanStatementData): string {
   // Generate transaction rows
@@ -64,7 +69,7 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
         <td class="trxn-id-cell">${tx.trxnId}</td>
         <td class="amount-cell">${formatCurrency(tx.debit, "")}</td>
         <td class="amount-cell">${formatCurrency(tx.credit, "")}</td>
-        <td class="amount-cell balance-cell">${formatCurrency(tx.cumulativeBalance, "")}</td>
+        <td class="amount-cell balance-cell">${formatBalance(tx.cumulativeBalance, "")}</td>
       </tr>
     `
     )
@@ -426,7 +431,7 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
             </tr>
             <tr class="closing-row">
               <td>Closing Balance</td>
-              <td>${data.currencySymbol}${formatCurrency(data.closingBalance, "")}</td>
+              <td>${formatBalance(data.closingBalance, data.currencySymbol)}</td>
             </tr>
           </tbody>
         </table>
@@ -490,7 +495,7 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
         <td class="trxn-id-cell">${tx.trxnId}</td>
         <td class="amount-cell">${formatCurrency(tx.debit, "")}</td>
         <td class="amount-cell">${formatCurrency(tx.credit, "")}</td>
-        <td class="amount-cell balance-cell">${formatCurrency(tx.cumulativeBalance, "")}</td>
+        <td class="amount-cell balance-cell">${formatBalance(tx.cumulativeBalance, "")}</td>
       </tr>
     `
     )
@@ -621,7 +626,7 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
               <td><strong>Grand Total</strong></td>
               <td class="amount-cell">${data.currencySymbol}${formatCurrency(data.totalDebits, "")}</td>
               <td class="amount-cell">${data.currencySymbol}${formatCurrency(data.totalCredits, "")}</td>
-              <td class="amount-cell">${data.currencySymbol}${formatCurrency(data.closingBalance, "")}</td>
+              <td class="amount-cell">${formatBalance(data.closingBalance, data.currencySymbol)}</td>
             </tr>
           </tbody>
         </table>
@@ -841,7 +846,7 @@ export function transformFineractLoanToStatement(
       trxnId: tx.id?.toString() || "",
       debit,
       credit,
-      cumulativeBalance: Math.max(0, runningBalance),
+      cumulativeBalance: runningBalance,
       isHighlighted,
     });
   });
@@ -882,7 +887,7 @@ export function transformFineractLoanToStatement(
     openingBalance,
     totalDebits,
     totalCredits,
-    closingBalance: Math.max(0, runningBalance),
+    closingBalance: runningBalance,
 
     preparedBy,
   };
