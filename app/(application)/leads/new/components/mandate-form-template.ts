@@ -69,6 +69,7 @@ export function generateMandateFormHTML(
   const branchName = contractData?.branchName ?? "";
   const sortCode = contractData?.sortCode ?? "";
   const accountNumber = contractData?.accountNumber ?? "";
+  const serviceProviderReferenceNumber = "0013100001";
   const organizationName =
     signatures.organization?.name?.trim() || "Goodfellow Finance Limited";
   const organizationLogoUrl = signatures.organization?.logoUrl ?? null;
@@ -142,7 +143,7 @@ export function generateMandateFormHTML(
     <div class="section-body">
       <div class="field">
         <div class="field-label">Service Provider's Reference Number:</div>
-        <div class="field-input field-input-full">&nbsp;</div>
+        <div class="field-input field-input-full">${escapeHtml(serviceProviderReferenceNumber)}</div>
       </div>
       <div class="field">
         <div class="field-label">Payer's Account Number with Service Provider:</div>
