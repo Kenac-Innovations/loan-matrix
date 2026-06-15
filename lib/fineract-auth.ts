@@ -181,28 +181,33 @@ async function fetchFineractUserDetails(input: {
 }
 
 export function getPermissionValidationError(userPermissions: string[]) {
-  if (!Array.isArray(userPermissions) || userPermissions.length === 0) {
-    return "Your account does not have any permissions assigned. Please contact your administrator.";
-  }
-
-  const hasAllFunctions =
-    userPermissions.includes("ALL_FUNCTIONS") ||
-    userPermissions.includes("ALL_FUNCTIONS_READ");
-
-  if (hasAllFunctions) {
-    return null;
-  }
-
-  const requiredPermissions = ["READ_USER", "READ_CURRENCY", "READ_REPORT"];
-  const missing = requiredPermissions.filter(
-    (permission) => !userPermissions.includes(permission)
-  );
-
-  if (missing.length === 0) {
-    return null;
-  }
-
-  return `Insufficient privileges. Your account is missing required permissions: ${missing.join(", ")}. Please contact your administrator.`;
+  // Login-time permission blocking is temporarily disabled so valid Fineract
+  // users can authenticate and rely on page/action authorization deeper in the app.
+  //
+  // if (!Array.isArray(userPermissions) || userPermissions.length === 0) {
+  //   return "Your account does not have any permissions assigned. Please contact your administrator.";
+  // }
+  //
+  // const hasAllFunctions =
+  //   userPermissions.includes("ALL_FUNCTIONS") ||
+  //   userPermissions.includes("ALL_FUNCTIONS_READ");
+  //
+  // if (hasAllFunctions) {
+  //   return null;
+  // }
+  //
+  // const requiredPermissions = ["READ_USER", "READ_CURRENCY", "READ_REPORT"];
+  // const missing = requiredPermissions.filter(
+  //   (permission) => !userPermissions.includes(permission)
+  // );
+  //
+  // if (missing.length === 0) {
+  //   return null;
+  // }
+  //
+  // return `Insufficient privileges. Your account is missing required permissions: ${missing.join(", ")}. Please contact your administrator.`;
+  void userPermissions;
+  return null;
 }
 
 export async function authenticateWithFineractCredentials(input: {
