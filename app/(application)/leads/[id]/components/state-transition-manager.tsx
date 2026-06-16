@@ -52,6 +52,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { canMoveAssignedLead } from "@/lib/lead-transition-permissions";
 
 interface AvailableTransition {
   stageId: string;
@@ -82,6 +83,7 @@ interface StateTransitionManagerProps {
   currentStageColor?: string;
   preferredPaymentMethod?: string | null;
   currentUserId?: string;
+  assignedToUserId?: string | number | null;
   isUserInStageTeam?: boolean;
   canManageLead?: boolean;
   onTransitionComplete?: () => void;
@@ -128,6 +130,7 @@ export default function StateTransitionManager({
   currentStageColor,
   preferredPaymentMethod,
   currentUserId,
+  assignedToUserId,
   isUserInStageTeam,
   canManageLead = true,
   onTransitionComplete,
@@ -528,7 +531,12 @@ export default function StateTransitionManager({
     selectedPaymentTypeIsCash,
   ]);
 
-  const canSeeButton = Boolean(currentUserId && isUserInStageTeam && canManageLead);
+  const canSeeButton = canMoveAssignedLead({
+    currentUserId,
+    assignedToUserId,
+    isUserInCurrentStageTeam: Boolean(isUserInStageTeam),
+    canManageLead,
+  });
   const disbursementBlocked =
     effectiveAction === "disburse" &&
     Boolean(disbursementPolicy?.onlyOriginatorCanDisburse) &&

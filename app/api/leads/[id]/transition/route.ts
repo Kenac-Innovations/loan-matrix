@@ -7,6 +7,33 @@ import {
   getDisbursementBlockReason,
   getLeadViewerAccessContext,
 } from "@/lib/lead-policy";
+import { getLeadMovePermissionDenial } from "@/lib/lead-transition-permissions";
+
+async function getTransitionPermissionDenial(input: {
+  tenantId: string;
+  currentStageId: string | null;
+  assignedToUserId: number | null;
+  currentUserId: string;
+  canManageLead: boolean;
+}) {
+  if (!input.currentStageId) {
+    return "This lead is not in a workflow stage and cannot be moved.";
+  }
+
+  const currentStageTeamPermission =
+    await TeamAwareStateMachineService.checkTeamPermissions(
+      input.currentStageId,
+      input.tenantId,
+      input.currentUserId
+    );
+
+  return getLeadMovePermissionDenial({
+    currentUserId: input.currentUserId,
+    assignedToUserId: input.assignedToUserId,
+    isUserInCurrentStageTeam: currentStageTeamPermission.canTransition,
+    canManageLead: input.canManageLead,
+  });
+}
 
 /**
  * POST /api/leads/[id]/transition
@@ -52,11 +79,28 @@ export async function POST(
       select: {
         tenantId: true,
         fineractClientId: true,
+        currentStageId: true,
+        assignedToUserId: true,
       },
     });
 
     if (!accessibleLead) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const permissionDenial = await getTransitionPermissionDenial({
+      tenantId: accessibleLead.tenantId,
+      currentStageId: accessibleLead.currentStageId,
+      assignedToUserId: accessibleLead.assignedToUserId,
+      currentUserId: session.user.id,
+      canManageLead: true,
+    });
+
+    if (permissionDenial) {
+      return NextResponse.json(
+        { success: false, error: permissionDenial, message: permissionDenial },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();
@@ -271,6 +315,9 @@ export async function GET(
         leadAccess.visibleOfficeIds
       ),
       select: {
+        tenantId: true,
+        currentStageId: true,
+        assignedToUserId: true,
         designatedDisburserUserId: true,
         designatedDisburserUserName: true,
       },
@@ -278,6 +325,21 @@ export async function GET(
 
     if (!accessibleLead) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const permissionDenial = await getTransitionPermissionDenial({
+      tenantId: accessibleLead.tenantId,
+      currentStageId: accessibleLead.currentStageId,
+      assignedToUserId: accessibleLead.assignedToUserId,
+      currentUserId: session.user.id,
+      canManageLead: true,
+    });
+
+    if (permissionDenial) {
+      return NextResponse.json(
+        { success: false, error: permissionDenial, message: permissionDenial },
+        { status: 403 }
+      );
     }
 
     const transitions =

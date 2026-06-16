@@ -644,6 +644,7 @@ export default async function LeadDetailPage({
                     currentStageColor={lead.currentStage?.color}
                     preferredPaymentMethod={lead.preferredPaymentMethod ?? null}
                     currentUserId={currentUserId}
+                    assignedToUserId={lead.assignedToUserId}
                     isUserInStageTeam={isUserInStageTeam}
                     canManageLead={canManageLead}
                   />
