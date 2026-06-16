@@ -4,12 +4,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSession } from "@/lib/auth";
 import { hasSuperAdminServer } from "@/lib/authorization";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { getSearchHeaders } from "@/lib/fineract-search-auth";
 import { ClientDetails } from "./components/client-details";
 import { ClientLoans } from "./components/client-loans";
 import { ClientTransactions } from "./components/client-transactions";
 import { ClientDocuments } from "./components/client-documents";
 import { ClientAdditionalInfo } from "./components/client-additional-info";
 import { ClientHeader } from "./components/client-header";
+import { ClientBranchTransferCard } from "./components/client-branch-transfer-card";
 
 const FINERACT_BASE_URL =
   process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
@@ -29,44 +31,108 @@ interface ClientImageResponse {
   base64EncodedImage?: string | null;
 }
 
+interface FineractClient {
+  id: number;
+  accountNo: string;
+  externalId?: string;
+  displayName: string;
+  firstname?: string;
+  lastname?: string;
+  middlename?: string;
+  mobileNo?: string;
+  emailAddress?: string;
+  active: boolean;
+  officeName: string;
+  officeId?: number;
+  activationDate?: string | number[];
+  dateOfBirth?: string | number[];
+  gender?: {
+    id: number;
+    name: string;
+  };
+  clientClassification?: {
+    id: number;
+    name: string;
+  };
+  clientType?: {
+    id: number;
+    name: string;
+  };
+  status: {
+    id: number;
+    code: string;
+    value: string;
+  };
+  timeline: {
+    submittedOnDate: string | number[];
+    activatedOnDate?: string | number[];
+  };
+}
+
+interface ClientDataResult {
+  client: FineractClient | null;
+  usedServiceFallback: boolean;
+}
+
 /**
  * Fetch client data from Fineract
  */
-async function getClientData(clientId: number) {
+async function getClientData(clientId: number): Promise<ClientDataResult> {
   try {
     const session = await getSession();
     const accessToken =
       session?.base64EncodedAuthenticationKey || session?.accessToken;
 
-    if (!accessToken) {
-      console.warn("No access token available for client fetch");
-      return null;
-    }
-
     const fineractTenantId = await getFineractTenantId();
 
-    const response = await fetch(
+    if (accessToken) {
+      const response = await fetch(
+        `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Basic ${accessToken}`,
+            "Fineract-Platform-TenantId": fineractTenantId,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (response.ok) {
+        return {
+          client: await response.json(),
+          usedServiceFallback: false,
+        };
+      }
+
+      console.error(`Failed to fetch client ${clientId}:`, response.status);
+    }
+
+    const fallbackResponse = await fetch(
       `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}`,
       {
         method: "GET",
-        headers: {
-          Authorization: `Basic ${accessToken}`,
-          "Fineract-Platform-TenantId": fineractTenantId,
-          Accept: "application/json",
-        },
+        headers: getSearchHeaders(fineractTenantId),
         cache: "no-store",
       }
     );
 
-    if (!response.ok) {
-      console.error(`Failed to fetch client ${clientId}:`, response.status);
-      return null;
+    if (!fallbackResponse.ok) {
+      console.error(
+        `Service fallback failed to fetch client ${clientId}:`,
+        fallbackResponse.status
+      );
+      return { client: null, usedServiceFallback: false };
     }
 
-    return await response.json();
+    return {
+      client: await fallbackResponse.json(),
+      usedServiceFallback: true,
+    };
   } catch (error) {
     console.error("Error fetching client data:", error);
-    return null;
+    return { client: null, usedServiceFallback: false };
   }
 }
 
@@ -189,7 +255,8 @@ async function getDatatables() {
       return [];
     }
 
-    return await response.json();
+    const datatables = await response.json();
+    return Array.isArray(datatables) ? datatables : [];
   } catch (error) {
     console.error("Error fetching datatables:", error);
     return [];
@@ -204,8 +271,9 @@ async function getDatatableData(
   datatables: DatatableDefinition[]
 ): Promise<Record<string, unknown>> {
   const datatableData: Record<string, unknown> = {};
+  const datatableList = Array.isArray(datatables) ? datatables : [];
 
-  if (!datatables || datatables.length === 0) {
+  if (datatableList.length === 0) {
     return datatableData;
   }
 
@@ -222,7 +290,7 @@ async function getDatatableData(
 
     // Fetch data for each datatable
     await Promise.all(
-      datatables.map(async (dt) => {
+      datatableList.map(async (dt) => {
         try {
           const response = await fetch(
             `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables/${encodeURIComponent(
@@ -267,15 +335,20 @@ export default async function ClientDetailPage({ params }: PageProps) {
   }
 
   // Fetch all data server-side in parallel
-  const [client, clientImage, datatables, canEditClient] = await Promise.all([
-    getClientData(clientId),
-    getClientImage(clientId),
-    getDatatables(),
-    hasSuperAdminServer(),
-  ]);
+  const [clientResult, clientImage, datatables, canEditClient] =
+    await Promise.all([
+      getClientData(clientId),
+      getClientImage(clientId),
+      getDatatables(),
+      hasSuperAdminServer(),
+    ]);
+  const client = clientResult.client;
+  const isRestrictedBranchClient = clientResult.usedServiceFallback;
 
   // Fetch datatable data after we have the datatables list
-  const datatableData = await getDatatableData(clientId, datatables || []);
+  const datatableData = isRestrictedBranchClient
+    ? {}
+    : await getDatatableData(clientId, datatables || []);
 
   return (
     <div className="space-y-6">
@@ -294,60 +367,70 @@ export default async function ClientDetailPage({ params }: PageProps) {
         clientImage={clientImage}
       />
 
+      {isRestrictedBranchClient && client && (
+        <ClientBranchTransferCard
+          clientId={clientId}
+          currentOfficeId={client.officeId}
+          currentOfficeName={client.officeName}
+        />
+      )}
+
       {/* Detailed Information Tabs */}
-      <Tabs defaultValue="loans" className="space-y-4">
-        <TabsList className="w-full sm:w-auto overflow-x-auto">
-          <TabsTrigger
-            value="loans"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <CreditCard className="h-4 w-4" />
-            <span className="hidden sm:inline">Loans</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="transactions"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <Receipt className="h-4 w-4" />
-            <span className="hidden sm:inline">Transactions</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="documents"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            <span className="hidden sm:inline">Documents</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="additional-info"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <Database className="h-4 w-4" />
-            <span className="hidden sm:inline">Additional Info</span>
-          </TabsTrigger>
-        </TabsList>
+      {!isRestrictedBranchClient && (
+        <Tabs defaultValue="loans" className="space-y-4">
+          <TabsList className="w-full sm:w-auto overflow-x-auto">
+            <TabsTrigger
+              value="loans"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <CreditCard className="h-4 w-4" />
+              <span className="hidden sm:inline">Loans</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="transactions"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <Receipt className="h-4 w-4" />
+              <span className="hidden sm:inline">Transactions</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="documents"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              <span className="hidden sm:inline">Documents</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="additional-info"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <Database className="h-4 w-4" />
+              <span className="hidden sm:inline">Additional Info</span>
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="loans" className="space-y-4">
-          <ClientLoans clientId={clientId} />
-        </TabsContent>
+          <TabsContent value="loans" className="space-y-4">
+            <ClientLoans clientId={clientId} />
+          </TabsContent>
 
-        <TabsContent value="transactions" className="space-y-4">
-          <ClientTransactions clientId={clientId} />
-        </TabsContent>
+          <TabsContent value="transactions" className="space-y-4">
+            <ClientTransactions clientId={clientId} />
+          </TabsContent>
 
-        <TabsContent value="documents" className="space-y-4">
-          <ClientDocuments clientId={clientId} />
-        </TabsContent>
+          <TabsContent value="documents" className="space-y-4">
+            <ClientDocuments clientId={clientId} />
+          </TabsContent>
 
-        {/* Additional Info Tab - Dynamic Datatables */}
-        <TabsContent value="additional-info" className="space-y-4">
-          <ClientAdditionalInfo
-            clientId={clientId}
-            datatables={datatables || []}
-            datatableData={datatableData}
-          />
-        </TabsContent>
-      </Tabs>
+          {/* Additional Info Tab - Dynamic Datatables */}
+          <TabsContent value="additional-info" className="space-y-4">
+            <ClientAdditionalInfo
+              clientId={clientId}
+              datatables={datatables || []}
+              datatableData={datatableData}
+            />
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }
