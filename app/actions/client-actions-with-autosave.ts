@@ -6,6 +6,8 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { formatMobileForFineract } from "@/lib/phone-utils";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { ensureExistingClientInCreatorOffice } from "@/lib/fineract-client-office-transfer";
 
 // Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
@@ -80,6 +82,9 @@ export async function autoSaveField(
       clientTypeId: data.clientTypeId ? Number(data.clientTypeId) : undefined,
       clientClassificationId: data.clientClassificationId ? Number(data.clientClassificationId) : undefined,
       genderId: data.genderId ? Number(data.genderId) : undefined,
+      fineractClientId: data.fineractClientId
+        ? Number(data.fineractClientId)
+        : undefined,
       // Convert date strings to Date objects
       dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
       submittedOnDate: data.submittedOnDate ? new Date(data.submittedOnDate) : new Date(),
@@ -117,6 +122,26 @@ export async function autoSaveField(
 
     // Current timestamp for tracking
     const now = new Date();
+    let existingClientOfficeTransfer: Awaited<
+      ReturnType<typeof ensureExistingClientInCreatorOffice>
+    > | null = null;
+
+    if (validatedData.fineractClientId !== undefined) {
+      const fineractService = await getFineractServiceWithSession();
+      existingClientOfficeTransfer = await ensureExistingClientInCreatorOffice({
+        fineractService,
+        client: await fineractService.getClient(validatedData.fineractClientId),
+        creatorOfficeId: session.user.officeId,
+      });
+    }
+
+    const resolvedOfficeId =
+      existingClientOfficeTransfer?.client.officeId ?? validatedData.officeId;
+    const resolvedOfficeName =
+      existingClientOfficeTransfer?.client.officeName ?? validatedData.officeName;
+    const resolvedFineractAccountNo =
+      existingClientOfficeTransfer?.client.accountNo ??
+      validatedData.fineractAccountNo;
 
     if (leadId) {
       console.log("Updating existing lead:", leadId);
@@ -132,11 +157,11 @@ export async function autoSaveField(
           ...(existingLead?.currentStageId == null && {
             currentStageId: initialStageId,
           }),
-          ...(validatedData.officeId !== undefined && {
-            officeId: validatedData.officeId,
+          ...(resolvedOfficeId !== undefined && {
+            officeId: resolvedOfficeId,
           }),
-          ...(validatedData.officeName !== undefined && {
-            officeName: validatedData.officeName,
+          ...(resolvedOfficeName !== undefined && {
+            officeName: resolvedOfficeName,
           }),
           ...(validatedData.legalFormId !== undefined && {
             legalFormId: validatedData.legalFormId,
@@ -239,15 +264,19 @@ export async function autoSaveField(
           ...(validatedData.facilityType !== undefined && {
             facilityType: validatedData.facilityType,
           }),
-          ...(validatedData.fineractAccountNo !== undefined && {
-            fineractAccountNo: validatedData.fineractAccountNo,
+          ...(resolvedFineractAccountNo !== undefined && {
+            fineractAccountNo: resolvedFineractAccountNo,
           }),
           lastModified: now,
         },
       });
 
       console.log("Lead updated successfully:", updatedLead.id);
-      return { success: true, leadId };
+      return {
+        success: true,
+        leadId,
+        branchMoved: existingClientOfficeTransfer?.moved ?? false,
+      };
     } else {
       console.log("Creating new lead with initial stage");
 
@@ -257,8 +286,8 @@ export async function autoSaveField(
             userId,
             tenantId,
             currentStageId: initialStageId,
-            officeId: validatedData.officeId || null,
-            officeName: validatedData.officeName || null,
+            officeId: resolvedOfficeId || null,
+            officeName: resolvedOfficeName || null,
             legalFormId: validatedData.legalFormId || null,
             legalFormName: validatedData.legalFormName || null,
             externalId: validatedData.externalId || null,
@@ -293,13 +322,23 @@ export async function autoSaveField(
             savingsProductName: validatedData.savingsProductName || null,
             currentStep: validatedData.currentStep || 1,
             facilityType: validatedData.facilityType ?? null,
+            ...(validatedData.fineractClientId !== undefined && {
+              fineractClientId: validatedData.fineractClientId,
+              fineractAccountNo: resolvedFineractAccountNo ?? null,
+              clientCreatedInFineract: true,
+              clientCreationDate: now,
+            }),
             status: "PROSPECT",
             lastModified: now,
           },
         });
 
         console.log("New lead created successfully:", lead.id);
-        return { success: true, leadId: lead.id };
+        return {
+          success: true,
+          leadId: lead.id,
+          branchMoved: existingClientOfficeTransfer?.moved ?? false,
+        };
       } catch (error) {
         console.error("Error creating lead:", error);
         console.log(
@@ -315,8 +354,8 @@ export async function autoSaveField(
             userId,
             tenantId,
             currentStageId: initialStageId,
-            officeId: validatedData.officeId || null,
-            officeName: validatedData.officeName || null,
+            officeId: resolvedOfficeId || null,
+            officeName: resolvedOfficeName || null,
             legalFormId: validatedData.legalFormId || null,
             legalFormName: validatedData.legalFormName || null,
             externalId: validatedData.externalId || null,
@@ -351,6 +390,13 @@ export async function autoSaveField(
             savingsProductId: validatedData.savingsProductId || null,
             savingsProductName: validatedData.savingsProductName || null,
             currentStep: validatedData.currentStep || 1,
+            facilityType: validatedData.facilityType ?? null,
+            ...(validatedData.fineractClientId !== undefined && {
+              fineractClientId: validatedData.fineractClientId,
+              fineractAccountNo: resolvedFineractAccountNo ?? null,
+              clientCreatedInFineract: true,
+              clientCreationDate: now,
+            }),
             status: "PROSPECT",
             lastModified: now,
           };
@@ -366,7 +412,11 @@ export async function autoSaveField(
             "Lead created without user connection:",
             leadWithoutUser.id
           );
-          return { success: true, leadId: leadWithoutUser.id };
+          return {
+            success: true,
+            leadId: leadWithoutUser.id,
+            branchMoved: existingClientOfficeTransfer?.moved ?? false,
+          };
         } catch (retryError) {
           console.error("Error in retry attempt:", retryError);
           throw retryError;

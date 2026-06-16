@@ -11,6 +11,7 @@ import {
 } from "@/lib/tenant-service";
 import { formatMobileForFineract } from "@/lib/phone-utils";
 import { getOriginatorDesignatedDisburserData } from "@/lib/lead-policy";
+import { ensureExistingClientInCreatorOffice } from "@/lib/fineract-client-office-transfer";
 
 // Helper to resolve the current tenant, optionally using the raw request
 // so we can read middleware-set and proxy-set headers directly.
@@ -1011,31 +1012,46 @@ async function handleCreateLeadWithClient(data: any) {
     // Step 2a: Check if client already exists in Fineract by external ID (national ID)
     if (validatedData.externalId) {
       console.log("==========> Checking if client exists with external ID:", validatedData.externalId);
+      const { fetchClientByExternalId } = await import("@/lib/api");
+      let existingClient: any = null;
       try {
-        const { fetchClientByExternalId } = await import("@/lib/api");
-        const existingClient = await fetchClientByExternalId(validatedData.externalId);
-        
-        if (existingClient && existingClient.id) {
-          console.log("==========> Client already exists in Fineract with ID:", existingClient.id);
-          // Client already exists - return their info instead of creating a new one
-          fineractClientId = existingClient.id;
-          
-          // Skip to creating the lead with the existing client data
-          const result = await prisma.$transaction(async (tx) => {
-            const session = await getSession();
-            if (!session?.user?.id) {
-              throw new Error("User not authenticated");
-            }
-            const userId = session.user.id;
-            const createdByUserName =
-              session.user.name || session.user.email || userId;
-            const designatedDisburserDefaults =
-              getOriginatorDesignatedDisburserData({
-                originatorUserId: userId,
-                originatorUserName: createdByUserName,
-                assignedByFineractUserId: session.user.userId ?? userId,
-              });
+        existingClient = await fetchClientByExternalId(validatedData.externalId);
+      } catch (lookupError: any) {
+        // Client not found is expected - continue with creation
+        if (!lookupError.message?.includes("not found")) {
+          console.log("==========> Error checking for existing client:", lookupError.message);
+        } else {
+          console.log("==========> Client not found in Fineract, will create new client");
+        }
+      }
 
+      if (existingClient && existingClient.id) {
+        console.log("==========> Client already exists in Fineract with ID:", existingClient.id);
+        // Client already exists - return their info instead of creating a new one
+        fineractClientId = existingClient.id;
+
+        const session = await getSession();
+        if (!session?.user?.id) {
+          throw new Error("User not authenticated");
+        }
+        const userId = session.user.id;
+        const createdByUserName =
+          session.user.name || session.user.email || userId;
+        const designatedDisburserDefaults =
+          getOriginatorDesignatedDisburserData({
+            originatorUserId: userId,
+            originatorUserName: createdByUserName,
+            assignedByFineractUserId: session.user.userId ?? userId,
+          });
+        const clientOfficeTransfer = await ensureExistingClientInCreatorOffice({
+          fineractService,
+          client: await fineractService.getClient(existingClient.id),
+          creatorOfficeId: session.user.officeId,
+        });
+        const clientForLead = clientOfficeTransfer.client;
+
+        // Skip to creating the lead with the existing client data
+        const result = await prisma.$transaction(async (tx) => {
             // Resolve current tenant from subdomain/headers
             const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
             const tenantId = currentTenant.id;
@@ -1049,8 +1065,8 @@ async function handleCreateLeadWithClient(data: any) {
                 ...(designatedDisburserDefaults ?? {}),
                 tenantId,
                 currentStageId: initialStageId,
-                officeId: validatedData.officeId,
-                officeName: validatedData.officeName,
+                officeId: clientForLead.officeId ?? validatedData.officeId,
+                officeName: clientForLead.officeName ?? validatedData.officeName,
                 legalFormId: validatedData.legalFormId,
                 legalFormName: validatedData.legalFormName,
                 externalId: validatedData.externalId,
@@ -1084,8 +1100,8 @@ async function handleCreateLeadWithClient(data: any) {
                 businessOwnership: validatedData.businessOwnership,
                 businessType: validatedData.businessType,
                 businessAddress: validatedData.businessAddress,
-                fineractClientId: existingClient.id,
-                fineractAccountNo: existingClient.accountNo || null,
+                fineractClientId: clientForLead.id,
+                fineractAccountNo: clientForLead.accountNo || existingClient.accountNo || null,
                 clientCreatedInFineract: true,
                 clientCreationDate: new Date(),
                 status: "DRAFT",
@@ -1102,8 +1118,9 @@ async function handleCreateLeadWithClient(data: any) {
 
             return {
               lead: newLead,
-              fineractClient: existingClient,
+              fineractClient: clientForLead,
               clientAlreadyExisted: true,
+              branchMoved: clientOfficeTransfer.moved,
             };
           });
 
@@ -1111,18 +1128,11 @@ async function handleCreateLeadWithClient(data: any) {
             success: true,
             message: "Client already exists in Fineract. Lead created with existing client.",
             leadId: result.lead.id,
-            fineractClientId: existingClient.id,
-            fineractAccountNo: existingClient.accountNo || null,
+            fineractClientId: clientForLead.id,
+            fineractAccountNo: clientForLead.accountNo || existingClient.accountNo || null,
             clientAlreadyExisted: true,
+            branchMoved: result.branchMoved,
           });
-        }
-      } catch (lookupError: any) {
-        // Client not found is expected - continue with creation
-        if (!lookupError.message?.includes("not found")) {
-          console.log("==========> Error checking for existing client:", lookupError.message);
-        } else {
-          console.log("==========> Client not found in Fineract, will create new client");
-        }
       }
     }
 
@@ -1168,7 +1178,9 @@ async function handleCreateLeadWithClient(data: any) {
       JSON.stringify(clientData, null, 2)
     );
     const fineractClient = await fineractService.createClient(clientData);
-    fineractClientId = fineractClient.clientId || fineractClient.resourceId;
+    const createdFineractClientId =
+      fineractClient.clientId ?? fineractClient.resourceId ?? fineractClient.id;
+    fineractClientId = createdFineractClientId;
 
     console.log("==========> Fineract client created successfully:");
     console.log("==========> Fineract response:", fineractClient);
@@ -1249,9 +1261,9 @@ async function handleCreateLeadWithClient(data: any) {
           businessOwnership: validatedData.businessOwnership,
           businessType: validatedData.businessType,
           // Fineract data
-          fineractClientId:
-            fineractClient.clientId || fineractClient.resourceId,
-          fineractAccountNo: fineractClient.resourceExternalId || null,
+          fineractClientId: createdFineractClientId,
+          fineractAccountNo:
+            fineractClient.resourceExternalId || fineractClient.accountNo || null,
           clientCreatedInFineract: true,
           clientCreationDate: new Date(),
           status: "DRAFT",
@@ -1297,9 +1309,11 @@ async function handleCreateLeadWithClient(data: any) {
       success: true,
       message: "Lead and client created successfully",
       leadId: result.lead.id,
-      fineractClientId:
-        result.fineractClient.clientId || result.fineractClient.resourceId,
-      fineractAccountNo: result.fineractClient.resourceExternalId || null,
+      fineractClientId: createdFineractClientId,
+      fineractAccountNo:
+        result.fineractClient.resourceExternalId ||
+        result.fineractClient.accountNo ||
+        null,
     });
   } catch (error: any) {
     console.error("Error in transactional lead creation:", error);
@@ -1515,6 +1529,12 @@ async function handleCreateLeadForExistingClient(data: any) {
       originatorUserName: createdByUserName,
       assignedByFineractUserId: session.user.userId ?? session.user.id,
     });
+    const clientOfficeTransfer = await ensureExistingClientInCreatorOffice({
+      fineractService,
+      client,
+      creatorOfficeId: session.user.officeId,
+    });
+    const clientForLead = clientOfficeTransfer.client;
 
     const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
     const initialStageId = await getInitialStageId(currentTenant.id);
@@ -1533,28 +1553,28 @@ async function handleCreateLeadForExistingClient(data: any) {
         ...(designatedDisburserDefaults ?? {}),
         tenantId: currentTenant.id,
         currentStageId: initialStageId,
-        officeId: client.officeId,
-        officeName: client.officeName,
-        legalFormId: client.legalForm?.id ?? 1,
-        externalId: client.externalId,
-        firstname: client.firstname,
-        middlename: client.middlename,
-        lastname: client.lastname,
-        fullname: client.displayName,
-        dateOfBirth: parseDate(client.dateOfBirth),
-        genderId: client.gender?.id,
-        gender: client.gender?.name,
-        mobileNo: client.mobileNo ?? "",
-        emailAddress: client.emailAddress,
-        clientTypeId: client.clientType?.id,
-        clientTypeName: client.clientType?.name,
-        clientClassificationId: client.clientClassification?.id,
-        clientClassificationName: client.clientClassification?.name,
-        submittedOnDate: parseDate(client.timeline?.submittedOnDate) ?? new Date(),
-        active: client.active,
-        activationDate: parseDate(client.activationDate),
-        fineractClientId: client.id,
-        fineractAccountNo: client.accountNo ?? null,
+        officeId: clientForLead.officeId,
+        officeName: clientForLead.officeName,
+        legalFormId: clientForLead.legalForm?.id ?? 1,
+        externalId: clientForLead.externalId,
+        firstname: clientForLead.firstname,
+        middlename: clientForLead.middlename,
+        lastname: clientForLead.lastname,
+        fullname: clientForLead.displayName,
+        dateOfBirth: parseDate(clientForLead.dateOfBirth),
+        genderId: clientForLead.gender?.id,
+        gender: clientForLead.gender?.name,
+        mobileNo: clientForLead.mobileNo ?? "",
+        emailAddress: clientForLead.emailAddress,
+        clientTypeId: clientForLead.clientType?.id,
+        clientTypeName: clientForLead.clientType?.name,
+        clientClassificationId: clientForLead.clientClassification?.id,
+        clientClassificationName: clientForLead.clientClassification?.name,
+        submittedOnDate: parseDate(clientForLead.timeline?.submittedOnDate) ?? new Date(),
+        active: clientForLead.active,
+        activationDate: parseDate(clientForLead.activationDate),
+        fineractClientId: clientForLead.id,
+        fineractAccountNo: clientForLead.accountNo ?? null,
         clientCreatedInFineract: true,
         clientCreationDate: new Date(),
         status: "DRAFT",
@@ -1565,7 +1585,8 @@ async function handleCreateLeadForExistingClient(data: any) {
     return NextResponse.json({
       success: true,
       leadId: newLead.id,
-      fineractClientId: client.id,
+      fineractClientId: clientForLead.id,
+      branchMoved: clientOfficeTransfer.moved,
     });
   } catch (error: any) {
     console.error("Error creating lead for existing client:", error);
@@ -1619,6 +1640,17 @@ async function handleUpdateClient(data: any, leadId?: string) {
     console.log("==========> Getting Fineract service...");
     const fineractService = await getFineractServiceWithSession();
     console.log("==========> Fineract service obtained successfully");
+
+    const session = await getSession();
+    if (!session?.user?.id) {
+      throw new Error("User not authenticated");
+    }
+    const authenticatedUserId = session.user.id;
+    let clientOfficeTransfer: Awaited<
+      ReturnType<typeof ensureExistingClientInCreatorOffice>
+    > | null = null;
+    let leadOfficeId = data.officeId;
+    let leadOfficeName = data.officeName;
 
     // Debug date fields before formatting
     console.log("==========> Date field types:");
@@ -1710,6 +1742,15 @@ async function handleUpdateClient(data: any, leadId?: string) {
         "==========> Fineract client updated successfully:",
         updatedFineractClient
       );
+
+      clientOfficeTransfer = await ensureExistingClientInCreatorOffice({
+        fineractService,
+        client: await fineractService.getClient(Number(data.fineractClientId)),
+        creatorOfficeId: session.user.officeId,
+      });
+      const clientForLeadOffice = clientOfficeTransfer.client;
+      leadOfficeId = clientForLeadOffice.officeId ?? data.officeId;
+      leadOfficeName = clientForLeadOffice.officeName ?? data.officeName;
     } catch (fineractError: any) {
       console.error("==========> Fineract update error:", fineractError);
       console.error(
@@ -1740,8 +1781,8 @@ async function handleUpdateClient(data: any, leadId?: string) {
               fineractAccountNo: updatedFineractClient.accountNo,
 
               // Office information
-              officeId: data.officeId,
-              officeName: data.officeName,
+              officeId: leadOfficeId,
+              officeName: leadOfficeName,
 
               // Legal form information
               legalFormId: data.legalFormId,
@@ -1810,12 +1851,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
           // Resolve current tenant from subdomain/headers
           const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
 
-          // Get current user ID from session
-          const session = await getSession();
-          if (!session?.user?.id) {
-            throw new Error("User not authenticated");
-          }
-          const userId = session.user.id;
+          const userId = authenticatedUserId;
           const initialStageId = await getInitialStageId(currentTenant.id, tx);
 
           // Create a new lead record
@@ -1832,8 +1868,8 @@ async function handleUpdateClient(data: any, leadId?: string) {
               fineractAccountNo: updatedFineractClient.accountNo,
 
               // Office information
-              officeId: data.officeId,
-              officeName: data.officeName,
+              officeId: leadOfficeId,
+              officeName: leadOfficeName,
 
               // Legal form information
               legalFormId: data.legalFormId,
@@ -1919,6 +1955,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
       fineractClientId: data.fineractClientId,
       fineractAccountNo: formatAccountNumber(data.fineractAccountNo),
       leadId: result.id,
+      branchMoved: clientOfficeTransfer?.moved ?? false,
     });
   } catch (error: any) {
     console.error("Error in transactional client update:", error);
