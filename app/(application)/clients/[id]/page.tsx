@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSession } from "@/lib/auth";
 import { hasSuperAdminServer } from "@/lib/authorization";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { getSearchHeaders } from "@/lib/fineract-search-auth";
 import { prisma } from "@/lib/prisma";
 import { ClientDetails } from "./components/client-details";
 import { ClientLoans } from "./components/client-loans";
@@ -19,6 +20,7 @@ import { ClientTransactions } from "./components/client-transactions";
 import { ClientDocuments } from "./components/client-documents";
 import { ClientAdditionalInfo } from "./components/client-additional-info";
 import { ClientHeader } from "./components/client-header";
+import { ClientBranchTransferCard } from "./components/client-branch-transfer-card";
 import { ClientEntityKyc } from "./components/client-entity-kyc";
 import { ClientSavings } from "./components/client-savings";
 import { ClientFacility } from "./components/client-facility";
@@ -39,6 +41,55 @@ type ImagePayload = {
 
 type DatatableDescriptor = {
   registeredTableName: string;
+};
+
+type FineractLegalForm = {
+  id: number;
+  value?: string;
+};
+
+type FineractClient = {
+  id: number;
+  accountNo: string;
+  externalId?: string;
+  displayName: string;
+  firstname?: string;
+  lastname?: string;
+  middlename?: string;
+  mobileNo?: string;
+  emailAddress?: string;
+  status: {
+    id: number;
+    code: string;
+    value: string;
+  };
+  active: boolean;
+  activationDate?: string | number[];
+  officeName: string;
+  officeId?: number;
+  timeline: {
+    submittedOnDate: string | number[];
+    activatedOnDate?: string | number[];
+  };
+  dateOfBirth?: string | number[];
+  gender?: {
+    id: number;
+    name: string;
+  };
+  clientClassification?: {
+    id: number;
+    name: string;
+  };
+  clientType?: {
+    id: number;
+    name: string;
+  };
+  legalForm?: FineractLegalForm;
+};
+
+type ClientFetchResult = {
+  client: FineractClient | null;
+  usedServiceFallback: boolean;
 };
 
 type ClientDatatableData = Record<string, unknown>;
@@ -62,7 +113,7 @@ type PagedResponse<T> = {
 /**
  * Fetch client data from Fineract
  */
-async function getClientData(clientId: number) {
+async function getClientData(clientId: number): Promise<ClientFetchResult> {
   try {
     const session = await getSession();
     const accessToken =
@@ -70,7 +121,7 @@ async function getClientData(clientId: number) {
 
     if (!accessToken) {
       console.warn("No access token available for client fetch");
-      return null;
+      return { client: null, usedServiceFallback: false };
     }
 
     const fineractTenantId = await getFineractTenantId();
@@ -90,13 +141,37 @@ async function getClientData(clientId: number) {
 
     if (!response.ok) {
       console.error(`Failed to fetch client ${clientId}:`, response.status);
-      return null;
+
+      const fallbackResponse = await fetch(
+        `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}`,
+        {
+          method: "GET",
+          headers: getSearchHeaders(fineractTenantId),
+          cache: "no-store",
+        }
+      );
+
+      if (!fallbackResponse.ok) {
+        console.error(
+          `Failed to fetch client ${clientId} with service fallback:`,
+          fallbackResponse.status
+        );
+        return { client: null, usedServiceFallback: false };
+      }
+
+      return {
+        client: (await fallbackResponse.json()) as FineractClient,
+        usedServiceFallback: true,
+      };
     }
 
-    return await response.json();
+    return {
+      client: (await response.json()) as FineractClient,
+      usedServiceFallback: false,
+    };
   } catch (error) {
     console.error("Error fetching client data:", error);
-    return null;
+    return { client: null, usedServiceFallback: false };
   }
 }
 
@@ -136,7 +211,7 @@ async function getClientImage(clientId: number): Promise<string | null> {
     let imageData: string | ImagePayload;
 
     if (contentType?.includes("application/json")) {
-      imageData = (await response.json()) as ClientImageResponse;
+      imageData = (await response.json()) as ImagePayload;
     } else {
       imageData = await response.text();
     }
@@ -219,7 +294,8 @@ async function getDatatables() {
       return [];
     }
 
-    return await response.json();
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error("Error fetching datatables:", error);
     return [];
@@ -234,8 +310,9 @@ async function getDatatableData(
   datatables: DatatableDescriptor[]
 ): Promise<ClientDatatableData> {
   const datatableData: ClientDatatableData = {};
+  const datatableList = Array.isArray(datatables) ? datatables : [];
 
-  if (!datatables || datatables.length === 0) {
+  if (datatableList.length === 0) {
     return datatableData;
   }
 
@@ -252,7 +329,7 @@ async function getDatatableData(
 
     // Fetch data for each datatable
     await Promise.all(
-      datatables.map(async (dt) => {
+      datatableList.map(async (dt) => {
         try {
           const response = await fetch(
             `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables/${encodeURIComponent(
@@ -378,19 +455,25 @@ export default async function ClientDetailPage({ params }: PageProps) {
   }
 
   // Fetch all data server-side in parallel
-  const [client, clientImage, datatables, canEditClient] = await Promise.all([
-    getClientData(clientId),
-    getClientImage(clientId),
-    getDatatables(),
-    hasSuperAdminServer(),
-  ]);
+  const [clientResult, clientImage, datatables, canEditClient] =
+    await Promise.all([
+      getClientData(clientId),
+      getClientImage(clientId),
+      getDatatables(),
+      hasSuperAdminServer(),
+    ]);
+  const client = clientResult.client;
+  const isRestrictedBranchClient = clientResult.usedServiceFallback;
 
   // Fetch datatable data after we have the datatables list
-  const datatableData = await getDatatableData(clientId, datatables || []);
+  const datatableData = isRestrictedBranchClient
+    ? {}
+    : await getDatatableData(clientId, datatables || []);
 
   const isEntityClient =
-    client?.legalForm?.id === 2 ||
-    client?.legalForm?.value?.trim().toLowerCase() === "entity";
+    (!isRestrictedBranchClient && client?.legalForm?.id === 2) ||
+    (!isRestrictedBranchClient &&
+      client?.legalForm?.value?.trim().toLowerCase() === "entity");
 
   let entityLead = null;
   let clientDocuments: ClientDocumentSummary[] = [];
@@ -423,107 +506,108 @@ export default async function ClientDetailPage({ params }: PageProps) {
       />
 
       {/* Client Overview Cards */}
-      <ClientDetails
-        client={client}
-        clientImage={clientImage}
-      />
+      <ClientDetails client={client} clientImage={clientImage} />
 
-      {/* Detailed Information Tabs */}
-      <Tabs defaultValue="loans" className="space-y-4">
-        <TabsList className="w-full sm:w-auto overflow-x-auto">
-          <TabsTrigger
-            value="loans"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <CreditCard className="h-4 w-4" />
-            <span className="hidden sm:inline">Loans</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="savings"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <Wallet className="h-4 w-4" />
-            <span className="hidden sm:inline">Savings</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="transactions"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <Receipt className="h-4 w-4" />
-            <span className="hidden sm:inline">Transactions</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="documents"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            <span className="hidden sm:inline">Documents</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="additional-info"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <Database className="h-4 w-4" />
-            <span className="hidden sm:inline">Additional Info</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="facility"
-            className="flex items-center gap-2 px-2 md:px-3"
-          >
-            <Landmark className="h-4 w-4" />
-            <span className="hidden sm:inline">Facility</span>
-          </TabsTrigger>
-          {isEntityClient && (
+      {isRestrictedBranchClient && client && (
+        <ClientBranchTransferCard clientId={clientId} client={client} />
+      )}
+
+      {!isRestrictedBranchClient && (
+        <Tabs defaultValue="loans" className="space-y-4">
+          <TabsList className="w-full sm:w-auto overflow-x-auto">
             <TabsTrigger
-              value="entity-kyc"
+              value="loans"
               className="flex items-center gap-2 px-2 md:px-3"
             >
-              <Building2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Entity KYC</span>
+              <CreditCard className="h-4 w-4" />
+              <span className="hidden sm:inline">Loans</span>
             </TabsTrigger>
-          )}
-        </TabsList>
+            <TabsTrigger
+              value="savings"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <Wallet className="h-4 w-4" />
+              <span className="hidden sm:inline">Savings</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="transactions"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <Receipt className="h-4 w-4" />
+              <span className="hidden sm:inline">Transactions</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="documents"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              <span className="hidden sm:inline">Documents</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="additional-info"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <Database className="h-4 w-4" />
+              <span className="hidden sm:inline">Additional Info</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="facility"
+              className="flex items-center gap-2 px-2 md:px-3"
+            >
+              <Landmark className="h-4 w-4" />
+              <span className="hidden sm:inline">Facility</span>
+            </TabsTrigger>
+            {isEntityClient && (
+              <TabsTrigger
+                value="entity-kyc"
+                className="flex items-center gap-2 px-2 md:px-3"
+              >
+                <Building2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Entity KYC</span>
+              </TabsTrigger>
+            )}
+          </TabsList>
 
-        <TabsContent value="loans" className="space-y-4">
-          <ClientLoans clientId={clientId} />
-        </TabsContent>
+          <TabsContent value="loans" className="space-y-4">
+            <ClientLoans clientId={clientId} />
+          </TabsContent>
 
-        <TabsContent value="savings" className="space-y-4">
-          <ClientSavings clientId={clientId} />
-        </TabsContent>
+          <TabsContent value="savings" className="space-y-4">
+            <ClientSavings clientId={clientId} />
+          </TabsContent>
 
-        <TabsContent value="transactions" className="space-y-4">
-          <ClientTransactions clientId={clientId} />
-        </TabsContent>
+          <TabsContent value="transactions" className="space-y-4">
+            <ClientTransactions clientId={clientId} />
+          </TabsContent>
 
-        <TabsContent value="documents" className="space-y-4">
-          <ClientDocuments clientId={clientId} />
-        </TabsContent>
+          <TabsContent value="documents" className="space-y-4">
+            <ClientDocuments clientId={clientId} />
+          </TabsContent>
 
-        {/* Additional Info Tab - Dynamic Datatables */}
-        <TabsContent value="additional-info" className="space-y-4">
-          <ClientAdditionalInfo
-            clientId={clientId}
-            datatables={datatables || []}
-            datatableData={datatableData}
-          />
-        </TabsContent>
-
-        <TabsContent value="facility" className="space-y-4">
-          <ClientFacility clientId={clientId} />
-        </TabsContent>
-
-        {isEntityClient && (
-          <TabsContent value="entity-kyc" className="space-y-4">
-            <ClientEntityKyc
+          <TabsContent value="additional-info" className="space-y-4">
+            <ClientAdditionalInfo
               clientId={clientId}
-              stakeholders={entityLead?.entityStakeholders ?? []}
-              bankAccounts={entityLead?.entityBankAccounts ?? []}
-              clientDocuments={clientDocuments ?? []}
+              datatables={datatables || []}
+              datatableData={datatableData}
             />
           </TabsContent>
-        )}
-      </Tabs>
+
+          <TabsContent value="facility" className="space-y-4">
+            <ClientFacility clientId={clientId} />
+          </TabsContent>
+
+          {isEntityClient && (
+            <TabsContent value="entity-kyc" className="space-y-4">
+              <ClientEntityKyc
+                clientId={clientId}
+                stakeholders={entityLead?.entityStakeholders ?? []}
+                bankAccounts={entityLead?.entityBankAccounts ?? []}
+                clientDocuments={clientDocuments ?? []}
+              />
+            </TabsContent>
+          )}
+        </Tabs>
+      )}
     </div>
   );
 }
