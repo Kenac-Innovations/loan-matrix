@@ -26,6 +26,7 @@ import {
   isApprovalActionStage,
   isDisbursementActionStage,
 } from "./lead-policy";
+import { getLocalIsoDate, isGoodfellowTenantSlug } from "./goodfellow-tenant";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -42,6 +43,7 @@ export interface FineractOverrides {
   bankNumber?: string;
   rejectionDate?: string;
   // Payout fields
+  payoutDate?: string;
   payoutMethod?: "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER";
   tellerId?: string;
   cashierId?: string;
@@ -113,6 +115,15 @@ export class TeamAwareStateMachineService {
       this.normalizeOfficeName(user?.officeName) ===
         this.normalizeOfficeName(lead.officeName)
     );
+  }
+
+  private static isGoodfellowLead(
+    lead:
+      | { tenant?: { slug?: string | null } | null; tenantSlug?: string | null }
+      | null
+      | undefined
+  ): boolean {
+    return isGoodfellowTenantSlug(lead?.tenant?.slug || lead?.tenantSlug);
   }
 
   private static async getPreDisbursementStage(
@@ -359,7 +370,10 @@ export class TeamAwareStateMachineService {
     try {
       const lead = await prisma.lead.findUnique({
         where: { id: request.leadId },
-        include: { currentStage: true },
+        include: {
+          currentStage: true,
+          tenant: { select: { slug: true } },
+        },
       });
 
       if (!lead) {
@@ -473,9 +487,9 @@ export class TeamAwareStateMachineService {
             try {
               // Use today's date as default; Fineract fallback dates will also be used
               const autoOverrides = {
-                approvalDate: new Date().toISOString().split("T")[0],
-                disbursementDate: new Date().toISOString().split("T")[0],
-                rejectionDate: new Date().toISOString().split("T")[0],
+                approvalDate: getLocalIsoDate(),
+                disbursementDate: getLocalIsoDate(),
+                rejectionDate: getLocalIsoDate(),
                 note: `Auto-executed: ${skipped.fineractAction} (stage "${skipped.name}" skipped — loan amount below threshold)`,
               };
               const result = await this.triggerFineractAction(
@@ -1215,8 +1229,18 @@ export class TeamAwareStateMachineService {
     const fineract = await getFineractServiceWithSession();
 
     const formatDateForFineract = (isoDate: string): string => {
+      const [year, month, day] = isoDate.split("-").map(Number);
       const d = new Date(isoDate);
       const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      if (
+        Number.isInteger(year) &&
+        Number.isInteger(month) &&
+        Number.isInteger(day) &&
+        month >= 1 &&
+        month <= 12
+      ) {
+        return `${day} ${months[month - 1]} ${year}`;
+      }
       return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
     };
 
@@ -1237,9 +1261,17 @@ export class TeamAwareStateMachineService {
 
     switch (action) {
       case "approve": {
-        const approveDate = overrides?.approvalDate
-          ? formatDateForFineract(overrides.approvalDate)
-          : formatFineractDateArr(loanDetails?.timeline?.submittedOnDate);
+        const useCurrentDate = this.isGoodfellowLead(lead);
+        let approveDate: string | undefined;
+        if (useCurrentDate) {
+          approveDate = formatDateForFineract(
+            overrides?.approvalDate || getLocalIsoDate()
+          );
+        } else if (overrides?.approvalDate) {
+          approveDate = formatDateForFineract(overrides.approvalDate);
+        } else {
+          approveDate = formatFineractDateArr(loanDetails?.timeline?.submittedOnDate);
+        }
         await fineract.approveLoan(fineractLoanId, approveDate);
 
         // Activate PENDING credit facility on loan approval (non-blocking)
@@ -1258,10 +1290,19 @@ export class TeamAwareStateMachineService {
         return `Fineract loan #${fineractLoanId} approved`;
       }
       case "disburse": {
-        const disburseDate = overrides?.disbursementDate
-          ? formatDateForFineract(overrides.disbursementDate)
-          : formatFineractDateArr(loanDetails?.timeline?.expectedDisbursementDate)
-            || formatFineractDateArr(loanDetails?.timeline?.approvedOnDate);
+        const useCurrentDate = this.isGoodfellowLead(lead);
+        let disburseDate: string | undefined;
+        if (useCurrentDate) {
+          disburseDate = formatDateForFineract(
+            overrides?.disbursementDate || getLocalIsoDate()
+          );
+        } else if (overrides?.disbursementDate) {
+          disburseDate = formatDateForFineract(overrides.disbursementDate);
+        } else {
+          disburseDate =
+            formatFineractDateArr(loanDetails?.timeline?.expectedDisbursementDate) ||
+            formatFineractDateArr(loanDetails?.timeline?.approvedOnDate);
+        }
         await fineract.disburseLoan(fineractLoanId, disburseDate, {
           paymentTypeId: overrides?.paymentTypeId,
           accountNumber: overrides?.accountNumber,
@@ -1638,6 +1679,14 @@ export class TeamAwareStateMachineService {
       throw new Error("Could not determine payout amount — loan amount is 0");
     }
 
+    const payoutDateOverride = this.isGoodfellowLead(lead)
+      ? overrides.payoutDate
+      : undefined;
+    const payoutDate = payoutDateOverride
+      ? new Date(`${payoutDateOverride}T00:00:00`)
+      : new Date();
+    const paidAt = Number.isNaN(payoutDate.getTime()) ? new Date() : payoutDate;
+
     if (overrides.payoutMethod === "CASH") {
       if (!overrides.tellerId || !overrides.cashierId) {
         const cashierContext = await resolveCurrentUserCashierContext(
@@ -1696,9 +1745,8 @@ export class TeamAwareStateMachineService {
       const fineractCashierId = cashier?.fineractCashierId || Number(cashierIdStr);
 
       // Format date for Fineract
-      const now = new Date();
       const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-      const txnDate = `${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+      const txnDate = `${paidAt.getDate()} ${months[paidAt.getMonth()]} ${paidAt.getFullYear()}`;
 
       // Settle via Fineract teller/cashier
       const fineract = await getFineractServiceWithSession();
@@ -1730,7 +1778,7 @@ export class TeamAwareStateMachineService {
           paymentMethod: "CASH",
           tellerId: teller.id,
           cashierId: cashier?.id || null,
-          paidAt: new Date(),
+          paidAt,
           paidBy: triggeredBy || "system",
           notes: overrides.payoutNote || overrides.note || "Cash payout via teller",
         },
@@ -1739,7 +1787,7 @@ export class TeamAwareStateMachineService {
           paymentMethod: "CASH",
           tellerId: teller.id,
           cashierId: cashier?.id || null,
-          paidAt: new Date(),
+          paidAt,
           paidBy: triggeredBy || "system",
           notes: overrides.payoutNote || overrides.note || "Cash payout via teller",
         },
@@ -1764,14 +1812,14 @@ export class TeamAwareStateMachineService {
           currency: currencyCode,
           status: "PAID",
           paymentMethod: overrides.payoutMethod,
-          paidAt: new Date(),
+          paidAt,
           paidBy: triggeredBy || "system",
           notes: overrides.payoutNote || overrides.note || `Payout via ${methodLabel}`,
         },
         update: {
           status: "PAID",
           paymentMethod: overrides.payoutMethod,
-          paidAt: new Date(),
+          paidAt,
           paidBy: triggeredBy || "system",
           notes: overrides.payoutNote || overrides.note || `Payout via ${methodLabel}`,
         },
