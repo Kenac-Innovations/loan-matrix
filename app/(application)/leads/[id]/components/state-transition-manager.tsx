@@ -53,6 +53,10 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { canMoveAssignedLead } from "@/lib/lead-transition-permissions";
+import {
+  getLocalIsoDate,
+  isGoodfellowTenantHostname,
+} from "@/lib/goodfellow-tenant";
 
 interface AvailableTransition {
   stageId: string;
@@ -149,7 +153,8 @@ export default function StateTransitionManager({
   const [loadingMifosUsers, setLoadingMifosUsers] = useState(false);
   const [selectedTransition, setSelectedTransition] = useState<AvailableTransition | null>(null);
   const [reason, setReason] = useState("");
-  const [fineractDate, setFineractDate] = useState(new Date().toISOString().split("T")[0]);
+  const [fineractDate, setFineractDate] = useState(getLocalIsoDate());
+  const [isGoodfellowTenant, setIsGoodfellowTenant] = useState(false);
   const [paymentTypes, setPaymentTypes] = useState<{ id: number; name: string; isCashPayment?: boolean }[]>([]);
   const [paymentTypeId, setPaymentTypeId] = useState("");
   const [showPaymentDetails, setShowPaymentDetails] = useState(false);
@@ -234,6 +239,12 @@ export default function StateTransitionManager({
     () => normalizedPreferredPaymentMethod || payoutMethod,
     [normalizedPreferredPaymentMethod, payoutMethod]
   );
+  const usesReadOnlyCurrentDate =
+    isGoodfellowTenant &&
+    !selectedTransition?.isBackward &&
+    (effectiveAction === "approve" ||
+      effectiveAction === "disburse" ||
+      effectiveAction === "payout");
 
   const fetchApprovalStatus = useCallback(async () => {
     try {
@@ -343,13 +354,19 @@ export default function StateTransitionManager({
   }, [fetchApprovalStatus]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsGoodfellowTenant(isGoodfellowTenantHostname(window.location.hostname));
+    }
+  }, []);
+
+  useEffect(() => {
     if (open) {
       fetchAvailableTransitions();
       checkValidations();
       fetchApprovalStatus();
       setSelectedTransition(null);
       setReason("");
-      setFineractDate(new Date().toISOString().split("T")[0]);
+      setFineractDate(getLocalIsoDate());
       setPaymentTypes([]);
       setPaymentTypeId("");
       setShowPaymentDetails(false);
@@ -374,6 +391,12 @@ export default function StateTransitionManager({
       clearReceiptValidation();
     }
   }, [open, fetchAvailableTransitions, checkValidations, clearReceiptValidation, fetchApprovalStatus]);
+
+  useEffect(() => {
+    if (open && usesReadOnlyCurrentDate) {
+      setFineractDate(getLocalIsoDate());
+    }
+  }, [open, selectedTransition?.stageId, usesReadOnlyCurrentDate]);
 
   useEffect(() => {
     if (effectiveAction === "disburse" && paymentTypes.length === 0) {
@@ -740,14 +763,17 @@ export default function StateTransitionManager({
     setLoading(true);
     try {
       let fineractOverrides: Record<string, unknown> | undefined;
+      const transitionDate = usesReadOnlyCurrentDate
+        ? getLocalIsoDate()
+        : fineractDate;
       if (effectiveAction === "approve") {
         fineractOverrides = {
-          approvalDate: fineractDate,
+          approvalDate: transitionDate,
           note: reason || undefined,
         };
       } else if (effectiveAction === "disburse") {
         fineractOverrides = {
-          disbursementDate: fineractDate,
+          disbursementDate: transitionDate,
           note: reason || undefined,
           paymentTypeId: paymentTypeId ? Number(paymentTypeId) : undefined,
           accountNumber: accountNumber || undefined,
@@ -756,6 +782,7 @@ export default function StateTransitionManager({
           receiptNumber: receiptNumber || undefined,
           bankNumber: bankNumber || undefined,
           payoutMethod: derivedDisbursementPayoutMethod || undefined,
+          payoutDate: usesReadOnlyCurrentDate ? transitionDate : undefined,
           payoutNote: payoutNotes || undefined,
         };
       } else if (effectiveAction === "reject") {
@@ -766,6 +793,7 @@ export default function StateTransitionManager({
       } else if (effectiveAction === "payout") {
         fineractOverrides = {
           payoutMethod: effectivePayoutMethod || undefined,
+          payoutDate: usesReadOnlyCurrentDate ? transitionDate : undefined,
           tellerId: selectedTeller || undefined,
           cashierId: selectedCashier || undefined,
           note: payoutNotes || reason || undefined,
@@ -1268,8 +1296,19 @@ export default function StateTransitionManager({
                   id="fineract-date"
                   type="date"
                   value={fineractDate}
+                  disabled={usesReadOnlyCurrentDate}
                   onChange={(e) => setFineractDate(e.target.value)}
+                  className={
+                    usesReadOnlyCurrentDate
+                      ? "cursor-not-allowed disabled:opacity-100"
+                      : undefined
+                  }
                 />
+                {usesReadOnlyCurrentDate && (
+                  <p className="text-xs text-muted-foreground">
+                    Goodfellow uses the current date automatically for this action.
+                  </p>
+                )}
               </div>
               )}
 
@@ -1575,6 +1614,24 @@ export default function StateTransitionManager({
                   This stage will process the loan payout
                 </span>
               </div>
+
+              {usesReadOnlyCurrentDate && (
+                <div className="space-y-2">
+                  <Label htmlFor="payout-date" className="text-sm">
+                    Payout Date
+                  </Label>
+                  <Input
+                    id="payout-date"
+                    type="date"
+                    value={fineractDate}
+                    disabled
+                    className="cursor-not-allowed disabled:opacity-100"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Goodfellow uses the current date automatically for this action.
+                  </p>
+                </div>
+              )}
 
               {/* Payment Method */}
               <div className="space-y-2">
