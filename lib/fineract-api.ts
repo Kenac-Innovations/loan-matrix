@@ -10,6 +10,9 @@ export interface FineractConfig {
 
 export interface FineractClient {
   id: number;
+  clientId?: number;
+  resourceId?: number;
+  resourceExternalId?: string;
   accountNo: string;
   externalId?: string;
   status: {
@@ -408,6 +411,15 @@ export interface AccountingRuleTemplate {
   allowedDebitTagOptions: AccountingRuleTag[];
 }
 
+function formatClientTransferDate(date = new Date()) {
+  return new Intl.DateTimeFormat("en", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: "Africa/Harare",
+  }).format(date);
+}
+
 export class FineractAPIService {
   private client: AxiosInstance;
   private clientV2: AxiosInstance;
@@ -553,6 +565,60 @@ export class FineractAPIService {
           },
         }
       );
+      throw error;
+    }
+  }
+
+  async transferClientToOffice(
+    clientId: number,
+    destinationOfficeId: number
+  ): Promise<any> {
+    if (!Number.isInteger(clientId) || clientId <= 0) {
+      throw new Error("A valid Fineract client ID is required");
+    }
+
+    if (!Number.isInteger(destinationOfficeId) || destinationOfficeId <= 0) {
+      throw new Error("A valid destination office ID is required");
+    }
+
+    const commonBody = {
+      transferDate: formatClientTransferDate(),
+      dateFormat: "dd MMMM yyyy",
+      locale: "en",
+    };
+
+    await this.client.post(`/clients/${clientId}?command=proposeTransfer`, {
+      ...commonBody,
+      destinationOfficeId,
+      note: "Branch move proposed automatically during existing-client lead creation",
+    });
+
+    try {
+      const response = await this.client.post(
+        `/clients/${clientId}?command=acceptTransfer`,
+        {
+          ...commonBody,
+          note: "Branch move accepted automatically during existing-client lead creation",
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      try {
+        await this.client.post(
+          `/clients/${clientId}?command=withdrawTransfer`,
+          {
+            ...commonBody,
+            note: "Branch move withdrawn after automatic accept transfer failed",
+          }
+        );
+      } catch (rollbackError) {
+        console.error(
+          "Failed to rollback proposed client office transfer:",
+          rollbackError
+        );
+      }
+
       throw error;
     }
   }
