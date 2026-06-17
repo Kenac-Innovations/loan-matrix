@@ -62,18 +62,25 @@ interface FineractClient {
   };
 }
 
-interface PaginationInfo {
-  offset: number;
-  limit: number;
-  total: number;
-  hasMore: boolean;
+interface FineractOffice {
+  id: number;
+  name: string;
 }
 
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-// Fetch offices for filter dropdown
-const officesFetcher = (url: string) => fetch(url).then((res) => res.json());
+// Fetch offices for filter dropdown. Keep this resilient because office
+// permissions should not take down the whole clients table.
+const officesFetcher = async (url: string) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json().catch(() => []);
+  return Array.isArray(data) ? data : [];
+};
 
 export function ClientsTable() {
   const router = useRouter();
@@ -101,7 +108,9 @@ export function ClientsTable() {
 
   useEffect(() => {
     const officeIdFromUrl = searchParams.get("officeId") || "";
-    setOfficeId((current) => (current === officeIdFromUrl ? current : officeIdFromUrl));
+    setOfficeId((current) =>
+      current === officeIdFromUrl ? current : officeIdFromUrl
+    );
   }, [searchParams]);
 
   const updateOfficeFilter = useCallback(
@@ -174,11 +183,6 @@ export function ClientsTable() {
   const { data, error, isLoading } = useSWR(apiUrl, fetcher, {
     keepPreviousData: true,
   });
-
-  // Show skeleton only on initial load, not during search
-  const showSkeleton = isLoading && !data;
-  // Show subtle loading indicator when searching with existing data
-  const showSearchingIndicator = (isLoading || isSearching) && data;
 
   // Handle different response formats from Fineract API
   const clients: FineractClient[] = (() => {
@@ -329,7 +333,7 @@ export function ClientsTable() {
   }
 
   // Get offices list
-  const offices = officesData || [];
+  const offices = Array.isArray(officesData) ? officesData : [];
 
   // Clear all filters
   const handleClearFilters = () => {
@@ -463,7 +467,7 @@ export function ClientsTable() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Branches</SelectItem>
-              {offices.map((office: any) => (
+              {offices.map((office: FineractOffice) => (
                 <SelectItem key={office.id} value={office.id.toString()}>
                   {office.name}
                 </SelectItem>
