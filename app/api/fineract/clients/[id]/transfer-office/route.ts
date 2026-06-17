@@ -14,12 +14,18 @@ interface RouteContext {
 }
 
 function formatFineractDate(date: Date) {
-  return new Intl.DateTimeFormat("en", {
+  const parts = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "long",
     year: "numeric",
     timeZone: "Africa/Harare",
-  }).format(date);
+  }).formatToParts(date);
+
+  const day = parts.find((part) => part.type === "day")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const year = parts.find((part) => part.type === "year")?.value;
+
+  return `${day} ${month} ${year}`;
 }
 
 async function parseFineractError(response: Response) {
