@@ -1518,14 +1518,26 @@ export class FineractAPIService {
     }
   }
 
-  async approveLoan(loanId: number, approvalDate?: string): Promise<any> {
+  async approveLoan(
+    loanId: number,
+    approvalDate?: string,
+    options?: { expectedDisbursementDate?: string; note?: string }
+  ): Promise<any> {
     try {
       const today = new Date();
       const formattedDate = approvalDate ||
         `${today.getDate()} ${today.toLocaleString("en", { month: "long" })} ${today.getFullYear()}`;
       const response: AxiosResponse<any> = await this.client.post(
         `/loans/${loanId}?command=approve`,
-        { approvedOnDate: formattedDate, dateFormat: "dd MMMM yyyy", locale: "en" }
+        {
+          approvedOnDate: formattedDate,
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
+          ...(options?.expectedDisbursementDate && {
+            expectedDisbursementDate: options.expectedDisbursementDate,
+          }),
+          ...(options?.note && { note: options.note }),
+        }
       );
       return response.data;
     } catch (error: any) {

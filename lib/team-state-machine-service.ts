@@ -1272,7 +1272,10 @@ export class TeamAwareStateMachineService {
         } else {
           approveDate = formatFineractDateArr(loanDetails?.timeline?.submittedOnDate);
         }
-        await fineract.approveLoan(fineractLoanId, approveDate);
+        await fineract.approveLoan(fineractLoanId, approveDate, {
+          expectedDisbursementDate: useCurrentDate ? approveDate : undefined,
+          note: overrides?.note,
+        });
 
         // Activate PENDING credit facility on loan approval (non-blocking)
         if (lead?.fineractClientId) {
