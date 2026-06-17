@@ -43,6 +43,7 @@ async function getAccessibleLead(leadId: string, fineractUserId: number) {
       lastname: true,
       requestedAmount: true,
       fineractLoanId: true,
+      designatedDisburserUserId: true,
     },
   });
 }
@@ -88,6 +89,7 @@ export async function POST(
 
     // Check if this is a reassignment (different user)
     const isReassignment = lead.assignedToUserId !== null && lead.assignedToUserId !== mifosUserId;
+    const assigneeChanged = lead.assignedToUserId !== mifosUserId;
     const previousAssignee = lead.assignedToUserName;
 
     // Update the lead with assignment info
@@ -98,6 +100,14 @@ export async function POST(
         assignedToUserName: mifosUserName,
         assignedAt: new Date(),
         assignedByUserId: assignedByUserId || null,
+        ...(assigneeChanged
+          ? {
+              designatedDisburserUserId: null,
+              designatedDisburserUserName: null,
+              designatedDisburserAssignedByUserId: null,
+              designatedDisburserAssignedAt: null,
+            }
+          : {}),
       },
     });
 
@@ -171,6 +181,10 @@ export async function DELETE(
         assignedToUserName: null,
         assignedAt: null,
         assignedByUserId: null,
+        designatedDisburserUserId: null,
+        designatedDisburserUserName: null,
+        designatedDisburserAssignedByUserId: null,
+        designatedDisburserAssignedAt: null,
       },
     });
 

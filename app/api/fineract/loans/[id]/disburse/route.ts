@@ -42,6 +42,8 @@ export async function POST(
         },
         select: {
           id: true,
+          assignedToUserId: true,
+          assignedToUserName: true,
           designatedDisburserUserId: true,
           designatedDisburserUserName: true,
         },
@@ -58,6 +60,8 @@ export async function POST(
             ),
             select: {
               id: true,
+              assignedToUserId: true,
+              assignedToUserName: true,
               designatedDisburserUserId: true,
               designatedDisburserUserName: true,
             },
@@ -74,6 +78,8 @@ export async function POST(
             leadAccess.flags.onlyOriginatorCanDisburse,
           designatedDisburserUserId: linkedLead.designatedDisburserUserId,
           designatedDisburserUserName: linkedLead.designatedDisburserUserName,
+          assignedToUserId: linkedLead.assignedToUserId,
+          assignedToUserName: linkedLead.assignedToUserName,
           currentFineractUserId: session.user.userId,
         });
 

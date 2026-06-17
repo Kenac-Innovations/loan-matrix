@@ -98,6 +98,8 @@ interface DisbursementPolicy {
   canOverrideInitiatorDisbursement?: boolean;
   designatedDisburserUserId?: number | null;
   designatedDisburserUserName?: string | null;
+  assignedToUserId?: number | null;
+  assignedToUserName?: string | null;
   blockReason?: string | null;
 }
 
@@ -564,6 +566,18 @@ export default function StateTransitionManager({
     effectiveAction === "disburse" &&
     Boolean(disbursementPolicy?.onlyOriginatorCanDisburse) &&
     Boolean(disbursementPolicy?.blockReason);
+  const hasDesignatedDisburserOverride =
+    disbursementPolicy?.designatedDisburserUserId != null;
+  const effectiveDisburserName =
+    disbursementPolicy?.designatedDisburserUserName ||
+    disbursementPolicy?.assignedToUserName ||
+    null;
+  const showDisburserPolicyPanel =
+    effectiveAction === "disburse" &&
+    Boolean(disbursementPolicy?.onlyOriginatorCanDisburse) &&
+    (Boolean(disbursementPolicy?.blockReason) ||
+      Boolean(disbursementPolicy?.canOverrideInitiatorDisbursement) ||
+      hasDesignatedDisburserOverride);
   const transitionBlockedByDisbursementPolicy =
     !selectedTransition?.isBackward && disbursementBlocked;
 
@@ -645,7 +659,7 @@ export default function StateTransitionManager({
       await fetchAvailableTransitions();
       toast({
         title: "Designated Disburser Cleared",
-        description: "This loan now requires a designated disburser before it can be disbursed.",
+        description: "Disbursement will now use the current assignee.",
       });
     } catch (error) {
       console.error("Error clearing designated disburser:", error);
@@ -1314,8 +1328,7 @@ export default function StateTransitionManager({
 
               {effectiveAction === "disburse" && (
                 <>
-                  {disbursementPolicy?.onlyOriginatorCanDisburse &&
-                    disbursementPolicy?.blockReason && (
+                  {showDisburserPolicyPanel && (
                     <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900 dark:bg-amber-950/30">
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5 h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-900 flex items-center justify-center">
@@ -1323,23 +1336,25 @@ export default function StateTransitionManager({
                         </div>
                         <div className="flex-1 space-y-1">
                           <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                            Designated Disburser
+                            Disbursement Owner
                           </p>
                           <p className="font-medium">
-                            {disbursementPolicy.designatedDisburserUserName || "Not set"}
+                            {effectiveDisburserName || "Not set"}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            Only the designated disburser can complete disbursement for this lead.
+                            {hasDesignatedDisburserOverride
+                              ? "A designated disburser override is active for this lead."
+                              : "Defaults to the user assigned to this lead at the current stage."}
                           </p>
-                          {disbursementPolicy.blockReason && (
+                          {disbursementPolicy?.blockReason && (
                             <p className="text-sm text-amber-800 dark:text-amber-300">
-                              {disbursementPolicy.blockReason}
+                              {disbursementPolicy?.blockReason}
                             </p>
                           )}
                         </div>
                       </div>
 
-                      {disbursementPolicy.canOverrideInitiatorDisbursement && (
+                      {disbursementPolicy?.canOverrideInitiatorDisbursement && (
                         <div className="space-y-3 border-t border-amber-200 pt-3 dark:border-amber-900">
                           <div className="flex gap-2">
                             <Select
@@ -1387,7 +1402,7 @@ export default function StateTransitionManager({
                                 <ShieldCheck className="h-4 w-4" />
                               )}
                             </Button>
-                            {disbursementPolicy.designatedDisburserUserId != null && (
+                            {hasDesignatedDisburserOverride && (
                               <Button
                                 type="button"
                                 variant="ghost"
