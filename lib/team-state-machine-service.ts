@@ -545,6 +545,8 @@ export class TeamAwareStateMachineService {
                 tenantLeadPolicy.onlyOriginatorCanDisburse,
               designatedDisburserUserId: lead.designatedDisburserUserId,
               designatedDisburserUserName: lead.designatedDisburserUserName,
+              assignedToUserId: lead.assignedToUserId,
+              assignedToUserName: lead.assignedToUserName,
               currentFineractUserId: Number.parseInt(request.triggeredBy, 10),
             })
           : null;

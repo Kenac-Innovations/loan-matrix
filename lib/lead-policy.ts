@@ -198,23 +198,30 @@ export function getDisbursementBlockReason(input: {
   onlyOriginatorCanDisburse: boolean;
   designatedDisburserUserId?: number | null;
   designatedDisburserUserName?: string | null;
+  assignedToUserId?: number | null;
+  assignedToUserName?: string | null;
   currentFineractUserId?: number | null;
 }) {
   if (!input.onlyOriginatorCanDisburse) {
     return null;
   }
 
-  if (!input.designatedDisburserUserId) {
-    return "This loan cannot be disbursed until a designated disburser is set.";
+  const effectiveDisburserUserId =
+    input.designatedDisburserUserId ?? input.assignedToUserId;
+  const effectiveDisburserUserName =
+    input.designatedDisburserUserName ?? input.assignedToUserName;
+
+  if (!effectiveDisburserUserId) {
+    return "This loan cannot be disbursed until it is assigned to a disburser.";
   }
 
   if (
     !input.currentFineractUserId ||
-    Number(input.currentFineractUserId) !== Number(input.designatedDisburserUserId)
+    Number(input.currentFineractUserId) !== Number(effectiveDisburserUserId)
   ) {
-    return input.designatedDisburserUserName
-      ? `${input.designatedDisburserUserName} is the designated disburser for this loan.`
-      : "Only the designated disburser can disburse this loan.";
+    return effectiveDisburserUserName
+      ? `${effectiveDisburserUserName} is the assigned disburser for this loan.`
+      : "Only the assigned disburser can disburse this loan.";
   }
 
   return null;

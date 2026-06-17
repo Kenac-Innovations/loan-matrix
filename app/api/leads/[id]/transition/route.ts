@@ -318,6 +318,7 @@ export async function GET(
         tenantId: true,
         currentStageId: true,
         assignedToUserId: true,
+        assignedToUserName: true,
         designatedDisburserUserId: true,
         designatedDisburserUserName: true,
       },
@@ -356,11 +357,15 @@ export async function GET(
           leadAccess.canOverrideInitiatorDisbursement,
         designatedDisburserUserId: accessibleLead.designatedDisburserUserId,
         designatedDisburserUserName: accessibleLead.designatedDisburserUserName,
+        assignedToUserId: accessibleLead.assignedToUserId,
+        assignedToUserName: accessibleLead.assignedToUserName,
         blockReason: getDisbursementBlockReason({
           onlyOriginatorCanDisburse:
             leadAccess.flags.onlyOriginatorCanDisburse,
           designatedDisburserUserId: accessibleLead.designatedDisburserUserId,
           designatedDisburserUserName: accessibleLead.designatedDisburserUserName,
+          assignedToUserId: accessibleLead.assignedToUserId,
+          assignedToUserName: accessibleLead.assignedToUserName,
           currentFineractUserId: session.user.userId ?? null,
         }),
       },

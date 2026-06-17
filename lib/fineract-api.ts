@@ -1725,3 +1725,25 @@ export async function getFineractServiceWithSession(): Promise<FineractAPIServic
     );
   }
 }
+
+export async function getFineractServiceWithSystemAuth(): Promise<FineractAPIService> {
+  try {
+    const { getFineractTenantId } = await import("./fineract-tenant-service");
+    const fineractTenantId = await getFineractTenantId();
+    const config: FineractConfig = {
+      baseUrl: process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw",
+      username: process.env.FINERACT_USERNAME || "mifos",
+      password: process.env.FINERACT_PASSWORD || "password",
+      tenantId: fineractTenantId,
+    };
+
+    return new FineractAPIService(config);
+  } catch (error) {
+    console.error("Error in getFineractServiceWithSystemAuth:", error);
+    throw new Error(
+      `Failed to initialize system Fineract service: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+}

@@ -432,6 +432,8 @@ export async function GET(
             leadAccess.flags.onlyOriginatorCanDisburse,
           designatedDisburserUserId: lead.designatedDisburserUserId,
           designatedDisburserUserName: lead.designatedDisburserUserName,
+          assignedToUserId: lead.assignedToUserId,
+          assignedToUserName: lead.assignedToUserName,
           currentFineractUserId: session.user.userId,
         }),
       },

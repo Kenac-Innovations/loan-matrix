@@ -1,4 +1,7 @@
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import {
+  getFineractServiceWithSession,
+  getFineractServiceWithSystemAuth,
+} from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 
 export interface CurrentUserCashierContext {
@@ -13,6 +16,13 @@ export interface CurrentUserCashierContext {
   tellerName: string | null;
   tellerOfficeName: string | null;
   reason?: string;
+}
+
+interface FineractStaffLike {
+  id: number | string;
+  displayName?: string;
+  firstname?: string;
+  lastname?: string;
 }
 
 function parseFineractDate(dateInput: unknown): Date {
@@ -70,7 +80,7 @@ async function syncCashierFromFineract(
   staffId: number,
   staffName: string
 ) {
-  const fineract = await getFineractServiceWithSession();
+  const fineract = await getFineractServiceWithSystemAuth();
   const tellers = await prisma.teller.findMany({
     where: {
       tenantId,
@@ -197,6 +207,43 @@ async function syncCashierFromFineract(
   return null;
 }
 
+async function resolveStaffForCashierContext(
+  userId: number
+): Promise<FineractStaffLike | null> {
+  try {
+    const sessionFineract = await getFineractServiceWithSession();
+    const sessionStaff = (await sessionFineract.getStaffByUserId(
+      userId
+    )) as FineractStaffLike | null;
+
+    if (sessionStaff?.id) {
+      return sessionStaff;
+    }
+  } catch (error) {
+    console.error("[CashierContext] Session staff lookup failed:", {
+      userId,
+      error,
+    });
+  }
+
+  try {
+    const systemFineract = await getFineractServiceWithSystemAuth();
+    const systemStaff = (await systemFineract.getStaffByUserId(
+      userId
+    )) as FineractStaffLike | null;
+    if (systemStaff?.id) {
+      return systemStaff;
+    }
+  } catch (error) {
+    console.error("[CashierContext] System staff lookup failed:", {
+      userId,
+      error,
+    });
+  }
+
+  return null;
+}
+
 export async function resolveCurrentUserCashierContext(
   tenantId: string,
   mifosUserId: string | number | null | undefined
@@ -218,8 +265,7 @@ export async function resolveCurrentUserCashierContext(
     };
   }
 
-  const fineract = await getFineractServiceWithSession();
-  const staff = await fineract.getStaffByUserId(numericUserId);
+  const staff = await resolveStaffForCashierContext(numericUserId);
   if (!staff?.id) {
     return {
       isCashier: false,
@@ -269,11 +315,20 @@ export async function resolveCurrentUserCashierContext(
     return buildContextFromCashier(tenantId, prioritizedCashier);
   }
 
-  const syncedCashier = await syncCashierFromFineract(
-    tenantId,
-    Number(staff.id),
-    staff.displayName || staff.firstname || staff.lastname || `Staff ${staff.id}`
-  );
+  let syncedCashier = null;
+  try {
+    syncedCashier = await syncCashierFromFineract(
+      tenantId,
+      Number(staff.id),
+      staff.displayName || staff.firstname || staff.lastname || `Staff ${staff.id}`
+    );
+  } catch (error) {
+    console.error("[CashierContext] Failed to sync cashier from Fineract:", {
+      tenantId,
+      staffId: Number(staff.id),
+      error,
+    });
+  }
 
   if (syncedCashier) {
     return buildContextFromCashier(tenantId, syncedCashier);
