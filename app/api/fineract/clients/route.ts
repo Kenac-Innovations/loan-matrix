@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { getFineractService } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSession } from "@/lib/auth";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 import {
   fetchFineractSearch,
+  getSearchAuthToken,
   getSearchHeaders,
 } from "@/lib/fineract-search-auth";
 
@@ -235,7 +236,10 @@ export async function GET(request: Request) {
       } else {
         console.log("Clients fetch failed, status:", response.status);
         // Fallback to basic listing without filters
-        const fineractService = await getFineractServiceWithSession();
+        const fineractService = getFineractService(
+          getSearchAuthToken(),
+          fineractTenantId
+        );
         data = await fineractService.getClients(
           Number.parseInt(offset),
           Number.parseInt(limit)

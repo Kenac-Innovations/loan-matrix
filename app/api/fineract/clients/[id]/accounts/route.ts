@@ -12,7 +12,7 @@ export async function GET(
   try {
     const { id } = await params;
     const endpoint = `/clients/${id}/accounts`;
-    const data = await fetchFineractAPI(endpoint);
+    const data = await fetchFineractAPI(endpoint, { authMode: "service" });
 
     if (!data?.loanAccounts || !Array.isArray(data.loanAccounts) || data.loanAccounts.length === 0) {
       return NextResponse.json(data);
@@ -23,7 +23,9 @@ export async function GET(
         if (!loanAccount?.id) return loanAccount;
 
         try {
-          const loanDetails = await fetchFineractAPI(`/loans/${loanAccount.id}`);
+          const loanDetails = await fetchFineractAPI(`/loans/${loanAccount.id}`, {
+            authMode: "service",
+          });
           return {
             ...loanAccount,
             ...loanDetails,

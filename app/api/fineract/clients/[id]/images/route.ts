@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
+import { getAccessToken } from "@/lib/api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSearchAuthToken } from "@/lib/fineract-search-auth";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
-
-/**
- * Get the service account token for Fineract API calls
- * Uses hardcoded token for now (same as other Fineract API routes)
- */
-function getAccessToken(): string {
-  return getSearchAuthToken();
-}
 
 /**
  * POST /api/fineract/clients/[id]/images
@@ -32,7 +25,7 @@ export async function POST(
       );
     }
 
-    const accessToken = getAccessToken();
+    const accessToken = await getAccessToken();
     const fineractTenantId = await getFineractTenantId();
 
     const url = `${baseUrl}/fineract-provider/api/v1/clients/${id}/images`;
@@ -123,7 +116,7 @@ export async function GET(
     const endpoint = `/clients/${id}/images${queryString ? `?${queryString}` : ""}`;
 
     // For images, we need to handle the response as text/plain since Fineract returns base64
-    const accessToken = getAccessToken();
+    const accessToken = getSearchAuthToken();
     const fineractTenantId = await getFineractTenantId();
 
     const url = `${baseUrl}/fineract-provider/api/v1${endpoint}`;

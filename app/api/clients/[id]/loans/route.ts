@@ -24,7 +24,7 @@ export async function GET(
     // First try the standard loans endpoint with client filter
     try {
       const endpoint = `/loans?clientId=${clientId}&offset=${offset}&limit=${limit}`;
-      data = await fetchFineractAPI(endpoint);
+      data = await fetchFineractAPI(endpoint, { authMode: "service" });
     } catch (e: any) {
       error = e;
       console.log('First endpoint failed, trying alternative...');
@@ -32,7 +32,7 @@ export async function GET(
       // Try alternative endpoint
       try {
         const endpoint = `/clients/${clientId}/loans?offset=${offset}&limit=${limit}`;
-        data = await fetchFineractAPI(endpoint);
+        data = await fetchFineractAPI(endpoint, { authMode: "service" });
       } catch (e2: any) {
         error = e2;
         console.log('Second endpoint failed, trying loans endpoint...');
@@ -40,7 +40,7 @@ export async function GET(
         // Try the general loans endpoint
         try {
           const endpoint = `/loans?offset=${offset}&limit=${limit}`;
-          data = await fetchFineractAPI(endpoint);
+          data = await fetchFineractAPI(endpoint, { authMode: "service" });
           
           // Filter by client ID if we get all loans
           if (data && Array.isArray(data.pageItems)) {

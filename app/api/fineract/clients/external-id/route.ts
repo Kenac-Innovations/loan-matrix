@@ -64,6 +64,7 @@ export async function POST(request: Request) {
     const searchData = await fetchFineractAPI(
       "/clients/search",
       {
+        authMode: "service",
         method: "POST",
         body: JSON.stringify(searchPayload),
       },
@@ -135,7 +136,8 @@ export async function POST(request: Request) {
     if (matchingClient.id) {
       try {
         const fullClientData = await fetchFineractAPI(
-          `/clients/${matchingClient.id}`
+          `/clients/${matchingClient.id}`,
+          { authMode: "service" }
         );
         return NextResponse.json(fullClientData);
       } catch (fetchError) {

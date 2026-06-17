@@ -10,6 +10,12 @@ const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 // TODO: Move to environment variable
 const SERVICE_TOKEN = "bWlmb3M6cGFzc3dvcmQ=";
 
+export type FineractAuthMode = "session" | "service";
+
+export type FineractRequestInit = RequestInit & {
+  authMode?: FineractAuthMode;
+};
+
 /**
  * Get access token - prefer the logged-in user's Fineract session and
  * fall back to the service token when no session is available.
@@ -59,10 +65,12 @@ export async function getAccessToken(): Promise<string> {
  */
 export async function fetchFineractAPI(
   endpoint: string,
-  options: RequestInit = {},
+  options: FineractRequestInit = {},
   version: "v1" | "v2" = "v1"
 ) {
-  const accessToken = await getAccessToken();
+  const { authMode = "session", ...requestOptions } = options;
+  const accessToken =
+    authMode === "service" ? SERVICE_TOKEN : await getAccessToken();
   const fineractTenantId = await getFineractTenantIdFromService();
 
   const url = `${baseUrl}/fineract-provider/api/${version}${
@@ -70,14 +78,14 @@ export async function fetchFineractAPI(
   }`;
 
   const headers: any = {
-    ...options.headers,
+    ...requestOptions.headers,
     Authorization: `Basic ${accessToken}`,
     "Fineract-Platform-TenantId": fineractTenantId,
   };
 
   // Only set Content-Type to application/json if body is NOT FormData
   // For FormData, let the browser set the correct Content-Type with boundary
-  if (!(options.body instanceof FormData)) {
+  if (!(requestOptions.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -88,7 +96,7 @@ export async function fetchFineractAPI(
     if (url.startsWith("http://")) {
       // Use standard fetch for HTTP URLs (no agent needed)
       response = await fetch(url, {
-        ...options,
+        ...requestOptions,
         headers,
       });
     } else {
@@ -98,7 +106,7 @@ export async function fetchFineractAPI(
       const agent = new https.Agent({ rejectUnauthorized: false });
 
       response = await fetch(url, {
-        ...options,
+        ...requestOptions,
         headers,
         //@ts-ignore
         agent,
@@ -199,6 +207,7 @@ export async function fetchClientByExternalId(externalId: string) {
     const searchData = await fetchFineractAPI(
       "/clients/search",
       {
+        authMode: "service",
         method: "POST",
         body: JSON.stringify(searchPayload),
       },
@@ -224,7 +233,8 @@ export async function fetchClientByExternalId(externalId: string) {
     if (matchingClient.id) {
       try {
         const fullClientData = await fetchFineractAPI(
-          `/clients/${matchingClient.id}`
+          `/clients/${matchingClient.id}`,
+          { authMode: "service" }
         );
         return fullClientData;
       } catch (fetchError) {
@@ -252,7 +262,7 @@ export async function fetchClientByExternalId(externalId: string) {
  */
 export async function fetchFineractAPIV2(
   endpoint: string,
-  options: RequestInit = {}
+  options: FineractRequestInit = {}
 ) {
   return fetchFineractAPI(endpoint, options, "v2");
 }

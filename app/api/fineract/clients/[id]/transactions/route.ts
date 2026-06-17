@@ -25,7 +25,7 @@ export async function GET(
     try {
       const endpoint = `/loans/transactions?clientId=${id}&offset=${offset}&limit=${limit}`;
       console.log(`Trying endpoint: ${endpoint}`);
-      data = await fetchFineractAPI(endpoint);
+      data = await fetchFineractAPI(endpoint, { authMode: "service" });
       console.log('First endpoint succeeded');
     } catch (e: any) {
       error = e;
@@ -35,7 +35,7 @@ export async function GET(
       try {
         const endpoint = `/clients/${id}/transactions?offset=${offset}&limit=${limit}`;
         console.log(`Trying alternative endpoint: ${endpoint}`);
-        data = await fetchFineractAPI(endpoint);
+        data = await fetchFineractAPI(endpoint, { authMode: "service" });
         console.log('Alternative endpoint succeeded');
       } catch (e2: any) {
         error = e2;
@@ -45,7 +45,7 @@ export async function GET(
         try {
           const endpoint = `/loans/transactions?offset=${offset}&limit=${limit}`;
           console.log(`Trying general loans endpoint: ${endpoint}`);
-          data = await fetchFineractAPI(endpoint);
+          data = await fetchFineractAPI(endpoint, { authMode: "service" });
           
           // Filter by client ID if we get all transactions
           if (data && Array.isArray(data.pageItems)) {
@@ -86,4 +86,4 @@ export async function GET(
       { status: statusCode }
     );
   }
-} 
+}
