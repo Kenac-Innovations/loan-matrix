@@ -12,7 +12,9 @@ export async function GET(
   try {
     const { id } = await params;
     console.log("Fetching identifiers template for client:", id);
-    const data = await fetchFineractAPI(`/clients/${id}/identifiers/template`);
+    const data = await fetchFineractAPI(`/clients/${id}/identifiers/template`, {
+      authMode: "service",
+    });
     console.log(
       "Identifiers template response:",
       JSON.stringify(data, null, 2)

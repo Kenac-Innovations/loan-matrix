@@ -4,7 +4,12 @@ import {
   createResourceAccessHandler,
 } from "@/middleware/auth-middleware";
 import { AccessLevel, Resource, SpecificPermission } from "@/shared/types/auth";
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import {
+  getFineractService,
+  getFineractServiceWithSession,
+} from "@/lib/fineract-api";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { getSearchAuthToken } from "@/lib/fineract-search-auth";
 
 // Handler for GET requests - list all clients
 async function handleGetClients(req: NextRequest) {
@@ -14,7 +19,10 @@ async function handleGetClients(req: NextRequest) {
     const offset = parseInt(searchParams.get("offset") || "0");
     const limit = parseInt(searchParams.get("limit") || "100");
 
-    const fineractService = await getFineractServiceWithSession();
+    const fineractService = getFineractService(
+      getSearchAuthToken(),
+      await getFineractTenantId()
+    );
 
     // Use v2 search endpoint if query is provided, otherwise get all clients
     const clientsResponse = query

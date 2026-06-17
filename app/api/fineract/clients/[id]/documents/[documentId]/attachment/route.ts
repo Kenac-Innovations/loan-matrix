@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAccessToken, getFineractTenantId } from "@/lib/api";
+import { getFineractTenantId } from "@/lib/api";
+import { getSearchAuthToken } from "@/lib/fineract-search-auth";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; documentId: string }> }
 ) {
   try {
-    const accessToken = await getAccessToken();
+    const accessToken = getSearchAuthToken();
     const fineractTenantId = await getFineractTenantId();
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const { id: clientId, documentId } = await params;
     const baseUrl = process.env.FINERACT_BASE_URL;

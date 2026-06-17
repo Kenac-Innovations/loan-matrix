@@ -12,7 +12,9 @@ export async function GET(
   try {
     const { id } = await params;
     // Note: Fineract uses singular "client" not "clients" for addresses endpoint
-    const data = await fetchFineractAPI(`/client/${id}/addresses`);
+    const data = await fetchFineractAPI(`/client/${id}/addresses`, {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching client addresses:", error);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAccessToken, getFineractTenantId } from "@/lib/api";
+import { getFineractTenantId } from "@/lib/api";
+import { getSearchAuthToken } from "@/lib/fineract-search-auth";
 import { format } from "date-fns";
 import {
   generateConsolidatedStatementHTML,
@@ -50,12 +51,8 @@ export async function GET(
     const fromDate = searchParams.get("from");
     const toDate = searchParams.get("to");
 
-    const accessToken = await getAccessToken();
+    const accessToken = getSearchAuthToken();
     const fineractTenantId = await getFineractTenantId();
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const headers = {
       Authorization: `Basic ${accessToken}`,

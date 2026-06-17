@@ -70,7 +70,7 @@ export async function GET(
       ? `/clients/${clientId}?${query.toString()}`
       : `/clients/${clientId}`;
 
-    const data = await fetchFineractAPI(endpoint);
+    const data = await fetchFineractAPI(endpoint, { authMode: "service" });
     return NextResponse.json(data);
   } catch (error: unknown) {
     console.error("Failed to get client:", error);

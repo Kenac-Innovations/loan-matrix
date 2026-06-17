@@ -24,7 +24,7 @@ export async function GET(
     // First try the standard documents endpoint with client filter
     try {
       const endpoint = `/documents?entityType=clients&entityId=${clientId}&offset=${offset}&limit=${limit}`;
-      data = await fetchFineractAPI(endpoint);
+      data = await fetchFineractAPI(endpoint, { authMode: "service" });
     } catch (e: any) {
       error = e;
       console.log('First endpoint failed, trying alternative...');
@@ -32,7 +32,7 @@ export async function GET(
       // Try alternative endpoint
       try {
         const endpoint = `/clients/${clientId}/documents?offset=${offset}&limit=${limit}`;
-        data = await fetchFineractAPI(endpoint);
+        data = await fetchFineractAPI(endpoint, { authMode: "service" });
       } catch (e2: any) {
         error = e2;
         console.log('Second endpoint failed, trying documents endpoint...');
@@ -40,7 +40,7 @@ export async function GET(
         // Try the general documents endpoint
         try {
           const endpoint = `/documents?offset=${offset}&limit=${limit}`;
-          data = await fetchFineractAPI(endpoint);
+          data = await fetchFineractAPI(endpoint, { authMode: "service" });
           
           // Filter by client ID if we get all documents
           if (data && Array.isArray(data.pageItems)) {

@@ -51,7 +51,9 @@ export async function getClientByExternalId(externalId: string): Promise<ClientD
  */
 export async function getClientById(clientId: number): Promise<ClientDetails> {
   try {
-    const data = await fetchFineractAPI(`/clients/${clientId}`);
+    const data = await fetchFineractAPI(`/clients/${clientId}`, {
+      authMode: "service",
+    });
     return data;
   } catch (error) {
     console.error('Error in getClientById:', error);
@@ -77,7 +79,7 @@ export async function searchClients(
       endpoint = `/clients?search=${encodeURIComponent(query)}&offset=${offset}&limit=${limit}`;
     }
     
-    const data = await fetchFineractAPI(endpoint);
+    const data = await fetchFineractAPI(endpoint, { authMode: "service" });
     return data;
   } catch (error) {
     console.error('Error in searchClients:', error);

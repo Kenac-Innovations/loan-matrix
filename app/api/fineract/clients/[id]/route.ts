@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { fetchFineractAPI } from "@/lib/api";
 import { hasSuperAdminServer } from "@/lib/authorization";
 import { getSession } from "@/lib/auth";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
@@ -28,8 +29,9 @@ export async function GET(
 
     const session = await getSession();
     const tenantSlug = extractTenantSlugFromRequest(request);
-    const fineractService = await getFineractServiceWithSession();
-    const data = await fineractService.getClient(clientId);
+    const data = await fetchFineractAPI(`/clients/${clientId}`, {
+      authMode: "service",
+    });
     const officeScope = resolveOmamaOfficeScope({
       tenantSlug,
       roles: ((session?.user as any)?.roles || []) as Array<{

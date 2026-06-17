@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { NextResponse } from "next/server";
+import { getFineractService } from "@/lib/fineract-api";
+import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { getSearchAuthToken } from "@/lib/fineract-search-auth";
 
 export async function GET() {
   try {
-    const fineractService = await getFineractServiceWithSession();
+    const fineractService = getFineractService(
+      getSearchAuthToken(),
+      await getFineractTenantId()
+    );
 
     // Fetch clients from Fineract
     const clientsResponse = await fineractService.getClients(0, 1000); // Get more clients for accurate metrics
