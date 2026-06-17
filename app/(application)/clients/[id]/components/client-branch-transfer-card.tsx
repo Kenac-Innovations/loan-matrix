@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,20 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
-
-interface FineractOffice {
-  id: number;
-  name: string;
-  externalId?: string;
-}
 
 interface FineractClient {
   id: number;
@@ -33,79 +20,32 @@ interface FineractClient {
   officeName?: string;
 }
 
+interface UserOffice {
+  id?: number | null;
+  name?: string | null;
+}
+
 interface ClientBranchTransferCardProps {
   clientId: number;
   client: FineractClient;
+  currentUserOffice: UserOffice;
 }
 
 export function ClientBranchTransferCard({
   clientId,
   client,
+  currentUserOffice,
 }: ClientBranchTransferCardProps) {
   const router = useRouter();
-  const [offices, setOffices] = useState<FineractOffice[]>([]);
-  const [selectedOfficeId, setSelectedOfficeId] = useState("");
-  const [isLoadingOffices, setIsLoadingOffices] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadOffices() {
-      setIsLoadingOffices(true);
-      try {
-        const response = await fetch(
-          "/api/fineract/client-branch-transfer/offices",
-          { cache: "no-store" }
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch branches");
-        }
-
-        const data = await response.json();
-        const officeList = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.offices)
-            ? data.offices
-            : Array.isArray(data?.pageItems)
-              ? data.pageItems
-              : [];
-
-        if (isMounted) {
-          setOffices(officeList);
-        }
-      } catch (error) {
-        console.error("Error loading branches for client transfer:", error);
-        toast({
-          title: "Could not load branches",
-          description: "Refresh the page and try again.",
-          variant: "destructive",
-        });
-      } finally {
-        if (isMounted) {
-          setIsLoadingOffices(false);
-        }
-      }
-    }
-
-    loadOffices();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const selectedOffice = useMemo(
-    () => offices.find((office) => String(office.id) === selectedOfficeId),
-    [offices, selectedOfficeId]
-  );
-
   const isCurrentBranch =
-    selectedOfficeId.length > 0 && Number(selectedOfficeId) === client.officeId;
+    currentUserOffice.id != null &&
+    Number(currentUserOffice.id) === client.officeId;
+  const hasDestinationBranch = currentUserOffice.id != null;
 
   async function handleMoveBranch() {
-    if (!selectedOfficeId || isCurrentBranch) {
+    if (!hasDestinationBranch || isCurrentBranch) {
       return;
     }
 
@@ -119,7 +59,7 @@ export function ClientBranchTransferCard({
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            destinationOfficeId: Number(selectedOfficeId),
+            clientOfficeId: client.officeId,
           }),
         }
       );
@@ -137,7 +77,7 @@ export function ClientBranchTransferCard({
       toast({
         title: "Client branch moved",
         description: `${client.displayName} was moved to ${
-          selectedOffice?.name || "the selected branch"
+          currentUserOffice.name || "your branch"
         }.`,
       });
 
@@ -165,8 +105,8 @@ export function ClientBranchTransferCard({
           Move Branch
         </CardTitle>
         <CardDescription>
-          This client is outside your assigned branch. Select the correct branch
-          to transfer the client in Fineract.
+          This client is outside your assigned branch. Transfer the client to
+          your branch in Fineract.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-[1fr_2fr_auto] md:items-end">
@@ -179,29 +119,20 @@ export function ClientBranchTransferCard({
 
         <div className="space-y-2">
           <p className="text-sm font-medium">New Branch</p>
-          <Select
-            value={selectedOfficeId}
-            onValueChange={setSelectedOfficeId}
-            disabled={isLoadingOffices || isSubmitting}
-          >
-            <SelectTrigger>
-              <SelectValue
-                placeholder={
-                  isLoadingOffices ? "Loading branches..." : "Select branch"
-                }
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {offices.map((office) => (
-                <SelectItem key={office.id} value={String(office.id)}>
-                  {office.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-medium">
+            {currentUserOffice.name || "Your branch is not available"}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            This branch is locked to the logged-in user.
+          </p>
           {isCurrentBranch && (
             <p className="text-xs text-muted-foreground">
-              This client is already assigned to the selected branch.
+              This client is already assigned to your branch.
+            </p>
+          )}
+          {!hasDestinationBranch && (
+            <p className="text-xs text-destructive">
+              Your login session does not include a branch.
             </p>
           )}
         </div>
@@ -210,9 +141,8 @@ export function ClientBranchTransferCard({
           type="button"
           onClick={handleMoveBranch}
           disabled={
-            isLoadingOffices ||
             isSubmitting ||
-            !selectedOfficeId ||
+            !hasDestinationBranch ||
             isCurrentBranch
           }
         >

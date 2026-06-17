@@ -455,12 +455,13 @@ export default async function ClientDetailPage({ params }: PageProps) {
   }
 
   // Fetch all data server-side in parallel
-  const [clientResult, clientImage, datatables, canEditClient] =
+  const [clientResult, clientImage, datatables, canEditClient, session] =
     await Promise.all([
       getClientData(clientId),
       getClientImage(clientId),
       getDatatables(),
       hasSuperAdminServer(),
+      getSession(),
     ]);
   const client = clientResult.client;
   const isRestrictedBranchClient = clientResult.usedServiceFallback;
@@ -509,7 +510,14 @@ export default async function ClientDetailPage({ params }: PageProps) {
       <ClientDetails client={client} clientImage={clientImage} />
 
       {isRestrictedBranchClient && client && (
-        <ClientBranchTransferCard clientId={clientId} client={client} />
+        <ClientBranchTransferCard
+          clientId={clientId}
+          client={client}
+          currentUserOffice={{
+            id: session?.user?.officeId ?? null,
+            name: session?.user?.officeName ?? null,
+          }}
+        />
       )}
 
       {!isRestrictedBranchClient && (
