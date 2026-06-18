@@ -105,8 +105,9 @@ export function ClientBranchTransferCard({
           Move Branch
         </CardTitle>
         <CardDescription>
-          This client is outside your assigned branch. Transfer the client to
-          your branch in Fineract.
+          This client is outside your assigned branch. You can review the
+          client in read-only mode, then transfer them to your branch in
+          Fineract to unlock write actions.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-[1fr_2fr_auto] md:items-end">

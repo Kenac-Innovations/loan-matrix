@@ -93,9 +93,13 @@ function formatBalance(amount: number | undefined, currencyCode?: string) {
 
 interface ClientSavingsProps {
   clientId: number;
+  readOnly?: boolean;
 }
 
-export function ClientSavings({ clientId }: ClientSavingsProps) {
+export function ClientSavings({
+  clientId,
+  readOnly = false,
+}: ClientSavingsProps) {
   const router = useRouter();
   const { data, error, isLoading } = useSWR(
     `/api/fineract/clients/${clientId}/accounts`,
@@ -164,11 +168,13 @@ export function ClientSavings({ clientId }: ClientSavingsProps) {
                 {accounts.map((account) => (
                   <TableRow
                     key={account.id}
-                    className="cursor-pointer transition-colors hover:bg-muted/50"
-                    onClick={() =>
-                      router.push(`/clients/${clientId}/savings/${account.id}`)
-                    }
+                    className={readOnly ? "" : "cursor-pointer transition-colors hover:bg-muted/50"}
+                    onClick={() => {
+                      if (readOnly) return;
+                      router.push(`/clients/${clientId}/savings/${account.id}`);
+                    }}
                     onKeyDown={(e) => {
+                      if (readOnly) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         router.push(
@@ -176,9 +182,13 @@ export function ClientSavings({ clientId }: ClientSavingsProps) {
                         );
                       }
                     }}
-                    tabIndex={0}
-                    role="link"
-                    aria-label={`Open savings account ${account.accountNo}`}
+                    tabIndex={readOnly ? -1 : 0}
+                    role={readOnly ? undefined : "link"}
+                    aria-label={
+                      readOnly
+                        ? undefined
+                        : `Open savings account ${account.accountNo}`
+                    }
                   >
                     <TableCell>
                       <span className="font-mono text-sm">{account.accountNo}</span>
@@ -199,7 +209,9 @@ export function ClientSavings({ clientId }: ClientSavingsProps) {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                      {!readOnly && (
+                        <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

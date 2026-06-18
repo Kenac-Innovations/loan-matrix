@@ -15,9 +15,13 @@ import { addMonths, format } from "date-fns";
 
 interface ClientFacilityProps {
   clientId: number;
+  readOnly?: boolean;
 }
 
-export function ClientFacility({ clientId }: ClientFacilityProps) {
+export function ClientFacility({
+  clientId,
+  readOnly = false,
+}: ClientFacilityProps) {
   const [facility, setFacility] = useState<CreditFacility | null | undefined>(undefined);
   const [loanLinks, setLoanLinks] = useState<Record<number, CreditFacilityLoan | null>>({});
   const [loanIds, setLoanIds] = useState<number[]>([]);
@@ -122,12 +126,16 @@ export function ClientFacility({ clientId }: ClientFacilityProps) {
                   key={id}
                   className="flex items-center justify-between text-sm py-1.5 border-b last:border-0"
                 >
-                  <a
-                    href={`/clients/${clientId}/loans/${id}`}
-                    className="text-blue-600 dark:text-blue-400 hover:underline font-mono"
-                  >
-                    Loan #{id}
-                  </a>
+                  {readOnly ? (
+                    <span className="font-mono">Loan #{id}</span>
+                  ) : (
+                    <a
+                      href={`/clients/${clientId}/loans/${id}`}
+                      className="text-blue-600 dark:text-blue-400 hover:underline font-mono"
+                    >
+                      Loan #{id}
+                    </a>
+                  )}
                   <Badge variant="outline" className="text-xs">Tranche</Badge>
                 </div>
               ))}

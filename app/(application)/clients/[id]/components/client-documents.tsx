@@ -59,12 +59,16 @@ interface FineractDocument {
 
 interface ClientDocumentsProps {
   clientId: number;
+  canUploadDocuments?: boolean;
 }
 
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-export function ClientDocuments({ clientId }: ClientDocumentsProps) {
+export function ClientDocuments({
+  clientId,
+  canUploadDocuments = true,
+}: ClientDocumentsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -305,14 +309,20 @@ export function ClientDocuments({ clientId }: ClientDocumentsProps) {
               <CardTitle>Documents</CardTitle>
               <CardDescription>Client documents and attachments</CardDescription>
             </div>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => handleUploadDialogOpenChange(true)}
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Upload Document
-          </Button>
+          {canUploadDocuments ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => handleUploadDialogOpenChange(true)}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Document
+            </Button>
+          ) : (
+            <p className="text-sm text-amber-500">
+              Transfer this client to your branch before uploading documents.
+            </p>
+          )}
         </div>
       </CardHeader>
       <CardContent>
