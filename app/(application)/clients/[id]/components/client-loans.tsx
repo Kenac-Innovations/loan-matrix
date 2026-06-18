@@ -73,6 +73,7 @@ interface FineractLoan {
 
 interface ClientLoansProps {
   clientId: number;
+  readOnly?: boolean;
 }
 
 interface RawClientLoan {
@@ -171,7 +172,7 @@ const getLoanSequenceSortTime = (loan: ClientLoanSequenceItem): number => {
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-export function ClientLoans({ clientId }: ClientLoansProps) {
+export function ClientLoans({ clientId, readOnly = false }: ClientLoansProps) {
   const router = useRouter();
   const tenantSlug =
     typeof globalThis.window !== "undefined"
@@ -662,17 +663,25 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                     return (
                     <TableRow
                       key={loan.id}
-                      className="cursor-pointer transition-colors hover:bg-muted/50"
-                      onClick={() => router.push(`/clients/${clientId}/loans/${loan.id}`)}
+                      className={readOnly ? "" : "cursor-pointer transition-colors hover:bg-muted/50"}
+                      onClick={() => {
+                        if (readOnly) return;
+                        router.push(`/clients/${clientId}/loans/${loan.id}`);
+                      }}
                       onKeyDown={(event) => {
+                        if (readOnly) return;
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
                           router.push(`/clients/${clientId}/loans/${loan.id}`);
                         }
                       }}
-                      tabIndex={0}
-                      role="link"
-                      aria-label={`Open loan ${loan.accountNo || loan.id} details`}
+                      tabIndex={readOnly ? -1 : 0}
+                      role={readOnly ? undefined : "link"}
+                      aria-label={
+                        readOnly
+                          ? undefined
+                          : `Open loan ${loan.accountNo || loan.id} details`
+                      }
                     >
                       <TableCell>
                         <div className="flex justify-center">
@@ -754,7 +763,9 @@ export function ClientLoans({ clientId }: ClientLoansProps) {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                        {!readOnly && (
+                          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                        )}
                       </TableCell>
                     </TableRow>
                     );
