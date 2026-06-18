@@ -2,19 +2,14 @@ import type { FineractClient } from "@/lib/fineract-api";
 
 export type OfficeIdValue = string | number | null | undefined;
 
-export interface ClientOfficeTransferService {
-  getClient(clientId: number): Promise<FineractClient>;
-  transferClientToOffice(
-    clientId: number,
-    destinationOfficeId: number
-  ): Promise<unknown>;
-}
-
 export interface ExistingClientOfficeTransferResult {
   client: FineractClient;
   moved: boolean;
   fromOfficeId: number | null;
   toOfficeId: number | null;
+  leadOfficeId: number;
+  leadOfficeName: string | null;
+  clientBelongsToDifferentOffice: boolean;
 }
 
 export function normalizeOfficeId(value: OfficeIdValue) {
@@ -42,10 +37,10 @@ export function shouldMoveExistingClientToCreatorOffice(input: {
   );
 }
 
-export async function ensureExistingClientInCreatorOffice(input: {
-  fineractService: ClientOfficeTransferService;
+export function ensureExistingClientInCreatorOffice(input: {
   client: FineractClient;
   creatorOfficeId: OfficeIdValue;
+  creatorOfficeName?: string | null;
 }) {
   const creatorOfficeId = normalizeOfficeId(input.creatorOfficeId);
   if (!creatorOfficeId) {
@@ -55,31 +50,20 @@ export async function ensureExistingClientInCreatorOffice(input: {
   }
 
   const clientOfficeId = normalizeOfficeId(input.client.officeId);
-  if (
-    !shouldMoveExistingClientToCreatorOffice({
+  const clientBelongsToDifferentOffice = shouldMoveExistingClientToCreatorOffice(
+    {
       clientOfficeId,
       creatorOfficeId,
-    })
-  ) {
-    return {
-      client: input.client,
-      moved: false,
-      fromOfficeId: clientOfficeId,
-      toOfficeId: creatorOfficeId,
-    } satisfies ExistingClientOfficeTransferResult;
-  }
-
-  await input.fineractService.transferClientToOffice(
-    input.client.id,
-    creatorOfficeId
+    }
   );
 
-  const movedClient = await input.fineractService.getClient(input.client.id);
-
   return {
-    client: movedClient,
-    moved: true,
+    client: input.client,
+    moved: false,
     fromOfficeId: clientOfficeId,
     toOfficeId: creatorOfficeId,
+    leadOfficeId: creatorOfficeId,
+    leadOfficeName: input.creatorOfficeName?.trim() || null,
+    clientBelongsToDifferentOffice,
   } satisfies ExistingClientOfficeTransferResult;
 }

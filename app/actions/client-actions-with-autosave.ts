@@ -129,16 +129,16 @@ export async function autoSaveField(
     if (validatedData.fineractClientId !== undefined) {
       const fineractService = await getFineractServiceWithSession();
       existingClientOfficeTransfer = await ensureExistingClientInCreatorOffice({
-        fineractService,
         client: await fineractService.getClient(validatedData.fineractClientId),
         creatorOfficeId: session.user.officeId,
+        creatorOfficeName: session.user.officeName,
       });
     }
 
     const resolvedOfficeId =
-      existingClientOfficeTransfer?.client.officeId ?? validatedData.officeId;
+      existingClientOfficeTransfer?.leadOfficeId ?? validatedData.officeId;
     const resolvedOfficeName =
-      existingClientOfficeTransfer?.client.officeName ?? validatedData.officeName;
+      existingClientOfficeTransfer?.leadOfficeName ?? validatedData.officeName;
     const resolvedFineractAccountNo =
       existingClientOfficeTransfer?.client.accountNo ??
       validatedData.fineractAccountNo;

@@ -184,24 +184,38 @@ async function getClientImage(clientId: number): Promise<string | null> {
     const accessToken =
       session?.base64EncodedAuthenticationKey || session?.accessToken;
 
-    if (!accessToken) {
-      return null;
-    }
-
     const fineractTenantId = await getFineractTenantId();
-
-    const response = await fetch(
-      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/images?maxHeight=200`,
-      {
-        method: "GET",
-        headers: {
+    const sessionHeaders = accessToken
+      ? {
           Authorization: `Basic ${accessToken}`,
           "Fineract-Platform-TenantId": fineractTenantId,
           Accept: "application/json, text/plain, */*",
-        },
+        }
+      : null;
+    const serviceHeaders = {
+      ...getSearchHeaders(fineractTenantId),
+      Accept: "application/json, text/plain, */*",
+    };
+
+    let response = await fetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/images?maxHeight=200`,
+      {
+        method: "GET",
+        headers: sessionHeaders || serviceHeaders,
         cache: "no-store",
       }
     );
+
+    if (!response.ok) {
+      response = await fetch(
+        `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/images?maxHeight=200`,
+        {
+          method: "GET",
+          headers: serviceHeaders,
+          cache: "no-store",
+        }
+      );
+    }
 
     if (!response.ok) {
       return null;
@@ -269,25 +283,35 @@ async function getDatatables() {
     const accessToken =
       session?.base64EncodedAuthenticationKey || session?.accessToken;
 
-    if (!accessToken) {
-      console.warn("No access token available for datatables fetch");
-      return [];
-    }
-
     const fineractTenantId = await getFineractTenantId();
-
-    const response = await fetch(
-      `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables?apptable=m_client`,
-      {
-        method: "GET",
-        headers: {
+    const sessionHeaders = accessToken
+      ? {
           Authorization: `Basic ${accessToken}`,
           "Fineract-Platform-TenantId": fineractTenantId,
           Accept: "application/json",
-        },
+        }
+      : null;
+    const serviceHeaders = getSearchHeaders(fineractTenantId);
+
+    let response = await fetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables?apptable=m_client`,
+      {
+        method: "GET",
+        headers: sessionHeaders || serviceHeaders,
         cache: "no-store",
       }
     );
+
+    if (!response.ok) {
+      response = await fetch(
+        `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables?apptable=m_client`,
+        {
+          method: "GET",
+          headers: serviceHeaders,
+          cache: "no-store",
+        }
+      );
+    }
 
     if (!response.ok) {
       console.error("Failed to fetch datatables:", response.status);
@@ -321,30 +345,43 @@ async function getDatatableData(
     const accessToken =
       session?.base64EncodedAuthenticationKey || session?.accessToken;
 
-    if (!accessToken) {
-      return datatableData;
-    }
-
     const fineractTenantId = await getFineractTenantId();
+    const sessionHeaders = accessToken
+      ? {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": fineractTenantId,
+          Accept: "application/json",
+        }
+      : null;
+    const serviceHeaders = getSearchHeaders(fineractTenantId);
 
     // Fetch data for each datatable
     await Promise.all(
       datatableList.map(async (dt) => {
         try {
-          const response = await fetch(
+          let response = await fetch(
             `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables/${encodeURIComponent(
               dt.registeredTableName
             )}/${clientId}?genericResultSet=true`,
             {
               method: "GET",
-              headers: {
-                Authorization: `Basic ${accessToken}`,
-                "Fineract-Platform-TenantId": fineractTenantId,
-                Accept: "application/json",
-              },
+              headers: sessionHeaders || serviceHeaders,
               cache: "no-store",
             }
           );
+
+          if (!response.ok) {
+            response = await fetch(
+              `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables/${encodeURIComponent(
+                dt.registeredTableName
+              )}/${clientId}?genericResultSet=true`,
+              {
+                method: "GET",
+                headers: serviceHeaders,
+                cache: "no-store",
+              }
+            );
+          }
 
           if (response.ok) {
             const data = await response.json();
@@ -376,24 +413,24 @@ async function getClientDocuments(
     const accessToken =
       session?.base64EncodedAuthenticationKey || session?.accessToken;
 
-    if (!accessToken) {
-      return [];
-    }
-
     const fineractTenantId = await getFineractTenantId();
 
-    const headers = {
-      Authorization: `Basic ${accessToken}`,
-      "Fineract-Platform-TenantId": fineractTenantId,
-      Accept: "application/json",
-    };
+    const headers = accessToken
+      ? {
+          Authorization: `Basic ${accessToken}`,
+          "Fineract-Platform-TenantId": fineractTenantId,
+          Accept: "application/json",
+        }
+      : getSearchHeaders(fineractTenantId);
+    const serviceHeaders = getSearchHeaders(fineractTenantId);
 
     const tryFetch = async (
-      url: string
+      url: string,
+      requestHeaders: Record<string, string>
     ): Promise<ClientDocumentSummary[] | PagedResponse<ClientDocumentSummary> | null> => {
       const response = await fetch(url, {
         method: "GET",
-        headers,
+        headers: requestHeaders,
         cache: "no-store",
       });
       if (!response.ok) return null;
@@ -401,7 +438,8 @@ async function getClientDocuments(
     };
 
     const first = await tryFetch(
-      `${FINERACT_BASE_URL}/fineract-provider/api/v1/documents?entityType=clients&entityId=${clientId}&offset=0&limit=200`
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/documents?entityType=clients&entityId=${clientId}&offset=0&limit=200`,
+      headers
     );
     if (first) {
       if (Array.isArray(first)) return first;
@@ -411,7 +449,8 @@ async function getClientDocuments(
     }
 
     const second = await tryFetch(
-      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/documents?offset=0&limit=200`
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/documents?offset=0&limit=200`,
+      headers
     );
     if (second) {
       if (Array.isArray(second)) return second;
@@ -421,7 +460,8 @@ async function getClientDocuments(
     }
 
     const fallback = await tryFetch(
-      `${FINERACT_BASE_URL}/fineract-provider/api/v1/documents?offset=0&limit=500`
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/documents?offset=0&limit=500`,
+      serviceHeaders
     );
     if (!fallback) return [];
 
@@ -465,16 +505,14 @@ export default async function ClientDetailPage({ params }: PageProps) {
     ]);
   const client = clientResult.client;
   const isRestrictedBranchClient = clientResult.usedServiceFallback;
+  const canWriteToClient = !isRestrictedBranchClient;
 
   // Fetch datatable data after we have the datatables list
-  const datatableData = isRestrictedBranchClient
-    ? {}
-    : await getDatatableData(clientId, datatables || []);
+  const datatableData = await getDatatableData(clientId, datatables || []);
 
   const isEntityClient =
-    (!isRestrictedBranchClient && client?.legalForm?.id === 2) ||
-    (!isRestrictedBranchClient &&
-      client?.legalForm?.value?.trim().toLowerCase() === "entity");
+    client?.legalForm?.id === 2 ||
+    client?.legalForm?.value?.trim().toLowerCase() === "entity";
 
   let entityLead = null;
   let clientDocuments: ClientDocumentSummary[] = [];
@@ -503,7 +541,13 @@ export default async function ClientDetailPage({ params }: PageProps) {
         clientId={clientId}
         client={client}
         clientImage={clientImage}
-        canEditClient={canEditClient}
+        canEditClient={canEditClient && canWriteToClient}
+        canApplyForLoan={canWriteToClient}
+        readOnlyNotice={
+          isRestrictedBranchClient
+            ? "You can review this client and their accounts, but writing actions stay locked until the client is transferred to your branch."
+            : null
+        }
       />
 
       {/* Client Overview Cards */}
@@ -520,8 +564,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
         />
       )}
 
-      {!isRestrictedBranchClient && (
-        <Tabs defaultValue="loans" className="space-y-4">
+      <Tabs defaultValue="loans" className="space-y-4">
           <TabsList className="w-full sm:w-auto overflow-x-auto">
             <TabsTrigger
               value="loans"
@@ -577,11 +620,14 @@ export default async function ClientDetailPage({ params }: PageProps) {
           </TabsList>
 
           <TabsContent value="loans" className="space-y-4">
-            <ClientLoans clientId={clientId} />
+            <ClientLoans clientId={clientId} readOnly={isRestrictedBranchClient} />
           </TabsContent>
 
           <TabsContent value="savings" className="space-y-4">
-            <ClientSavings clientId={clientId} />
+            <ClientSavings
+              clientId={clientId}
+              readOnly={isRestrictedBranchClient}
+            />
           </TabsContent>
 
           <TabsContent value="transactions" className="space-y-4">
@@ -589,7 +635,10 @@ export default async function ClientDetailPage({ params }: PageProps) {
           </TabsContent>
 
           <TabsContent value="documents" className="space-y-4">
-            <ClientDocuments clientId={clientId} />
+            <ClientDocuments
+              clientId={clientId}
+              canUploadDocuments={canWriteToClient}
+            />
           </TabsContent>
 
           <TabsContent value="additional-info" className="space-y-4">
@@ -601,7 +650,10 @@ export default async function ClientDetailPage({ params }: PageProps) {
           </TabsContent>
 
           <TabsContent value="facility" className="space-y-4">
-            <ClientFacility clientId={clientId} />
+            <ClientFacility
+              clientId={clientId}
+              readOnly={isRestrictedBranchClient}
+            />
           </TabsContent>
 
           {isEntityClient && (
@@ -615,7 +667,6 @@ export default async function ClientDetailPage({ params }: PageProps) {
             </TabsContent>
           )}
         </Tabs>
-      )}
     </div>
   );
 }
