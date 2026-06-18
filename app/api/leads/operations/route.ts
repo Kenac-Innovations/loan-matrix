@@ -1044,9 +1044,9 @@ async function handleCreateLeadWithClient(data: any) {
             assignedByFineractUserId: session.user.userId ?? userId,
           });
         const clientOfficeTransfer = await ensureExistingClientInCreatorOffice({
-          fineractService,
           client: await fineractService.getClient(existingClient.id),
           creatorOfficeId: session.user.officeId,
+          creatorOfficeName: session.user.officeName,
         });
         const clientForLead = clientOfficeTransfer.client;
 
@@ -1065,8 +1065,11 @@ async function handleCreateLeadWithClient(data: any) {
                 ...(designatedDisburserDefaults ?? {}),
                 tenantId,
                 currentStageId: initialStageId,
-                officeId: clientForLead.officeId ?? validatedData.officeId,
-                officeName: clientForLead.officeName ?? validatedData.officeName,
+                officeId:
+                  clientOfficeTransfer.leadOfficeId ?? validatedData.officeId,
+                officeName:
+                  clientOfficeTransfer.leadOfficeName ??
+                  validatedData.officeName,
                 legalFormId: validatedData.legalFormId,
                 legalFormName: validatedData.legalFormName,
                 externalId: validatedData.externalId,
@@ -1530,9 +1533,9 @@ async function handleCreateLeadForExistingClient(data: any) {
       assignedByFineractUserId: session.user.userId ?? session.user.id,
     });
     const clientOfficeTransfer = await ensureExistingClientInCreatorOffice({
-      fineractService,
       client,
       creatorOfficeId: session.user.officeId,
+      creatorOfficeName: session.user.officeName,
     });
     const clientForLead = clientOfficeTransfer.client;
 
@@ -1553,8 +1556,9 @@ async function handleCreateLeadForExistingClient(data: any) {
         ...(designatedDisburserDefaults ?? {}),
         tenantId: currentTenant.id,
         currentStageId: initialStageId,
-        officeId: clientForLead.officeId,
-        officeName: clientForLead.officeName,
+        officeId: clientOfficeTransfer.leadOfficeId,
+        officeName:
+          clientOfficeTransfer.leadOfficeName ?? clientForLead.officeName,
         legalFormId: clientForLead.legalForm?.id ?? 1,
         externalId: clientForLead.externalId,
         firstname: clientForLead.firstname,
@@ -1744,13 +1748,12 @@ async function handleUpdateClient(data: any, leadId?: string) {
       );
 
       clientOfficeTransfer = await ensureExistingClientInCreatorOffice({
-        fineractService,
         client: await fineractService.getClient(Number(data.fineractClientId)),
         creatorOfficeId: session.user.officeId,
+        creatorOfficeName: session.user.officeName,
       });
-      const clientForLeadOffice = clientOfficeTransfer.client;
-      leadOfficeId = clientForLeadOffice.officeId ?? data.officeId;
-      leadOfficeName = clientForLeadOffice.officeName ?? data.officeName;
+      leadOfficeId = clientOfficeTransfer.leadOfficeId ?? data.officeId;
+      leadOfficeName = clientOfficeTransfer.leadOfficeName ?? data.officeName;
     } catch (fineractError: any) {
       console.error("==========> Fineract update error:", fineractError);
       console.error(

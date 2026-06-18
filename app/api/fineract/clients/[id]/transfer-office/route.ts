@@ -62,6 +62,41 @@ async function postClientTransferCommand({
   );
 }
 
+async function fetchClientOffice({
+  clientId,
+  headers,
+}: {
+  clientId: number;
+  headers: Record<string, string>;
+}) {
+  const response = await fetch(
+    `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}`,
+    {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json().catch(() => null);
+  return {
+    officeId:
+      typeof data?.officeId === "number"
+        ? data.officeId
+        : Number(data?.officeId) || null,
+    officeName:
+      typeof data?.officeName === "string" ? data.officeName : null,
+  };
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const clientId = Number.parseInt(id, 10);
@@ -117,6 +152,10 @@ export async function POST(request: Request, context: RouteContext) {
       dateFormat: "dd MMMM yyyy",
       locale: "en",
     };
+    const acceptBody = {
+      ...commonBody,
+      note: `Branch move accepted from Loan Matrix by ${actor}`,
+    };
 
     const proposeResponse = await postClientTransferCommand({
       clientId,
@@ -134,14 +173,11 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json(error, { status: proposeResponse.status });
     }
 
-    const acceptResponse = await postClientTransferCommand({
+    let acceptResponse = await postClientTransferCommand({
       clientId,
       command: "acceptTransfer",
       headers: fineractHeaders,
-      body: {
-        ...commonBody,
-        note: `Branch move accepted from Loan Matrix by ${actor}`,
-      },
+      body: acceptBody,
     });
 
     if (!acceptResponse.ok) {
@@ -163,6 +199,49 @@ export async function POST(request: Request, context: RouteContext) {
       });
 
       return NextResponse.json(acceptError, { status: acceptResponse.status });
+    }
+
+    let updatedClientOffice = await fetchClientOffice({
+      clientId,
+      headers: fineractHeaders,
+    });
+
+    if (updatedClientOffice?.officeId !== transferTarget.destinationOfficeId) {
+      await wait(250);
+
+      acceptResponse = await postClientTransferCommand({
+        clientId,
+        command: "acceptTransfer",
+        headers: fineractHeaders,
+        body: acceptBody,
+      });
+
+      if (!acceptResponse.ok) {
+        const retryAcceptError = await parseFineractError(acceptResponse);
+        return NextResponse.json(retryAcceptError, {
+          status: acceptResponse.status,
+        });
+      }
+
+      updatedClientOffice = await fetchClientOffice({
+        clientId,
+        headers: fineractHeaders,
+      });
+    }
+
+    if (updatedClientOffice?.officeId !== transferTarget.destinationOfficeId) {
+      return NextResponse.json(
+        {
+          error:
+            "Client transfer was proposed and accepted, but the destination office was not updated.",
+          details: {
+            destinationOfficeId: transferTarget.destinationOfficeId,
+            currentOfficeId: updatedClientOffice?.officeId ?? null,
+            currentOfficeName: updatedClientOffice?.officeName ?? null,
+          },
+        },
+        { status: 502 }
+      );
     }
 
     const data = await acceptResponse.json().catch(() => ({}));
