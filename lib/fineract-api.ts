@@ -603,7 +603,6 @@ export class FineractAPIService {
       const response = await this.client.post(
         `/clients/${clientId}?command=acceptTransfer`,
         {
-          ...commonBody,
           note: "Branch move accepted automatically during existing-client lead creation",
         }
       );

@@ -153,7 +153,6 @@ export async function POST(request: Request, context: RouteContext) {
       locale: "en",
     };
     const acceptBody = {
-      ...commonBody,
       note: `Branch move accepted from Loan Matrix by ${actor}`,
     };
 
