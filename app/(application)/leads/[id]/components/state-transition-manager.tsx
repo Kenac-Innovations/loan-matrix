@@ -57,6 +57,7 @@ import {
   getLocalIsoDate,
   isGoodfellowTenantHostname,
 } from "@/lib/goodfellow-tenant";
+import { shouldBypassCashierRestrictionsForLoanDisbursement } from "@/lib/loan-disbursement-cashier-policy";
 
 interface AvailableTransition {
   stageId: string;
@@ -228,6 +229,14 @@ export default function StateTransitionManager({
   const derivedDisbursementPayoutMethod = useMemo(
     () => inferPreferredPaymentMethodFromPaymentType(selectedPaymentType) || "",
     [selectedPaymentType]
+  );
+  const bypassCashierRestrictionsForDisbursement = useMemo(
+    () =>
+      shouldBypassCashierRestrictionsForLoanDisbursement({
+        transactionType: effectiveAction === "disburse" ? "DISBURSEMENT" : undefined,
+        payoutMethod: selectedPaymentTypeIsCash ? "CASH" : undefined,
+      }),
+    [effectiveAction, selectedPaymentTypeIsCash]
   );
   const resolvedPreferredPaymentType = useMemo(
     () =>
@@ -425,7 +434,8 @@ export default function StateTransitionManager({
           } else {
             const firstCash = list.find((p: { isCashPayment?: boolean }) => p.isCashPayment);
             const firstNonCash = list.find((p: { isCashPayment?: boolean }) => !p.isCashPayment);
-            const defaultPaymentType = currentCashierContext?.isCashier
+            const defaultPaymentType =
+              bypassCashierRestrictionsForDisbursement || currentCashierContext?.isCashier
               ? (firstCash || list[0])
               : (firstNonCash || list[0]);
             if (defaultPaymentType) {
@@ -435,7 +445,13 @@ export default function StateTransitionManager({
         })
         .catch(() => {});
     }
-  }, [currentCashierContext?.isCashier, effectiveAction, normalizedPreferredPaymentMethod, paymentTypes.length]);
+  }, [
+    bypassCashierRestrictionsForDisbursement,
+    currentCashierContext?.isCashier,
+    effectiveAction,
+    normalizedPreferredPaymentMethod,
+    paymentTypes.length,
+  ]);
 
   useEffect(() => {
     if (
@@ -542,6 +558,8 @@ export default function StateTransitionManager({
 
     if (normalizedPreferredPaymentMethod) return;
 
+    if (bypassCashierRestrictionsForDisbursement) return;
+
     if (!currentCashierContext?.isCashier && selectedPaymentTypeIsCash) {
       const firstNonCash = paymentTypes.find((paymentType) => !paymentType.isCashPayment);
       if (firstNonCash) {
@@ -549,6 +567,7 @@ export default function StateTransitionManager({
       }
     }
   }, [
+    bypassCashierRestrictionsForDisbursement,
     currentCashierContext?.isCashier,
     effectiveAction,
     normalizedPreferredPaymentMethod,
@@ -729,26 +748,28 @@ export default function StateTransitionManager({
           return;
         }
 
-        if (!currentCashierContext?.isCashier) {
-          toast({
-            title: "Cash Payout Not Allowed",
-            description:
-              currentCashierContext?.reason ||
-              "Only a logged-in cashier can choose cash for this disbursement.",
-            variant: "destructive",
-          });
-          return;
-        }
+        if (!bypassCashierRestrictionsForDisbursement) {
+          if (!currentCashierContext?.isCashier) {
+            toast({
+              title: "Cash Payout Not Allowed",
+              description:
+                currentCashierContext?.reason ||
+                "Only a logged-in cashier can choose cash for this disbursement.",
+              variant: "destructive",
+            });
+            return;
+          }
 
-        if (!currentCashierContext.hasActiveSession) {
-          toast({
-            title: "Cashier Session Required",
-            description:
-              currentCashierContext.reason ||
-              "Start an active cashier session before using cash.",
-            variant: "destructive",
-          });
-          return;
+          if (!currentCashierContext.hasActiveSession) {
+            toast({
+              title: "Cashier Session Required",
+              description:
+                currentCashierContext.reason ||
+                "Start an active cashier session before using cash.",
+              variant: "destructive",
+            });
+            return;
+          }
         }
       }
 
@@ -1451,14 +1472,15 @@ export default function StateTransitionManager({
                               <SelectItem
                                 key={p.id}
                                 value={String(p.id)}
-                                disabled={Boolean(p.isCashPayment && currentCashierContext && !currentCashierContext.isCashier)}
                               >
                                 {p.name}{p.isCashPayment ? " (Cash)" : ""}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        {currentCashierContext && !currentCashierContext.isCashier && (
+                        {!bypassCashierRestrictionsForDisbursement &&
+                          currentCashierContext &&
+                          !currentCashierContext.isCashier && (
                           <p className="text-xs text-muted-foreground">
                             Cash payment types are disabled because the logged in user is not an assigned cashier.
                           </p>
@@ -1470,10 +1492,13 @@ export default function StateTransitionManager({
                   {loadingCurrentCashier && selectedPaymentTypeIsCash && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <Loader2 className="h-3 w-3 animate-spin" />
-                      Checking cashier access...
+                      Checking cashier info...
                     </p>
                   )}
-                  {currentCashierContext && !currentCashierContext.isCashier && selectedPaymentTypeIsCash && (
+                  {!bypassCashierRestrictionsForDisbursement &&
+                    currentCashierContext &&
+                    !currentCashierContext.isCashier &&
+                    selectedPaymentTypeIsCash && (
                     <p className="text-xs text-muted-foreground">
                       {currentCashierContext.reason || "Only cashiers can process cash payout."}
                     </p>
@@ -1484,7 +1509,9 @@ export default function StateTransitionManager({
                       <div className="flex items-center gap-2">
                         <Banknote className="h-4 w-4 text-green-600" />
                         <span className="text-sm font-medium text-green-800 dark:text-green-300">
-                          Cash payout will use the logged in cashier
+                          {currentCashierContext?.isCashier
+                            ? "Cash payout will use the logged in cashier"
+                            : "Cash payout is temporarily bypassing cashier linkage checks"}
                         </span>
                       </div>
                       {currentCashierContext?.isCashier ? (
@@ -1508,8 +1535,8 @@ export default function StateTransitionManager({
                           </div>
                         </>
                       ) : (
-                        <p className="text-sm text-red-600 dark:text-red-400">
-                          {currentCashierContext?.reason || "Only a cashier with an active session can use cash payout."}
+                        <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                          Cash disbursement is temporarily allowed even when the logged in user is not linked to an active cashier.
                         </p>
                       )}
                     </div>
@@ -1905,7 +1932,11 @@ export default function StateTransitionManager({
               (!selectedTransition?.isBackward && effectiveAction === "disburse" && !paymentTypeId) ||
               (!selectedTransition?.isBackward && effectiveAction === "disburse" && !!normalizedPreferredPaymentMethod && !resolvedPreferredPaymentType) ||
               (!selectedTransition?.isBackward && effectiveAction === "disburse" && !derivedDisbursementPayoutMethod) ||
-              (!selectedTransition?.isBackward && effectiveAction === "disburse" && selectedPaymentTypeIsCash && loadingCurrentCashier) ||
+              (!selectedTransition?.isBackward &&
+                effectiveAction === "disburse" &&
+                selectedPaymentTypeIsCash &&
+                loadingCurrentCashier &&
+                !bypassCashierRestrictionsForDisbursement) ||
               (!selectedTransition?.isBackward && effectiveAction === "payout" && !effectivePayoutMethod) ||
               (!selectedTransition?.isBackward && effectiveAction === "payout" && effectivePayoutMethod === "CASH" && (!selectedTeller || !selectedCashier)) ||
               (!selectedTransition?.isBackward && effectiveAction === "reject" && !reason?.trim())

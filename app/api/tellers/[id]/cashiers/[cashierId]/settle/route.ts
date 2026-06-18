@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { isPaymentTypeCash } from "@/lib/cash-repayment-teller";
+import { shouldSkipManualFineractCashierSettleForLoanDisbursement } from "@/lib/loan-disbursement-cashier-policy";
 import { sendLoanStatusSms } from "@/lib/notification-service";
 
 /**
@@ -479,58 +480,74 @@ export async function POST(
       }
     }
 
-    // Settle cash in Fineract (cash out transaction)
     let fineractSettlementId: number | null = null;
-    try {
-      const fineractService = await getFineractServiceWithSession();
-      console.log("Calling Fineract settleCashForCashier with:", {
-        tellerId: teller.fineractTellerId,
-        cashierId: fineractCashierId,
-        txnDate,
-        currencyCode: currency,
-        txnAmount: amount.toString(),
-        txnNote: fineractTxnNote,
-      });
-      const result = await fineractService.settleCashForCashier(
-        teller.fineractTellerId,
-        fineractCashierId,
+    if (
+      shouldSkipManualFineractCashierSettleForLoanDisbursement({
+        transactionType: txnType,
+      })
+    ) {
+      console.log(
+        "Skipping manual Fineract cashier settle for loan disbursement; Fineract disbursement already affects cashier summary.",
         {
+          tellerId: teller.fineractTellerId,
+          cashierId: fineractCashierId,
+          txnDate,
+          currencyCode: currency,
+          txnAmount: amount.toString(),
+        }
+      );
+    } else {
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        console.log("Calling Fineract settleCashForCashier with:", {
+          tellerId: teller.fineractTellerId,
+          cashierId: fineractCashierId,
           txnDate,
           currencyCode: currency,
           txnAmount: amount.toString(),
           txnNote: fineractTxnNote,
-          dateFormat: "dd MMMM yyyy",
-          locale: "en",
-        }
-      );
-      fineractSettlementId = result.resourceId || result.id || null;
-      console.log("Fineract settle response:", result);
-    } catch (error: any) {
-      const errorDetails = {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-      };
-      console.error("Error settling cash in Fineract:", errorDetails);
-      // Return full error details so user can see what went wrong
-      return NextResponse.json(
-        {
-          error: "Failed to settle cash in Fineract",
-          details:
-            error.response?.data?.defaultUserMessage ||
-            error.response?.data?.errors?.[0]?.defaultUserMessage ||
-            error.message,
-          fineractError: error.response?.data || null,
-          debugInfo: {
-            tellerId: teller.fineractTellerId,
-            cashierId: fineractCashierId,
+        });
+        const result = await fineractService.settleCashForCashier(
+          teller.fineractTellerId,
+          fineractCashierId,
+          {
             txnDate,
             currencyCode: currency,
             txnAmount: amount.toString(),
+            txnNote: fineractTxnNote,
+            dateFormat: "dd MMMM yyyy",
+            locale: "en",
+          }
+        );
+        fineractSettlementId = result.resourceId || result.id || null;
+        console.log("Fineract settle response:", result);
+      } catch (error: any) {
+        const errorDetails = {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data,
+        };
+        console.error("Error settling cash in Fineract:", errorDetails);
+        // Return full error details so user can see what went wrong
+        return NextResponse.json(
+          {
+            error: "Failed to settle cash in Fineract",
+            details:
+              error.response?.data?.defaultUserMessage ||
+              error.response?.data?.errors?.[0]?.defaultUserMessage ||
+              error.message,
+            fineractError: error.response?.data || null,
+            debugInfo: {
+              tellerId: teller.fineractTellerId,
+              cashierId: fineractCashierId,
+              txnDate,
+              currencyCode: currency,
+              txnAmount: amount.toString(),
+            },
           },
-        },
-        { status: error.response?.status || 500 }
-      );
+          { status: error.response?.status || 500 }
+        );
+      }
     }
 
     // Check if this fineract settlement already exists in our database

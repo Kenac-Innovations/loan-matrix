@@ -4,6 +4,10 @@ import { applyTopupDisbursementCharges } from "./topup-disbursement-charge-servi
 import { getPaymentTypeInfo, isPaymentTypeCash } from "./cash-repayment-teller";
 import { resolveCurrentUserCashierContext } from "./current-user-cashier";
 import {
+  shouldBypassCashierRestrictionsForLoanDisbursement,
+  shouldSkipManualFineractCashierSettleForLoanDisbursement,
+} from "./loan-disbursement-cashier-policy";
+import {
   createSavingsAccount,
   approveSavingsAccount,
   activateSavingsAccount,
@@ -325,30 +329,44 @@ export class TeamAwareStateMachineService {
         throw new Error("Cash payout requires a cash disbursement payment type");
       }
 
-      // Resolve the logged-in cashier up front so we can block before disbursement.
       if (!overrides.tellerId || !overrides.cashierId) {
         const cashierContext = await resolveCurrentUserCashierContext(
           lead.tenantId,
           triggeredBy
         );
 
-        if (!cashierContext.isCashier) {
-          throw new Error(
-            cashierContext.reason || "Only an active cashier can process a cash payout"
-          );
+        if (
+          !shouldBypassCashierRestrictionsForLoanDisbursement({
+            payoutMethod: overrides.payoutMethod,
+          })
+        ) {
+          if (!cashierContext.isCashier) {
+            throw new Error(
+              cashierContext.reason || "Only an active cashier can process a cash payout"
+            );
+          }
+
+          if (!cashierContext.hasActiveSession) {
+            throw new Error(
+              cashierContext.reason || "Cashier must have an active session to process a cash payout"
+            );
+          }
         }
 
-        if (!cashierContext.hasActiveSession) {
-          throw new Error(
-            cashierContext.reason || "Cashier must have an active session to process a cash payout"
-          );
+        if (cashierContext.isCashier) {
+          return {
+            ...overrides,
+            tellerId:
+              cashierContext.fineractTellerId?.toString() ||
+              cashierContext.tellerId ||
+              undefined,
+            cashierId:
+              cashierContext.cashierId ||
+              cashierContext.fineractCashierId?.toString(),
+          };
         }
 
-        return {
-          ...overrides,
-          tellerId: cashierContext.fineractTellerId?.toString() || cashierContext.tellerId || undefined,
-          cashierId: cashierContext.cashierId || cashierContext.fineractCashierId?.toString(),
-        };
+        return overrides;
       }
 
       return overrides;
@@ -1693,78 +1711,135 @@ export class TeamAwareStateMachineService {
     const paidAt = Number.isNaN(payoutDate.getTime()) ? new Date() : payoutDate;
 
     if (overrides.payoutMethod === "CASH") {
+      const bypassCashierRestrictions =
+        shouldBypassCashierRestrictionsForLoanDisbursement({
+          payoutMethod: overrides.payoutMethod,
+        });
+
       if (!overrides.tellerId || !overrides.cashierId) {
         const cashierContext = await resolveCurrentUserCashierContext(
           lead.tenantId,
           triggeredBy
         );
 
-        if (!cashierContext.isCashier) {
-          throw new Error(
-            cashierContext.reason || "Only an active cashier can process a cash payout"
-          );
+        if (!bypassCashierRestrictions) {
+          if (!cashierContext.isCashier) {
+            throw new Error(
+              cashierContext.reason || "Only an active cashier can process a cash payout"
+            );
+          }
+
+          if (!cashierContext.hasActiveSession) {
+            throw new Error(
+              cashierContext.reason || "Cashier must have an active session to process a cash payout"
+            );
+          }
         }
 
-        if (!cashierContext.hasActiveSession) {
-          throw new Error(
-            cashierContext.reason || "Cashier must have an active session to process a cash payout"
-          );
-        }
-
-        overrides = {
-          ...overrides,
-          tellerId:
-            cashierContext.fineractTellerId?.toString() || cashierContext.tellerId || undefined,
-          cashierId:
-            cashierContext.cashierId || cashierContext.fineractCashierId?.toString(),
-        };
-      }
-
-      // Resolve teller — the UI sends Fineract teller IDs
-      const fineractTellerId = Number(overrides?.tellerId);
-      const teller = await prisma.teller.findFirst({
-        where: {
-          tenantId: lead.tenantId,
-          fineractTellerId,
-        },
-      });
-
-      if (!teller) {
-        throw new Error(`Teller not found for Fineract ID ${fineractTellerId}`);
-      }
-
-      // Resolve cashier — the UI sends DB cashier IDs (dbId) or Fineract IDs
-      const cashierIdStr = String(overrides?.cashierId);
-      let cashier = await prisma.cashier.findFirst({
-        where: { id: cashierIdStr, tellerId: teller.id, tenantId: lead.tenantId },
-      });
-      if (!cashier) {
-        const numId = Number(cashierIdStr);
-        if (!isNaN(numId)) {
-          cashier = await prisma.cashier.findFirst({
-            where: { fineractCashierId: numId, tellerId: teller.id, tenantId: lead.tenantId },
-          });
+        if (cashierContext.isCashier) {
+          overrides = {
+            ...overrides,
+            tellerId:
+              cashierContext.fineractTellerId?.toString() ||
+              cashierContext.tellerId ||
+              undefined,
+            cashierId:
+              cashierContext.cashierId ||
+              cashierContext.fineractCashierId?.toString(),
+          };
         }
       }
 
-      const fineractCashierId = cashier?.fineractCashierId || Number(cashierIdStr);
+      let teller:
+        | {
+            id: string;
+            fineractTellerId: number | null;
+          }
+        | null = null;
+      let cashier:
+        | {
+            id: string;
+            fineractCashierId: number | null;
+          }
+        | null = null;
+
+      if (overrides?.tellerId) {
+        const fineractTellerId = Number(overrides.tellerId);
+        teller = await prisma.teller.findFirst({
+          where: {
+            tenantId: lead.tenantId,
+            fineractTellerId,
+          },
+          select: {
+            id: true,
+            fineractTellerId: true,
+          },
+        });
+
+        if (!teller && !bypassCashierRestrictions) {
+          throw new Error(`Teller not found for Fineract ID ${fineractTellerId}`);
+        }
+      }
+
+      if (teller && overrides?.cashierId) {
+        const cashierIdStr = String(overrides.cashierId);
+        cashier = await prisma.cashier.findFirst({
+          where: { id: cashierIdStr, tellerId: teller.id, tenantId: lead.tenantId },
+          select: {
+            id: true,
+            fineractCashierId: true,
+          },
+        });
+        if (!cashier) {
+          const numId = Number(cashierIdStr);
+          if (!isNaN(numId)) {
+            cashier = await prisma.cashier.findFirst({
+              where: {
+                fineractCashierId: numId,
+                tellerId: teller.id,
+                tenantId: lead.tenantId,
+              },
+              select: {
+                id: true,
+                fineractCashierId: true,
+              },
+            });
+          }
+        }
+      }
+
+      const rawCashierId = overrides?.cashierId ? Number(overrides.cashierId) : NaN;
+      const fineractCashierId =
+        cashier?.fineractCashierId ??
+        (Number.isNaN(rawCashierId) ? null : rawCashierId);
 
       // Format date for Fineract
       const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
       const txnDate = `${paidAt.getDate()} ${months[paidAt.getMonth()]} ${paidAt.getFullYear()}`;
 
-      // Settle via Fineract teller/cashier
-      const fineract = await getFineractServiceWithSession();
-      await fineract.settleCashForCashier(
-        teller.fineractTellerId!,
-        fineractCashierId,
-        {
-          txnAmount: String(amount),
-          currencyCode,
-          txnNote: overrides.note || `Loan Disbursement Payout — ${clientName}`,
-          txnDate,
+      if (
+        !shouldSkipManualFineractCashierSettleForLoanDisbursement({
+          payoutMethod: overrides.payoutMethod,
+        })
+      ) {
+        if (!teller?.fineractTellerId || !fineractCashierId) {
+          throw new Error(
+            "Cash payout requires teller and cashier linkage when manual Fineract settle is enabled"
+          );
         }
-      );
+
+        const fineract = await getFineractServiceWithSession();
+        await fineract.settleCashForCashier(
+          teller.fineractTellerId!,
+          fineractCashierId,
+          {
+            txnAmount: String(amount),
+            currencyCode,
+            txnNote: overrides.note || `Loan Disbursement Payout — ${clientName}`,
+            txnDate,
+          }
+        );
+      }
 
       // Create / update payout record
       await prisma.loanPayout.upsert({
@@ -1781,20 +1856,26 @@ export class TeamAwareStateMachineService {
           currency: currencyCode,
           status: "PAID",
           paymentMethod: "CASH",
-          tellerId: teller.id,
+          tellerId: teller?.id || null,
           cashierId: cashier?.id || null,
           paidAt,
           paidBy: triggeredBy || "system",
-          notes: overrides.payoutNote || overrides.note || "Cash payout via teller",
+          notes:
+            overrides.payoutNote ||
+            overrides.note ||
+            (teller ? "Cash payout via teller" : "Cash payout via temporary cashier bypass"),
         },
         update: {
           status: "PAID",
           paymentMethod: "CASH",
-          tellerId: teller.id,
+          tellerId: teller?.id || null,
           cashierId: cashier?.id || null,
           paidAt,
           paidBy: triggeredBy || "system",
-          notes: overrides.payoutNote || overrides.note || "Cash payout via teller",
+          notes:
+            overrides.payoutNote ||
+            overrides.note ||
+            (teller ? "Cash payout via teller" : "Cash payout via temporary cashier bypass"),
         },
       });
 
