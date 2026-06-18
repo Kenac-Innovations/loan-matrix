@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
@@ -540,6 +541,7 @@ export function ClientRegistrationForm({
   } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
   const colors = useThemeColors();
   const { locale: tenantLocale } = useCurrency();
   const clientSelfieOptionalForCompanies =
@@ -586,6 +588,9 @@ export function ClientRegistrationForm({
   const [clientsInitiallyLoaded, setClientsInitiallyLoaded] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [isFormDisabled, setIsFormDisabled] = useState(false);
+  const [existingClientOfficeId, setExistingClientOfficeId] = useState<
+    string | null
+  >(null);
   const [activeClientTab, setActiveClientTab] = useState("general");
   
   // Fineract client ID - declared early so it can be used in useEffects
@@ -1252,6 +1257,22 @@ export function ClientRegistrationForm({
   const [showAddStateProvinceDialog, setShowAddStateProvinceDialog] =
     useState(false);
   const [showAddCountryDialog, setShowAddCountryDialog] = useState(false);
+
+  const sessionOfficeId = session?.user?.officeId
+    ? session.user.officeId.toString()
+    : null;
+  const sessionOfficeName = session?.user?.officeName?.trim() || null;
+
+  const resolveLeadOfficeId = useCallback(
+    (fallbackOfficeId?: string | null) => {
+      if (sessionOfficeId) {
+        return sessionOfficeId;
+      }
+
+      return fallbackOfficeId || "1";
+    },
+    [sessionOfficeId]
+  );
 
   // State for KYC
   const [selfieImage, setSelfieImage] = useState<string | null>(null);
@@ -1953,7 +1974,7 @@ export function ClientRegistrationForm({
   const internalForm = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema) as any,
     defaultValues: {
-      officeId: "1",
+      officeId: resolveLeadOfficeId(),
       legalFormId: "1",
       externalId: "",
       firstname: "",
@@ -1978,6 +1999,30 @@ export function ClientRegistrationForm({
 
   // Use external form if provided, otherwise use internal form
   const form = externalForm || internalForm;
+
+  useEffect(() => {
+    const effectiveLeadId = currentLeadId ?? leadId;
+    if (effectiveLeadId || !sessionOfficeId) {
+      return;
+    }
+
+    const currentOfficeId = form.getValues("officeId");
+    const officeDirty = !!form.formState.dirtyFields?.officeId;
+
+    if (!officeDirty && (!currentOfficeId || currentOfficeId === "1")) {
+      form.setValue("officeId", sessionOfficeId, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: false,
+      });
+    }
+  }, [
+    currentLeadId,
+    leadId,
+    form,
+    form.formState.dirtyFields,
+    sessionOfficeId,
+  ]);
 
   useEffect(() => {
     const effectiveLeadId = currentLeadId ?? leadId;
@@ -2123,6 +2168,30 @@ export function ClientRegistrationForm({
     value: office.id.toString(),
     label: office.name,
   }));
+
+  const resolvedSessionOfficeName =
+    sessionOfficeName ||
+    officeOptions.find((office) => office.value === sessionOfficeId)?.label ||
+    null;
+  const isCrossBranchExistingClient =
+    clientLookupStatus === "found" &&
+    !!existingClientOfficeId &&
+    !!sessionOfficeId &&
+    existingClientOfficeId !== sessionOfficeId;
+
+  useEffect(() => {
+    if (!isCrossBranchExistingClient || !sessionOfficeId) {
+      return;
+    }
+
+    if (form.getValues("officeId") !== sessionOfficeId) {
+      form.setValue("officeId", sessionOfficeId, {
+        shouldDirty: false,
+        shouldTouch: false,
+        shouldValidate: false,
+      });
+    }
+  }, [form, isCrossBranchExistingClient, sessionOfficeId]);
 
   const legalFormOptions = legalForms.map((form) => ({
     value: form.id.toString(),
@@ -2311,7 +2380,7 @@ export function ClientRegistrationForm({
           if (lead) {
             // Set form values from saved lead data
             form.reset({
-              officeId: lead.officeId?.toString() || "1",
+              officeId: resolveLeadOfficeId(lead.officeId?.toString()),
               legalFormId: lead.legalFormId?.toString() || "1",
               externalId: lead.externalId || "",
               firstname: lead.firstname || "",
@@ -2504,11 +2573,7 @@ export function ClientRegistrationForm({
                   const interlacedData = {
                     fineractClientId: fineractData?.id?.toString(),
                     fineractAccountNo: fineractData?.accountNo,
-                    officeId: getBestValue(
-                      fineractData?.officeId?.toString(),
-                      localData?.officeId?.toString(),
-                      lead.officeId?.toString() || "1"
-                    ),
+                    officeId: resolveLeadOfficeId(lead.officeId?.toString()),
                     legalFormId: getBestValue(
                       fineractData?.legalForm?.id?.toString(),
                       localData?.legalFormId?.toString(),
@@ -2562,6 +2627,11 @@ export function ClientRegistrationForm({
                     ),
                   };
 
+                  setExistingClientOfficeId(
+                    fineractData?.officeId?.toString() ||
+                      localData?.officeId?.toString() ||
+                      null
+                  );
                   // If we have Fineract data, client exists in Fineract
                   if (fineractData) {
                     console.log("==========> Client exists in Fineract");
@@ -3017,7 +3087,18 @@ export function ClientRegistrationForm({
               form.setValue("genderId", fineractData.gender.id.toString());
             }
             if (fineractData.officeId) {
-              form.setValue("officeId", fineractData.officeId.toString());
+              const refreshedOfficeId = fineractData.officeId.toString();
+              setExistingClientOfficeId(refreshedOfficeId);
+
+              if (
+                clientLookupStatus === "found" &&
+                sessionOfficeId &&
+                refreshedOfficeId !== sessionOfficeId
+              ) {
+                form.setValue("officeId", sessionOfficeId);
+              } else {
+                form.setValue("officeId", refreshedOfficeId);
+              }
             }
             if (fineractData.legalForm?.id) {
               form.setValue("legalFormId", fineractData.legalForm.id.toString());
@@ -3189,6 +3270,7 @@ export function ClientRegistrationForm({
     // Clear window.fineractClientId and React state
     (window as any).fineractClientId = null;
     setFineractClientId(null);
+    setExistingClientOfficeId(null);
     setDataTables([]);
     setClientAddress(null);
     
@@ -3230,7 +3312,7 @@ export function ClientRegistrationForm({
     // Reset form to default values before starting new search
     // This clears any data from previously selected client
     form.reset({
-      officeId: "1",
+      officeId: resolveLeadOfficeId(),
       legalFormId: "1",
       externalId: "",
       firstname: "",
@@ -3463,10 +3545,8 @@ export function ClientRegistrationForm({
           fineractAccountNo: fineractData?.accountNo,
 
           // Primary: Fineract data (takes priority), but fallback to local if Fineract value is empty
-          officeId: getBestValue(
-            fineractData?.officeId?.toString(),
-            localData?.officeId?.toString(),
-            "1"
+          officeId: resolveLeadOfficeId(
+            localData?.officeId?.toString() || fineractData?.officeId?.toString()
           ),
           legalFormId: getBestValue(
             fineractData?.legalForm?.id?.toString(),
@@ -3610,6 +3690,11 @@ export function ClientRegistrationForm({
         console.log(
           "==========> Resetting form with interlaced data:",
           interlacedData
+        );
+        setExistingClientOfficeId(
+          fineractData?.officeId?.toString() ||
+            localData?.officeId?.toString() ||
+            null
         );
         form.reset(interlacedData);
 
@@ -3830,10 +3915,11 @@ export function ClientRegistrationForm({
     setNationalIdLookup("");
     setClientLookupStatus("idle");
     setIsFormDisabled(true);
+    setExistingClientOfficeId(null);
 
     // Reset form to default values
     form.reset({
-      officeId: "1",
+      officeId: resolveLeadOfficeId(),
       legalFormId: "1",
       externalId: "",
       firstname: "",
@@ -6106,7 +6192,10 @@ export function ClientRegistrationForm({
                                               setShowAddOfficeDialog(true)
                                             }
                                             addNewLabel="Add new office"
-                                            disabled={isFormDisabled}
+                                            disabled={
+                                              isFormDisabled ||
+                                              isCrossBranchExistingClient
+                                            }
                                           />
                                         )}
                                       />
@@ -6120,8 +6209,13 @@ export function ClientRegistrationForm({
                                     <p
                                       className={`text-xs ${colors.textColorMuted}`}
                                     >
-                                      Select the branch office managing this
-                                      client
+                                      {isCrossBranchExistingClient
+                                        ? `Office is set to your logged-in office${
+                                            resolvedSessionOfficeName
+                                              ? ` (${resolvedSessionOfficeName})`
+                                              : ""
+                                          } for this lead.`
+                                        : "Select the branch office managing this client"}
                                     </p>
                                     {(externalForm
                                       ? externalForm.formState.errors.officeId
