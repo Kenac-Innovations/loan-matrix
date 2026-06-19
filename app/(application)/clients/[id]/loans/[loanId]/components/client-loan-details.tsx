@@ -4,6 +4,7 @@ import { useCurrency } from "@/contexts/currency-context";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
 import { AlertCircle, Download, Loader2, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote } from "lucide-react";
@@ -51,6 +62,11 @@ import {
 } from "@/lib/interest-rate-display";
 import { normalizeTenantSlug } from "@/lib/omama-tenant";
 import { FacilityBanner } from "@/components/credit-facility/facility-banner";
+import { getExistingClientTransferErrorMessage } from "@/lib/fineract-client-office-transfer";
+import {
+  getLoanDetailsOfficeTransferRequirement,
+  isLoanDetailsOfficeRestrictedAction,
+} from "@/lib/loan-details-office-gate";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -121,6 +137,7 @@ const formatLoanSequenceLabel = (position: number): string => {
 
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
   const router = useRouter();
+  const { data: session } = useSession();
   const { tenantSlug, features } = useFeatureFlags();
   const hasCreditFacility = !!features.hasCreditFacility;
   const [client, setClient] = useState<FineractClient | null>(null);
@@ -345,6 +362,25 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
   // Disburse Modal State
   const [showDisburseModal, setShowDisburseModal] = useState(false);
+
+  // Cross-branch action gate state
+  const [showLoanClientTransferModal, setShowLoanClientTransferModal] = useState(false);
+  const [loanClientTransferErrorMessage, setLoanClientTransferErrorMessage] =
+    useState<string | null>(null);
+  const [isTransferringLoanClient, setIsTransferringLoanClient] = useState(false);
+  const loanClientTransferRequirement = client
+    ? getLoanDetailsOfficeTransferRequirement({
+        clientId,
+        clientDisplayName: client.displayName || `${client.firstname} ${client.lastname}`,
+        clientOfficeId: (client as any)?.officeId,
+        clientOfficeName: client.officeName,
+        loanOfficeId: (loan as any)?.clientOfficeId ?? (loan as any)?.officeId,
+        loanOfficeName: undefined,
+        userOfficeId: session?.user?.officeId,
+        userOfficeName: session?.user?.officeName,
+      })
+    : null;
+  const hasLoanClientOfficeMismatch = !!loanClientTransferRequirement;
 
   // Close actions menu when clicking outside
 
@@ -733,6 +769,23 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         });
 
         if (button && dropdown) {
+          if (hasLoanClientOfficeMismatch) {
+            dropdown.querySelectorAll('[data-action]').forEach((actionButton) => {
+              const action = actionButton.getAttribute('data-action');
+              if (!isLoanDetailsOfficeRestrictedAction(action)) {
+                return;
+              }
+
+              actionButton.setAttribute('aria-disabled', 'true');
+              actionButton.setAttribute('data-office-restricted', 'true');
+              actionButton.setAttribute(
+                'title',
+                'Transfer client to your branch to use this action'
+              );
+              actionButton.classList.add('opacity-50', 'cursor-not-allowed');
+            });
+          }
+
           // Toggle dropdown on button click
           button.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -830,6 +883,18 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
             actionBtn.addEventListener('click', (e) => {
               e.stopPropagation();
               const action = actionBtn.getAttribute('data-action');
+
+              if (
+                hasLoanClientOfficeMismatch &&
+                isLoanDetailsOfficeRestrictedAction(action)
+              ) {
+                dropdown.classList.add('hidden');
+                if (paymentsSubmenu) paymentsSubmenu.style.display = 'none';
+                if (moreSubmenu) moreSubmenu.style.display = 'none';
+                setLoanClientTransferErrorMessage(null);
+                setShowLoanClientTransferModal(true);
+                return;
+              }
               
               // Don't close dropdown for submenu triggers
               if (action !== 'payments' && action !== 'more') {
@@ -1007,7 +1072,14 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         container.innerHTML = '';
       }
     };
-  }, [loan, clientId, loanId, loanProductCanTopup, setShowRepaymentModal]);
+  }, [
+    clientId,
+    hasLoanClientOfficeMismatch,
+    loan,
+    loanId,
+    loanProductCanTopup,
+    setShowRepaymentModal,
+  ]);
 
   const fetchLoanData = async () => {
     try {
@@ -1174,6 +1246,61 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   useEffect(() => {
     fetchLoanData();
   }, [clientId, loanId]);
+
+  const handleTransferLoanClientOffice = async () => {
+    if (!loanClientTransferRequirement) {
+      return;
+    }
+
+    setLoanClientTransferErrorMessage(null);
+    setIsTransferringLoanClient(true);
+
+    try {
+      const response = await fetch(
+        `/api/fineract/clients/${loanClientTransferRequirement.clientId}/transfer-office`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            clientOfficeId: loanClientTransferRequirement.clientOfficeId,
+            destinationOfficeId:
+              loanClientTransferRequirement.destinationOfficeId,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          errorData?.error ||
+            "Failed to transfer the client to your branch. Please try again."
+        );
+      }
+
+      toast({
+        title: "Client Transferred",
+        description: `${loanClientTransferRequirement.clientDisplayName} is now in your branch.`,
+        variant: "success",
+      });
+
+      setLoanClientTransferErrorMessage(null);
+      setShowLoanClientTransferModal(false);
+      await fetchLoanData();
+    } catch (transferError) {
+      const transferErrorMessage =
+        getExistingClientTransferErrorMessage(transferError);
+      setLoanClientTransferErrorMessage(transferErrorMessage);
+      toast({
+        title: "Transfer Failed",
+        description: transferErrorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsTransferringLoanClient(false);
+    }
+  };
 
   const formatDate = (date: string | number[] | undefined): string => {
     if (!date) return "N/A";
@@ -4407,6 +4534,64 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
 
 
       </Tabs>
+
+      <AlertDialog
+        open={Boolean(showLoanClientTransferModal && loanClientTransferRequirement)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Transfer Client Before Continuing</AlertDialogTitle>
+            <AlertDialogDescription>
+              {loanClientTransferRequirement
+                ? `${loanClientTransferRequirement.clientDisplayName} belongs to ${
+                    loanClientTransferRequirement.clientOfficeName ||
+                    "another branch"
+                  }. Transfer the client to ${
+                    loanClientTransferRequirement.destinationOfficeName ||
+                    "your branch"
+                  } before using this action on the loan.`
+                : "Transfer this client to your branch before using this action on the loan."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {loanClientTransferErrorMessage ? (
+            <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+              <AlertDescription className="text-red-800 dark:text-red-200">
+                {loanClientTransferErrorMessage}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              type="button"
+              disabled={isTransferringLoanClient}
+              onClick={() => {
+                setShowLoanClientTransferModal(false);
+                setLoanClientTransferErrorMessage(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              disabled={isTransferringLoanClient}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleTransferLoanClientOffice();
+              }}
+            >
+              {isTransferringLoanClient ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Transferring...
+                </>
+              ) : (
+                "Transfer Now"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Repayment Modal */}
       <RepaymentModal

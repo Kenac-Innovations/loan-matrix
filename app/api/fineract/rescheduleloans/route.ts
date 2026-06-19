@@ -23,7 +23,10 @@ export async function GET(request: Request) {
     }
 
     const data = await fetchFineractAPI(
-      `/rescheduleloans${query ? `?${query}` : ''}`
+      `/rescheduleloans${query ? `?${query}` : ''}`,
+      {
+        authMode: "service",
+      }
     );
 
     return NextResponse.json(data);

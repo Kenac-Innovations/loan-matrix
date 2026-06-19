@@ -119,7 +119,8 @@ export async function getActiveFacilityForClient(
 ): Promise<CreditFacility | null> {
   try {
     const rows: CreditFacility[] = await fetchFineractAPI(
-      `/datatables/credit_facility/${clientId}`
+      `/datatables/credit_facility/${clientId}`,
+      { authMode: "service" }
     );
     if (!Array.isArray(rows)) return null;
     return rows.find((r) => r.status === "ACTIVE") ?? null;
@@ -133,7 +134,8 @@ export async function getPendingFacilityForClient(
 ): Promise<CreditFacility | null> {
   try {
     const rows: CreditFacility[] = await fetchFineractAPI(
-      `/datatables/credit_facility/${clientId}`
+      `/datatables/credit_facility/${clientId}`,
+      { authMode: "service" }
     );
     if (!Array.isArray(rows)) return null;
     return rows.find((r) => r.status === "PENDING") ?? null;
@@ -148,7 +150,8 @@ export async function getFacilityByRef(
 ): Promise<CreditFacility | null> {
   try {
     const rows: CreditFacility[] = await fetchFineractAPI(
-      `/datatables/credit_facility/${clientId}`
+      `/datatables/credit_facility/${clientId}`,
+      { authMode: "service" }
     );
     if (!Array.isArray(rows)) return null;
     return rows.find((r) => r.facility_ref === facilityRef) ?? null;
@@ -188,7 +191,8 @@ export async function getFacilityLoanLink(
 ): Promise<CreditFacilityLoan | null> {
   try {
     const result = await fetchFineractAPI(
-      `/datatables/credit_facility_loan/${loanId}`
+      `/datatables/credit_facility_loan/${loanId}`,
+      { authMode: "service" }
     );
     // Fineract returns an array even for non-multiRow datatables
     const row = Array.isArray(result) ? result[0] : result;

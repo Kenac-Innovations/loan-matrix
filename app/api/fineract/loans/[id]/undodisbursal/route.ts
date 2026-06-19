@@ -24,7 +24,9 @@ export async function POST(
           getActiveFacilityForClient(Number(fineractClientId)),
         ]);
         if (link && facility) {
-          const loanDetails = await fetchFineractAPI(`/loans/${loanId}`);
+          const loanDetails = await fetchFineractAPI(`/loans/${loanId}`, {
+            authMode: "service",
+          });
           const disbursedAmount = loanDetails?.approvedPrincipal ?? loanDetails?.principal ?? 0;
           await updateFacility(Number(fineractClientId), facility.id, {
             utilized_amount: Math.max(0, facility.utilized_amount - disbursedAmount),

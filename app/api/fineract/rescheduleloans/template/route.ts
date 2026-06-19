@@ -7,7 +7,9 @@ import { fetchFineractAPI } from '@/lib/api';
  */
 export async function GET() {
   try {
-    const data = await fetchFineractAPI('/rescheduleloans/template');
+    const data = await fetchFineractAPI('/rescheduleloans/template', {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching reschedule loan template:', error);

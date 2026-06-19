@@ -7,7 +7,9 @@ import { fetchFineractAPI } from "@/lib/api";
  */
 export async function GET() {
   try {
-    const data = await fetchFineractAPI("/paymenttypes");
+    const data = await fetchFineractAPI("/paymenttypes", {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching payment types:", error);

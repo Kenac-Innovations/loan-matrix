@@ -11,7 +11,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const data = await fetchFineractAPI(`/loans/${id}/guarantors/template`);
+    const data = await fetchFineractAPI(`/loans/${id}/guarantors/template`, {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching guarantors template:', error);

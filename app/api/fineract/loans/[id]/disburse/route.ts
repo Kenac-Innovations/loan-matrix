@@ -99,7 +99,9 @@ export async function POST(
     let ussdPhone: string | undefined;
     let isUssdLinked = false;
     try {
-      const loan = await fetchFineractAPI(`/loans/${id}`);
+      const loan = await fetchFineractAPI(`/loans/${id}`, {
+        authMode: "service",
+      });
       const externalId = loan?.externalId;
       if (externalId) {
         const ussd = await prisma.ussdLoanApplication.findFirst({

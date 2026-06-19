@@ -7,7 +7,9 @@ export async function GET(
 ) {
   try {
     const { id: loanId } = await params;
-    const data = await fetchFineractAPI(`/loans/${loanId}/collaterals/template`);
+    const data = await fetchFineractAPI(`/loans/${loanId}/collaterals/template`, {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching collateral template:", error);
