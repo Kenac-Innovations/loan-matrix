@@ -20,7 +20,10 @@ export async function GET(
     const query = searchParams.toString();
 
     const data = await fetchFineractAPI(
-      `/rescheduleloans/${id}${query ? `?${query}` : ''}`
+      `/rescheduleloans/${id}${query ? `?${query}` : ''}`,
+      {
+        authMode: "service",
+      }
     );
 
     return NextResponse.json(data);

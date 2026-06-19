@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from "date-fns";
-import { getAccessToken, getFineractTenantId } from "@/lib/api";
+import { buildFineractRequest } from "@/lib/api";
 import {
   generateConsolidatedStatementHTML,
   parseFineractDate,
@@ -32,8 +32,6 @@ type RefinanceLoanLike = {
   closureLoanAccountNo?: string;
   topupAmount?: number | null;
 };
-
-const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
 function getConsolidatedTransactionType(tx: TransactionLike): string {
   return getDisplayedTransactionType(tx);
@@ -102,22 +100,20 @@ export async function GET(
     const fromDate = searchParams.get("from");
     const toDate = searchParams.get("to");
 
-    const accessToken = await getAccessToken();
-    const fineractTenantId = await getFineractTenantId();
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const headers = {
-      Authorization: `Basic ${accessToken}`,
-      "Fineract-Platform-TenantId": fineractTenantId,
-      Accept: "application/json",
-    };
+    const [newLoanRequest, oldLoanRequest] = await Promise.all([
+      buildFineractRequest(`/loans/${newLoanId}?associations=all`, {
+        authMode: "service",
+        headers: { Accept: "application/json" },
+      }),
+      buildFineractRequest(`/loans/${oldId}?associations=all`, {
+        authMode: "service",
+        headers: { Accept: "application/json" },
+      }),
+    ]);
 
     const [newLoanResponse, oldLoanResponse] = await Promise.all([
-      fetch(`${baseUrl}/fineract-provider/api/v1/loans/${newLoanId}?associations=all`, { headers }),
-      fetch(`${baseUrl}/fineract-provider/api/v1/loans/${oldId}?associations=all`, { headers }),
+      fetch(newLoanRequest.url, { headers: newLoanRequest.headers }),
+      fetch(oldLoanRequest.url, { headers: oldLoanRequest.headers }),
     ]);
 
     if (!newLoanResponse.ok) {
@@ -164,9 +160,13 @@ export async function GET(
     let clientData = null;
     const clientId = newLoan.clientId || oldLoan.clientId;
     if (clientId) {
+      const clientRequest = await buildFineractRequest(`/clients/${clientId}`, {
+        authMode: "service",
+        headers: { Accept: "application/json" },
+      });
       const clientResponse = await fetch(
-        `${baseUrl}/fineract-provider/api/v1/clients/${clientId}`,
-        { headers }
+        clientRequest.url,
+        { headers: clientRequest.headers }
       );
 
       if (clientResponse.ok) {
