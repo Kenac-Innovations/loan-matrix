@@ -71,6 +71,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { EntityStructureEditor } from "@/components/entity-structure/entity-structure-editor";
 import {
@@ -116,6 +126,12 @@ import {
   buildFineractBusinessCalendarRules,
   type FineractBusinessCalendar,
 } from "@/lib/fineract-business-calendar";
+import {
+  getExistingClientTransferErrorMessage,
+  getExistingClientTransferRequirement,
+  getExistingClientTransferUiState,
+  type ExistingClientTransferRequirement,
+} from "@/lib/fineract-client-office-transfer";
 import {
   getInputErrorStyling,
   getSelectErrorStyling,
@@ -591,6 +607,14 @@ export function ClientRegistrationForm({
   const [existingClientOfficeId, setExistingClientOfficeId] = useState<
     string | null
   >(null);
+  const [
+    pendingExistingClientTransfer,
+    setPendingExistingClientTransfer,
+  ] = useState<ExistingClientTransferRequirement | null>(null);
+  const [isTransferringExistingClient, setIsTransferringExistingClient] =
+    useState(false);
+  const [existingClientTransferErrorMessage, setExistingClientTransferErrorMessage] =
+    useState<string | null>(null);
   const [activeClientTab, setActiveClientTab] = useState("general");
   
   // Fineract client ID - declared early so it can be used in useEffects
@@ -3751,6 +3775,32 @@ export function ClientRegistrationForm({
           setFineractClientId(resolvedLookupClientId);
         }
 
+        const transferRequirement = resolvedLookupClientId
+          ? getExistingClientTransferRequirement({
+              clientId: resolvedLookupClientId,
+              clientDisplayName:
+                fineractData?.displayName ||
+                interlacedData.fullname ||
+                [interlacedData.firstname, interlacedData.lastname]
+                  .filter(Boolean)
+                  .join(" ") ||
+                `Client ${resolvedLookupClientId}`,
+              clientOfficeId:
+                fineractData?.officeId || localData?.officeId || null,
+              clientOfficeName:
+                fineractData?.officeName || localData?.officeName || null,
+              creatorOfficeId: sessionOfficeId,
+              creatorOfficeName: resolvedSessionOfficeName,
+            })
+          : null;
+
+        if (transferRequirement) {
+          setExistingClientTransferErrorMessage(null);
+          setPendingExistingClientTransfer(transferRequirement);
+          setIsSearchingClient(false);
+          return;
+        }
+
         // Save the populated form data as a draft in the database
         try {
           const formValues = form.getValues();
@@ -3916,6 +3966,15 @@ export function ClientRegistrationForm({
     setClientLookupStatus("idle");
     setIsFormDisabled(true);
     setExistingClientOfficeId(null);
+    setExistingClientTransferErrorMessage(null);
+    setPendingExistingClientTransfer(null);
+    setIsTransferringExistingClient(false);
+    setSelectedClientId(null);
+    (window as any).fineractClientId = null;
+    setFineractClientId(null);
+    if (setClientCreatedInFineract) {
+      setClientCreatedInFineract(false);
+    }
 
     // Reset form to default values
     form.reset({
@@ -3943,6 +4002,64 @@ export function ClientRegistrationForm({
 
     // Clear family members
     setFamilyMembers([]);
+  };
+
+  const handleTransferExistingClient = async () => {
+    if (!pendingExistingClientTransfer) {
+      return;
+    }
+
+    setExistingClientTransferErrorMessage(null);
+    setIsTransferringExistingClient(true);
+
+    try {
+      const response = await fetch(
+        `/api/fineract/clients/${pendingExistingClientTransfer.clientId}/transfer-office`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            clientOfficeId: pendingExistingClientTransfer.clientOfficeId,
+            destinationOfficeId:
+              pendingExistingClientTransfer.destinationOfficeId,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          errorData?.error ||
+            "Failed to transfer the client to your branch. Please try again."
+        );
+      }
+
+      success({
+        title: "Client Transferred",
+        description: `${pendingExistingClientTransfer.clientDisplayName} is now in your branch. Finishing lead setup now.`,
+      });
+
+      setExistingClientTransferErrorMessage(null);
+      setPendingExistingClientTransfer(null);
+      setExistingClientOfficeId(
+        pendingExistingClientTransfer.destinationOfficeId.toString()
+      );
+
+      await handleClientLookup();
+    } catch (transferError) {
+      console.error("Error transferring existing client before lead creation:", transferError);
+      const transferErrorMessage =
+        getExistingClientTransferErrorMessage(transferError);
+      setExistingClientTransferErrorMessage(transferErrorMessage);
+      error({
+        title: "Transfer Failed",
+        description: transferErrorMessage,
+      });
+    } finally {
+      setIsTransferringExistingClient(false);
+    }
   };
 
   // Handle saving draft
@@ -5689,7 +5806,7 @@ export function ClientRegistrationForm({
                       </div>
                     </div>
                     <p className={`text-xs ${colors.textColorMuted}`}>
-                      Enter the client's national ID number to search for
+                      Enter the client&apos;s national ID number to search for
                       existing records
                     </p>
                   </div>
@@ -5710,7 +5827,7 @@ export function ClientRegistrationForm({
                       <UserPlus className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       <AlertDescription className="text-blue-800 dark:text-blue-200">
                         <strong>New Client:</strong> No client found with this
-                        ID. Please proceed with entering the client's
+                        ID. Please proceed with entering the client&apos;s
                         information.
                       </AlertDescription>
                     </Alert>
@@ -5822,6 +5939,22 @@ export function ClientRegistrationForm({
                                 {clientPickerResults.map((client: any) => {
                                   const isSelected =
                                     selectedClientId === client.id;
+                                  const clientDisplayName =
+                                    client.displayName ||
+                                    `${client.firstname || ""} ${
+                                      client.lastname || ""
+                                    }`.trim() ||
+                                    `Client ${client.id}`;
+                                  const transferUiState =
+                                    getExistingClientTransferUiState({
+                                      clientId: client.id,
+                                      clientDisplayName,
+                                      clientOfficeId: client.officeId,
+                                      clientOfficeName: client.officeName,
+                                      creatorOfficeId: sessionOfficeId,
+                                      creatorOfficeName:
+                                        resolvedSessionOfficeName,
+                                    });
                                   return (
                                     <tr
                                       key={client.id}
@@ -5861,15 +5994,31 @@ export function ClientRegistrationForm({
                                               {client.lastname?.[0] || ""}
                                             </div>
                                           )}
-                                          <span className="font-medium truncate">
-                                            {client.displayName ||
-                                              `${client.firstname} ${client.lastname}`}
-                                            {isSelected && (
-                                              <span className="ml-2 text-sm text-muted-foreground">
-                                                Loading...
+                                          <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-medium truncate">
+                                                {clientDisplayName}
+                                                {isSelected && (
+                                                  <span className="ml-2 text-sm text-muted-foreground">
+                                                    Loading...
+                                                  </span>
+                                                )}
                                               </span>
-                                            )}
-                                          </span>
+                                              {transferUiState ? (
+                                                <Badge
+                                                  variant="outline"
+                                                  className="border-amber-300 bg-amber-50 text-amber-700"
+                                                >
+                                                  {transferUiState.badgeLabel}
+                                                </Badge>
+                                              ) : null}
+                                            </div>
+                                            {transferUiState ? (
+                                              <div className="text-xs text-amber-700">
+                                                {transferUiState.officeHint}
+                                              </div>
+                                            ) : null}
+                                          </div>
                                         </div>
                                       </td>
                                       <td className="py-3 px-3 text-sm text-muted-foreground hidden sm:table-cell">
@@ -6750,7 +6899,7 @@ export function ClientRegistrationForm({
                                         )}
                                       </div>
                                       <p className={`text-xs ${colors.textColorMuted}`}>
-                                        Client's legal first name
+                                        Client&apos;s legal first name
                                       </p>
                                       {hasFieldError(form, "firstname", externalForm) && (
                                         <p className="text-sm text-red-500">
@@ -6788,7 +6937,7 @@ export function ClientRegistrationForm({
                                         )}
                                       </div>
                                       <p className={`text-xs ${colors.textColorMuted}`}>
-                                        Client's middle name (if applicable)
+                                        Client&apos;s middle name (if applicable)
                                       </p>
                                     </div>
 
@@ -6825,7 +6974,7 @@ export function ClientRegistrationForm({
                                         )}
                                       </div>
                                       <p className={`text-xs ${colors.textColorMuted}`}>
-                                        Client's legal last name/surname
+                                        Client&apos;s legal last name/surname
                                       </p>
                                       {hasFieldError(form, "lastname", externalForm) && (
                                         <p className="text-sm text-red-500">
@@ -6885,7 +7034,7 @@ export function ClientRegistrationForm({
                                         )}
                                       />
                                       <p className={`text-xs ${colors.textColorMuted}`}>
-                                        Client's date of birth for verification
+                                        Client&apos;s date of birth for verification
                                       </p>
                                       {form.formState.errors.dateOfBirth && (
                                         <p className="text-sm text-red-500">
@@ -6920,7 +7069,7 @@ export function ClientRegistrationForm({
                                         )}
                                       />
                                       <p className={`text-xs ${colors.textColorMuted}`}>
-                                        Client's gender for demographic purposes
+                                        Client&apos;s gender for demographic purposes
                                       </p>
                                       {form.formState.errors.genderId && (
                                         <p className="text-sm text-red-500">
@@ -8604,7 +8753,7 @@ export function ClientRegistrationForm({
                                         className={colors.textColorMuted}
                                       >
                                         Choose the type of identity document
-                                        you're uploading
+                                        you&apos;re uploading
                                       </DialogDescription>
                                     </DialogHeader>
                                     <div className="space-y-4">
@@ -12519,6 +12668,61 @@ export function ClientRegistrationForm({
             })()}
           </>
         )}
+
+        <AlertDialog open={!!pendingExistingClientTransfer}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Transfer Client Before Creating This Lead
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingExistingClientTransfer
+                  ? `${pendingExistingClientTransfer.clientDisplayName} belongs to ${
+                      pendingExistingClientTransfer.clientOfficeName ||
+                      "another branch"
+                    }. Transfer the client to ${
+                      pendingExistingClientTransfer.destinationOfficeName ||
+                      "your branch"
+                    } before creating the lead.`
+                  : "Transfer this client to your branch before creating the lead."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {existingClientTransferErrorMessage ? (
+              <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+                <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <AlertDescription className="text-red-800 dark:text-red-200">
+                  {existingClientTransferErrorMessage}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                type="button"
+                disabled={isTransferringExistingClient}
+                onClick={handleClearClientLookup}
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                type="button"
+                disabled={isTransferringExistingClient}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void handleTransferExistingClient();
+                }}
+              >
+                {isTransferringExistingClient ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Transferring...
+                  </>
+                ) : (
+                  "Transfer Now"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Add Office Dialog */}
         {showAddOfficeDialog && (
