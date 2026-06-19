@@ -55,6 +55,7 @@ interface FineractClient {
   };
   active: boolean;
   activationDate?: string | number[];
+  officeId?: number;
   officeName: string;
   timeline: {
     submittedOnDate: string | number[];
@@ -540,82 +541,84 @@ export function ClientsTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {clients.map((client) => (
-              <TableRow
-                key={client.id}
-                className={`cursor-pointer hover:bg-muted/50 ${
-                  navigatingToClient === client.id ? "opacity-70" : ""
-                }`}
-                onClick={() => {
-                  setNavigatingToClient(client.id);
-                  router.push(`/clients/${client.id}`);
-                }}
-              >
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <Avatar className="h-9 w-9">
-                        <AvatarImage
-                          src={`/api/placeholder/36/36?text=${
-                            client.firstname?.[0] || "U"
-                          }${client.lastname?.[0] || "N"}`}
-                          alt={client.displayName}
-                        />
-                        <AvatarFallback>
-                          {client.firstname?.[0] || "U"}
-                          {client.lastname?.[0] || "N"}
-                        </AvatarFallback>
-                      </Avatar>
-                      {navigatingToClient === client.id && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-full">
-                          <Loader2 className="h-5 w-5 animate-spin" />
+            {clients.map((client) => {
+              return (
+                <TableRow
+                  key={client.id}
+                  className={`cursor-pointer hover:bg-muted/50 ${
+                    navigatingToClient === client.id ? "opacity-70" : ""
+                  }`}
+                  onClick={() => {
+                    setNavigatingToClient(client.id);
+                    router.push(`/clients/${client.id}`);
+                  }}
+                >
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <Avatar className="h-9 w-9">
+                          <AvatarImage
+                            src={`/api/placeholder/36/36?text=${
+                              client.firstname?.[0] || "U"
+                            }${client.lastname?.[0] || "N"}`}
+                            alt={client.displayName}
+                          />
+                          <AvatarFallback>
+                            {client.firstname?.[0] || "U"}
+                            {client.lastname?.[0] || "N"}
+                          </AvatarFallback>
+                        </Avatar>
+                        {navigatingToClient === client.id && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-full">
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-medium">{client.displayName}</div>
+                        <div className="text-sm text-muted-foreground">
+                          ID: {client.id}
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-mono text-sm">{client.accountNo}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      {client.mobileNo && (
+                        <div className="flex items-center gap-1 text-sm">
+                          <Phone className="h-3 w-3" />
+                          {client.mobileNo}
+                        </div>
+                      )}
+                      {client.emailAddress && (
+                        <div className="flex items-center gap-1 text-sm">
+                          <Mail className="h-3 w-3" />
+                          {client.emailAddress}
                         </div>
                       )}
                     </div>
-                    <div>
-                      <div className="font-medium">{client.displayName}</div>
-                      <div className="text-sm text-muted-foreground">
-                        ID: {client.id}
-                      </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <MapPin className="h-3 w-3" />
+                      {client.officeName}
                     </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="font-mono text-sm">{client.accountNo}</div>
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-1">
-                    {client.mobileNo && (
-                      <div className="flex items-center gap-1 text-sm">
-                        <Phone className="h-3 w-3" />
-                        {client.mobileNo}
-                      </div>
-                    )}
-                    {client.emailAddress && (
-                      <div className="flex items-center gap-1 text-sm">
-                        <Mail className="h-3 w-3" />
-                        {client.emailAddress}
-                      </div>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
-                    {client.officeName}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {getStatusBadge(client.status, client.active)}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1 text-sm">
-                    <Calendar className="h-3 w-3" />
-                    {formatDate(client.timeline.submittedOnDate)}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                  <TableCell>
+                    {getStatusBadge(client.status, client.active)}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1 text-sm">
+                      <Calendar className="h-3 w-3" />
+                      {formatDate(client.timeline.submittedOnDate)}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
