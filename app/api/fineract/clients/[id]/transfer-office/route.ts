@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { resolveClientBranchTransferTarget } from "@/lib/client-branch-transfer-policy";
 import { getSearchHeaders } from "@/lib/fineract-search-auth";
+import { buildClientTransferCommandBody } from "@/lib/fineract-client-transfer-service";
 
 const FINERACT_BASE_URL =
   process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
@@ -11,21 +12,6 @@ interface RouteContext {
   params: Promise<{
     id: string;
   }>;
-}
-
-function formatFineractDate(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    timeZone: "Africa/Harare",
-  }).formatToParts(date);
-
-  const day = parts.find((part) => part.type === "day")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const year = parts.find((part) => part.type === "year")?.value;
-
-  return `${day} ${month} ${year}`;
 }
 
 async function parseFineractError(response: Response) {
@@ -47,7 +33,11 @@ async function postClientTransferCommand({
   body,
 }: {
   clientId: number;
-  command: "proposeTransfer" | "acceptTransfer" | "withdrawTransfer";
+  command:
+    | "proposeTransfer"
+    | "acceptTransfer"
+    | "rejectTransfer"
+    | "withdrawTransfer";
   headers: Record<string, string>;
   body: Record<string, unknown>;
 }) {
@@ -145,27 +135,21 @@ export async function POST(request: Request, context: RouteContext) {
 
     const fineractTenantId = await getFineractTenantId();
     const fineractHeaders = getSearchHeaders(fineractTenantId);
-    const transferDate = formatFineractDate(new Date());
     const actor = session?.user?.name || "Loan Matrix user";
-    const commonBody = {
-      transferDate,
-      dateFormat: "dd MMMM yyyy",
-      locale: "en",
-    };
-    const acceptBody = {
-      ...commonBody,
+    const acceptBody = buildClientTransferCommandBody({
+      command: "acceptTransfer",
       note: `Branch move accepted from Loan Matrix by ${actor}`,
-    };
+    });
 
     const proposeResponse = await postClientTransferCommand({
       clientId,
       command: "proposeTransfer",
       headers: fineractHeaders,
-      body: {
-        ...commonBody,
+      body: buildClientTransferCommandBody({
+        command: "proposeTransfer",
         destinationOfficeId: transferTarget.destinationOfficeId,
         note: `Branch move proposed from Loan Matrix by ${actor}`,
-      },
+      }),
     });
 
     if (!proposeResponse.ok) {
@@ -185,12 +169,12 @@ export async function POST(request: Request, context: RouteContext) {
 
       await postClientTransferCommand({
         clientId,
-        command: "withdrawTransfer",
+        command: "rejectTransfer",
         headers: fineractHeaders,
-        body: {
-          ...commonBody,
-          note: `Branch move withdrawn after accept transfer failed for ${actor}`,
-        },
+        body: buildClientTransferCommandBody({
+          command: "rejectTransfer",
+          note: `Branch move rejected after accept transfer failed for ${actor}`,
+        }),
       }).catch((rollbackError) => {
         console.error(
           "Failed to rollback proposed client transfer:",

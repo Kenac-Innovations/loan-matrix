@@ -31,8 +31,6 @@ interface ClientHeaderProps {
   client: FineractClient | null;
   clientImage: string | null;
   canEditClient: boolean;
-  canApplyForLoan?: boolean;
-  readOnlyNotice?: string | null;
 }
 
 export function ClientHeader({
@@ -40,8 +38,6 @@ export function ClientHeader({
   client,
   clientImage,
   canEditClient,
-  canApplyForLoan = true,
-  readOnlyNotice = null,
 }: ClientHeaderProps) {
   const getStatusBadgeColor = (status: string | null, active: boolean) => {
     if (active) return "bg-green-500";
@@ -182,7 +178,7 @@ export function ClientHeader({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {canApplyForLoan && client.active && client.externalId && (
+              {client.active && client.externalId && (
                 <Link
                   href={`/leads/new?externalId=${encodeURIComponent(
                     client.externalId
@@ -204,11 +200,6 @@ export function ClientHeader({
               )}
             </div>
           </div>
-          {readOnlyNotice && (
-            <p className="mt-3 text-sm text-amber-500">
-              {readOnlyNotice}
-            </p>
-          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { error } from "console";
+import { transferClientToOfficeWithServiceAuth } from "./fineract-client-transfer-service";
 
 export interface FineractConfig {
   baseUrl: string;
@@ -411,21 +412,6 @@ export interface AccountingRuleTemplate {
   allowedDebitTagOptions: AccountingRuleTag[];
 }
 
-function formatClientTransferDate(date = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    timeZone: "Africa/Harare",
-  }).formatToParts(date);
-
-  const day = parts.find((part) => part.type === "day")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const year = parts.find((part) => part.type === "year")?.value;
-
-  return `${day} ${month} ${year}`;
-}
-
 export class FineractAPIService {
   private client: AxiosInstance;
   private clientV2: AxiosInstance;
@@ -579,54 +565,12 @@ export class FineractAPIService {
     clientId: number,
     destinationOfficeId: number
   ): Promise<any> {
-    if (!Number.isInteger(clientId) || clientId <= 0) {
-      throw new Error("A valid Fineract client ID is required");
-    }
-
-    if (!Number.isInteger(destinationOfficeId) || destinationOfficeId <= 0) {
-      throw new Error("A valid destination office ID is required");
-    }
-
-    const commonBody = {
-      transferDate: formatClientTransferDate(),
-      dateFormat: "dd MMMM yyyy",
-      locale: "en",
-    };
-
-    await this.client.post(`/clients/${clientId}?command=proposeTransfer`, {
-      ...commonBody,
+    return transferClientToOfficeWithServiceAuth({
+      baseUrl: this.config.baseUrl,
+      tenantId: this.config.tenantId,
+      clientId,
       destinationOfficeId,
-      note: "Branch move proposed automatically during existing-client lead creation",
     });
-
-    try {
-      const response = await this.client.post(
-        `/clients/${clientId}?command=acceptTransfer`,
-        {
-          ...commonBody,
-          note: "Branch move accepted automatically during existing-client lead creation",
-        }
-      );
-
-      return response.data;
-    } catch (error) {
-      try {
-        await this.client.post(
-          `/clients/${clientId}?command=withdrawTransfer`,
-          {
-            ...commonBody,
-            note: "Branch move withdrawn after automatic accept transfer failed",
-          }
-        );
-      } catch (rollbackError) {
-        console.error(
-          "Failed to rollback proposed client office transfer:",
-          rollbackError
-        );
-      }
-
-      throw error;
-    }
   }
 
   async searchClients(query: string): Promise<FineractClient[]> {

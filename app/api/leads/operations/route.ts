@@ -11,7 +11,10 @@ import {
 } from "@/lib/tenant-service";
 import { formatMobileForFineract } from "@/lib/phone-utils";
 import { getOriginatorDesignatedDisburserData } from "@/lib/lead-policy";
-import { ensureExistingClientInCreatorOffice } from "@/lib/fineract-client-office-transfer";
+import {
+  assertExistingClientBranchTransferCompleted,
+  ensureExistingClientInCreatorOffice,
+} from "@/lib/fineract-client-office-transfer";
 
 // Helper to resolve the current tenant, optionally using the raw request
 // so we can read middleware-set and proxy-set headers directly.
@@ -1048,6 +1051,7 @@ async function handleCreateLeadWithClient(data: any) {
           creatorOfficeId: session.user.officeId,
           creatorOfficeName: session.user.officeName,
         });
+        assertExistingClientBranchTransferCompleted(clientOfficeTransfer);
         const clientForLead = clientOfficeTransfer.client;
 
         // Skip to creating the lead with the existing client data
@@ -1537,6 +1541,7 @@ async function handleCreateLeadForExistingClient(data: any) {
       creatorOfficeId: session.user.officeId,
       creatorOfficeName: session.user.officeName,
     });
+    assertExistingClientBranchTransferCompleted(clientOfficeTransfer);
     const clientForLead = clientOfficeTransfer.client;
 
     const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
@@ -1655,6 +1660,17 @@ async function handleUpdateClient(data: any, leadId?: string) {
     > | null = null;
     let leadOfficeId = data.officeId;
     let leadOfficeName = data.officeName;
+    const currentClient = await fineractService.getClient(
+      Number(data.fineractClientId)
+    );
+    clientOfficeTransfer = await ensureExistingClientInCreatorOffice({
+      client: currentClient,
+      creatorOfficeId: session.user.officeId,
+      creatorOfficeName: session.user.officeName,
+    });
+    assertExistingClientBranchTransferCompleted(clientOfficeTransfer);
+    leadOfficeId = clientOfficeTransfer.leadOfficeId ?? data.officeId;
+    leadOfficeName = clientOfficeTransfer.leadOfficeName ?? data.officeName;
 
     // Debug date fields before formatting
     console.log("==========> Date field types:");
@@ -1752,6 +1768,7 @@ async function handleUpdateClient(data: any, leadId?: string) {
         creatorOfficeId: session.user.officeId,
         creatorOfficeName: session.user.officeName,
       });
+      assertExistingClientBranchTransferCompleted(clientOfficeTransfer);
       leadOfficeId = clientOfficeTransfer.leadOfficeId ?? data.officeId;
       leadOfficeName = clientOfficeTransfer.leadOfficeName ?? data.officeName;
     } catch (fineractError: any) {
