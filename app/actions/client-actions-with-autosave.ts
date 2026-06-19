@@ -7,7 +7,10 @@ import { getSession } from "@/lib/auth";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { formatMobileForFineract } from "@/lib/phone-utils";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
-import { ensureExistingClientInCreatorOffice } from "@/lib/fineract-client-office-transfer";
+import {
+  assertExistingClientBranchTransferCompleted,
+  ensureExistingClientInCreatorOffice,
+} from "@/lib/fineract-client-office-transfer";
 
 // Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
@@ -133,6 +136,7 @@ export async function autoSaveField(
         creatorOfficeId: session.user.officeId,
         creatorOfficeName: session.user.officeName,
       });
+      assertExistingClientBranchTransferCompleted(existingClientOfficeTransfer);
     }
 
     const resolvedOfficeId =
