@@ -21,7 +21,9 @@ export async function GET(
       );
     }
 
-    const data = await fetchFineractAPI(`/loans/${id}/transactions/template?command=${command}`);
+    const data = await fetchFineractAPI(`/loans/${id}/transactions/template?command=${command}`, {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching loan transaction template:', error);

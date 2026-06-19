@@ -11,7 +11,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const data = await fetchFineractAPI(`/loanproducts/${id}`);
+    const data = await fetchFineractAPI(`/loanproducts/${id}`, {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching loan product:", error);

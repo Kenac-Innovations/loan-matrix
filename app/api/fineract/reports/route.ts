@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { getFineractServiceWithServiceAuth } from "@/lib/fineract-api";
 
 const isPentahoReport = (report: unknown) => {
   if (!report || typeof report !== "object") {
@@ -15,7 +15,7 @@ const isPentahoReport = (report: unknown) => {
 
 export async function GET(request: NextRequest) {
   try {
-    const fineractService = await getFineractServiceWithSession();
+    const fineractService = await getFineractServiceWithServiceAuth();
     const { searchParams } = new URL(request.url);
     const reportName = searchParams.get("reportName");
     const action = searchParams.get("action");

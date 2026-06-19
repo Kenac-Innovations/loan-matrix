@@ -7,7 +7,9 @@ export async function GET(
 ) {
   try {
     const { id: loanId } = await params;
-    const data = await fetchFineractAPI(`/loans/${loanId}/transactions/template?command=charge-off`);
+    const data = await fetchFineractAPI(`/loans/${loanId}/transactions/template?command=charge-off`, {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching charge-off template:", error);

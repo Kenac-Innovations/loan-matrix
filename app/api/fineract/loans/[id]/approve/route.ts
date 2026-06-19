@@ -18,7 +18,9 @@ export async function GET(
     
     // Build the endpoint URL
     const endpoint = `/loans/${id}/template?templateType=${templateType}`;
-    const data = await fetchFineractAPI(endpoint);
+    const data = await fetchFineractAPI(endpoint, {
+      authMode: "service",
+    });
     
     return NextResponse.json(data);
   } catch (error: any) {
@@ -44,7 +46,9 @@ export async function POST(
     
     // First, check the current loan status to provide better error messages
     try {
-      const loanData = await fetchFineractAPI(`/loans/${id}`);
+      const loanData = await fetchFineractAPI(`/loans/${id}`, {
+        authMode: "service",
+      });
       const loanStatus = loanData.status?.value;
       
       // Check if loan is in a state that allows approval

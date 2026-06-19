@@ -9,6 +9,7 @@ export async function GET(
     const { id: loanId } = await params;
     
     const data = await fetchFineractAPI(`/loans/${loanId}/interest-pauses`, {
+      authMode: "service",
       method: "GET",
     });
 
