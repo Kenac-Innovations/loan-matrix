@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAccessToken, getFineractTenantId } from "@/lib/api";
+import { buildFineractRequest } from "@/lib/api";
 import {
   generateLoanStatementHTML,
   transformFineractLoanToStatement,
@@ -7,8 +7,6 @@ import {
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
 import { resolveInterestRateDisplayMode } from "@/lib/interest-rate-display";
-
-const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
 /**
  * GET /api/fineract/loans/[id]/statement
@@ -31,28 +29,24 @@ export async function GET(
     const fromDate = searchParams.get("from");
     const toDate = searchParams.get("to");
 
-    const accessToken = await getAccessToken();
-    const fineractTenantId = await getFineractTenantId();
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     console.log("=== GENERATING LOAN STATEMENT ===");
     console.log("Loan ID:", loanId);
     console.log("Format:", format);
 
-    // Fetch loan with all associations
-    const loanUrl = `${baseUrl}/fineract-provider/api/v1/loans/${loanId}?associations=all`;
+    const { headers: loanHeaders, url: loanUrl } = await buildFineractRequest(
+      `/loans/${loanId}?associations=all`,
+      {
+        authMode: "service",
+        headers: {
+          Accept: "application/json",
+        },
+      }
+    );
     console.log("Fetching loan from:", loanUrl);
 
     const loanResponse = await fetch(loanUrl, {
       method: "GET",
-      headers: {
-        Authorization: `Basic ${accessToken}`,
-        "Fineract-Platform-TenantId": fineractTenantId,
-        Accept: "application/json",
-      },
+      headers: loanHeaders,
     });
 
     if (!loanResponse.ok) {
@@ -77,14 +71,18 @@ export async function GET(
     let clientData = null;
     if (loanData.clientId) {
       try {
-        const clientUrl = `${baseUrl}/fineract-provider/api/v1/clients/${loanData.clientId}`;
+        const { headers: clientHeaders, url: clientUrl } = await buildFineractRequest(
+          `/clients/${loanData.clientId}`,
+          {
+            authMode: "service",
+            headers: {
+              Accept: "application/json",
+            },
+          }
+        );
         const clientResponse = await fetch(clientUrl, {
           method: "GET",
-          headers: {
-            Authorization: `Basic ${accessToken}`,
-            "Fineract-Platform-TenantId": fineractTenantId,
-            Accept: "application/json",
-          },
+          headers: clientHeaders,
         });
 
         if (clientResponse.ok) {

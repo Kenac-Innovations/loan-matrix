@@ -16,6 +16,12 @@ export type FineractRequestInit = RequestInit & {
   authMode?: FineractAuthMode;
 };
 
+type FineractRequestConfig = {
+  headers: Record<string, string>;
+  requestOptions: RequestInit;
+  url: string;
+};
+
 /**
  * Get access token - prefer the logged-in user's Fineract session and
  * fall back to the service token when no session is available.
@@ -56,6 +62,42 @@ export async function getAccessToken(): Promise<string> {
   return SERVICE_TOKEN;
 }
 
+async function resolveFineractAuthToken(
+  authMode: FineractAuthMode
+): Promise<string> {
+  return authMode === "service" ? SERVICE_TOKEN : await getAccessToken();
+}
+
+export async function buildFineractRequest(
+  endpoint: string,
+  options: FineractRequestInit = {},
+  version: "v1" | "v2" = "v1"
+): Promise<FineractRequestConfig> {
+  const { authMode = "session", ...requestOptions } = options;
+  const accessToken = await resolveFineractAuthToken(authMode);
+  const fineractTenantId = await getFineractTenantIdFromService();
+
+  const url = `${baseUrl}/fineract-provider/api/${version}${
+    endpoint.startsWith("/") ? endpoint : `/${endpoint}`
+  }`;
+
+  const headers: Record<string, string> = {
+    ...(requestOptions.headers as Record<string, string> | undefined),
+    Authorization: `Basic ${accessToken}`,
+    "Fineract-Platform-TenantId": fineractTenantId,
+  };
+
+  if (!(requestOptions.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return {
+    headers,
+    requestOptions,
+    url,
+  };
+}
+
 /**
  * Makes an authenticated request to the Fineract API
  * @param endpoint - The API endpoint to call (without the base URL)
@@ -68,26 +110,11 @@ export async function fetchFineractAPI(
   options: FineractRequestInit = {},
   version: "v1" | "v2" = "v1"
 ) {
-  const { authMode = "session", ...requestOptions } = options;
-  const accessToken =
-    authMode === "service" ? SERVICE_TOKEN : await getAccessToken();
-  const fineractTenantId = await getFineractTenantIdFromService();
-
-  const url = `${baseUrl}/fineract-provider/api/${version}${
-    endpoint.startsWith("/") ? endpoint : `/${endpoint}`
-  }`;
-
-  const headers: any = {
-    ...requestOptions.headers,
-    Authorization: `Basic ${accessToken}`,
-    "Fineract-Platform-TenantId": fineractTenantId,
-  };
-
-  // Only set Content-Type to application/json if body is NOT FormData
-  // For FormData, let the browser set the correct Content-Type with boundary
-  if (!(requestOptions.body instanceof FormData)) {
-    headers["Content-Type"] = "application/json";
-  }
+  const { headers, requestOptions, url } = await buildFineractRequest(
+    endpoint,
+    options,
+    version
+  );
 
   try {
     let response;

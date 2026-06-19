@@ -9,7 +9,10 @@ export async function GET(
     const { id: loanId } = await params;
     
     const data = await fetchFineractAPI(
-      `/loans/${loanId}/transactions/template?command=merchantIssuedRefund&locale=en&dateFormat=dd MMMM yyyy`
+      `/loans/${loanId}/transactions/template?command=merchantIssuedRefund&locale=en&dateFormat=dd MMMM yyyy`,
+      {
+        authMode: "service",
+      }
     );
 
     return NextResponse.json(data);

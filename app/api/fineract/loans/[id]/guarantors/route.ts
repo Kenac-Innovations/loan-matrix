@@ -11,7 +11,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const data = await fetchFineractAPI(`/loans/${id}?associations=guarantors`);
+    const data = await fetchFineractAPI(`/loans/${id}?associations=guarantors`, {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching loan guarantors:', error);
