@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { fetchFineractAPI } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
@@ -18,11 +18,16 @@ export async function GET(
     const session = await getSession();
     const tenantSlug = extractTenantSlugFromRequest(request);
 
-    // Get associations parameter if provided, otherwise default to 'all'
     const associations = searchParams.get("associations") || "all";
+    const exclude = searchParams.get("exclude");
+    const fineractQuery = new URLSearchParams({ associations });
+    if (exclude) {
+      fineractQuery.set("exclude", exclude);
+    }
 
-    const fineractService = await getFineractServiceWithSession();
-    const data = await fineractService.getLoan(id, associations);
+    const data = await fetchFineractAPI(`/loans/${id}?${fineractQuery.toString()}`, {
+      authMode: "service",
+    });
     const officeScope = resolveOmamaOfficeScope({
       tenantSlug,
       roles: ((session?.user as any)?.roles || []) as Array<{

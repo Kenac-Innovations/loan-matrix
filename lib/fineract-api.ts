@@ -1676,6 +1676,21 @@ export async function getFineractServiceWithSession(): Promise<FineractAPIServic
   }
 }
 
+export async function getFineractServiceWithServiceAuth(): Promise<FineractAPIService> {
+  try {
+    const { getFineractTenantId } = await import("./fineract-tenant-service");
+    const fineractTenantId = await getFineractTenantId();
+    return getFineractService(SERVICE_TOKEN, fineractTenantId);
+  } catch (error) {
+    console.error("Error in getFineractServiceWithServiceAuth:", error);
+    throw new Error(
+      `Failed to initialize service-auth Fineract service: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+}
+
 export async function getFineractServiceWithSystemAuth(): Promise<FineractAPIService> {
   try {
     const { getFineractTenantId } = await import("./fineract-tenant-service");

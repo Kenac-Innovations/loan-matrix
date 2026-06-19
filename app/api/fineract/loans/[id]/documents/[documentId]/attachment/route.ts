@@ -1,44 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
-import { getSession as getCustomSession } from "@/app/actions/auth";
-import { getFineractTenantId } from "@/lib/fineract-tenant-service";
-
-const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
-
-/**
- * Get access token from either NextAuth session or custom JWT session
- */
-async function getAccessToken(): Promise<string | undefined> {
-  try {
-    const nextAuthSession = await getSession();
-    if (nextAuthSession?.accessToken) {
-      return nextAuthSession.accessToken;
-    }
-
-    const customSession = await getCustomSession();
-    if (customSession?.accessToken) {
-      return customSession.accessToken;
-    }
-
-    return undefined;
-  } catch (error) {
-    console.error("Error getting access token:", error);
-    return undefined;
-  }
-}
+import { buildFineractRequest } from "@/lib/api";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; documentId: string }> }
 ) {
   try {
-    const accessToken = await getAccessToken();
-    const fineractTenantId = await getFineractTenantId();
-
-    if (!accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { id: loanId, documentId } = await params;
 
     console.log("=== DOWNLOADING LOAN DOCUMENT ===");
@@ -46,13 +13,21 @@ export async function GET(
     console.log("Document ID:", documentId);
 
     // For file downloads, we need to handle the response differently
-    const url = `${baseUrl}/fineract-provider/api/v1/loans/${loanId}/documents/${documentId}/attachment`;
+    const { headers, url } = await buildFineractRequest(
+      `/loans/${loanId}/documents/${documentId}/attachment`,
+      {
+        authMode: "service",
+        headers: {
+          Accept: "*/*",
+        },
+      }
+    );
     console.log("Download URL:", url);
 
     let response;
 
     // Check if it's HTTP and use different approach
-    if (baseUrl.startsWith("http://")) {
+    if (url.startsWith("http://")) {
       // Use Node.js built-in http module for HTTP URLs
       const http = require("http");
       const urlModule = require("url");
@@ -64,11 +39,7 @@ export async function GET(
         port: parsedUrl.port || 80,
         path: parsedUrl.path,
         method: "GET",
-        headers: {
-          Accept: "*/*",
-          Authorization: `Basic ${accessToken}`,
-          "Fineract-Platform-TenantId": fineractTenantId,
-        },
+        headers,
       };
 
       response = await new Promise<any>((resolve, reject) => {
@@ -103,11 +74,7 @@ export async function GET(
 
       response = await fetch(url, {
         method: "GET",
-        headers: {
-          Accept: "*/*",
-          Authorization: `Basic ${accessToken}`,
-          "Fineract-Platform-TenantId": fineractTenantId,
-        },
+        headers,
         // Skip SSL verification for local development
         agent: new https.Agent({
           rejectUnauthorized: false,

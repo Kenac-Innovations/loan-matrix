@@ -7,7 +7,9 @@ export async function GET(
 ) {
   try {
     const { id: loanId } = await params;
-    const data = await fetchFineractAPI(`/loans/${loanId}/transactions/template?command=goodwillCredit`);
+    const data = await fetchFineractAPI(`/loans/${loanId}/transactions/template?command=goodwillCredit`, {
+      authMode: "service",
+    });
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching goodwill credit template:", error);
@@ -17,4 +19,3 @@ export async function GET(
     return NextResponse.json({ error: error.message || "Failed to fetch goodwill credit template" }, { status: 500 });
   }
 }
-

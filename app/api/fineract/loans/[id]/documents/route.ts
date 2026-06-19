@@ -62,7 +62,9 @@ export async function GET(
       uploadRecords.map((record) => [record.documentId, record])
     );
 
-    const data = await fetchFineractAPI(`/loans/${loanId}/documents`);
+    const data = await fetchFineractAPI(`/loans/${loanId}/documents`, {
+      authMode: "service",
+    });
 
     if (data && Array.isArray(data)) {
       return NextResponse.json(
