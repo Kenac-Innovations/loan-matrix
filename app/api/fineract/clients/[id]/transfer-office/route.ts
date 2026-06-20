@@ -4,6 +4,7 @@ import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { resolveClientBranchTransferTarget } from "@/lib/client-branch-transfer-policy";
 import { getSearchHeaders } from "@/lib/fineract-search-auth";
 import { buildClientTransferCommandBody } from "@/lib/fineract-client-transfer-service";
+import { parseFineractErrorResponse } from "@/lib/fineract-error";
 
 const FINERACT_BASE_URL =
   process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
@@ -18,10 +19,9 @@ async function parseFineractError(response: Response) {
   const details = await response.json().catch(() => null);
 
   return {
-    error:
-      details?.defaultUserMessage ||
-      details?.errors?.[0]?.defaultUserMessage ||
-      `Fineract API error ${response.status}`,
+    error: details
+      ? parseFineractErrorResponse(details)
+      : `Fineract API error ${response.status}`,
     details,
   };
 }

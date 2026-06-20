@@ -48,8 +48,20 @@ async function cleanupOrphanedItems(): Promise<void> {
   }
 }
 
+const queueConsumersDisabled =
+  process.env.DISABLE_QUEUE_CONSUMERS === "true" ||
+  process.env.DISABLE_QUEUE_CONSUMERS === "1";
+
+if (queueConsumersDisabled) {
+  console.log("Queue consumers disabled via DISABLE_QUEUE_CONSUMERS");
+}
+
 // Initialize the queue consumers only once
-if (process.env.NODE_ENV !== 'test' && !global.__queueConsumerInitialized) {
+if (
+  !queueConsumersDisabled &&
+  process.env.NODE_ENV !== "test" &&
+  !global.__queueConsumerInitialized
+) {
   global.__queueConsumerInitialized = true;
 
   // Clean up any items left stuck from a previous pod's crash or DB blip

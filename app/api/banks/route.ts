@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/app/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import {
+  canAccessOfficeId,
+  resolveVisibleOfficeIdsForUser,
+} from "@/lib/office-access";
 
 /**
  * GET /api/banks
@@ -12,17 +17,28 @@ import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 export async function GET(request: NextRequest) {
   try {
     const tenant = await getTenantFromHeaders();
+    const session = await getSession();
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+    }
+
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const orgCurrency = await getOrgDefaultCurrencyCode();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const officeId = searchParams.get("officeId");
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
 
     // Build where clause
-    const whereClause: any = {
+    const whereClause: Prisma.BankWhereInput = {
       tenantId: tenant.id,
     };
 
@@ -31,7 +47,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (officeId) {
-      whereClause.officeId = parseInt(officeId);
+      const requestedOfficeId = parseInt(officeId, 10);
+
+      if (!canAccessOfficeId(requestedOfficeId, visibleOfficeIds)) {
+        return NextResponse.json([]);
+      }
+
+      whereClause.officeId = requestedOfficeId;
+    } else if (visibleOfficeIds !== null) {
+      whereClause.officeId = {
+        in: visibleOfficeIds,
+      };
     }
 
     // Get all banks with allocations and teller counts
@@ -180,12 +206,23 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { name, code, description, officeId, officeName, glAccountId, glAccountName, glAccountCode } = body;
+    const normalizedOfficeId = officeId ? parseInt(officeId, 10) : null;
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
 
     if (!name || !code) {
       return NextResponse.json(
         { error: "Missing required fields: name, code" },
         { status: 400 }
       );
+    }
+
+    if (!canAccessOfficeId(normalizedOfficeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Check if code already exists
@@ -210,7 +247,7 @@ export async function POST(request: NextRequest) {
         name,
         code: code.toUpperCase(),
         description,
-        officeId: officeId ? parseInt(officeId) : null,
+        officeId: normalizedOfficeId,
         officeName: officeName || null,
         glAccountId: glAccountId || null,
         glAccountName: glAccountName || null,
@@ -232,4 +269,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
