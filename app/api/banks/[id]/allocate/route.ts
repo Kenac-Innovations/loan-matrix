@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/app/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import {
+  canAccessOfficeId,
+  resolveVisibleOfficeIdsForUser,
+} from "@/lib/office-access";
 
 /**
  * POST /api/banks/[id]/allocate
@@ -26,6 +31,13 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
+
     const body = await request.json();
     const { amount, currency, notes } = body;
     const orgCurrency = await getOrgDefaultCurrencyCode();
@@ -44,6 +56,10 @@ export async function POST(
 
     if (!bank) {
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    if (!canAccessOfficeId(bank.officeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (!bank.isActive || bank.status === "CLOSED") {
@@ -109,17 +125,48 @@ export async function GET(
   try {
     const params = await context.params;
     const { id: bankId } = params;
-    const tenant = await getTenantFromHeaders();
+    const [tenant, session] = await Promise.all([
+      getTenantFromHeaders(),
+      getSession(),
+    ]);
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const limit = parseInt(searchParams.get("limit") || "50");
+    const bank = await prisma.bank.findFirst({
+      where: {
+        id: bankId,
+        tenantId: tenant.id,
+      },
+      select: {
+        officeId: true,
+      },
+    });
 
-    const whereClause: any = {
+    if (!bank) {
+      return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    if (!canAccessOfficeId(bank.officeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const whereClause: Prisma.BankAllocationWhereInput = {
       bankId,
       tenantId: tenant.id,
     };
@@ -160,4 +207,3 @@ export async function GET(
     );
   }
 }
-
