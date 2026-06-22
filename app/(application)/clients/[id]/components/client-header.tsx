@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Edit, Users, Plus } from "lucide-react";
+import { ArrowLeft, Edit, Users, Plus, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -31,6 +31,7 @@ interface ClientHeaderProps {
   client: FineractClient | null;
   clientImage: string | null;
   canEditClient: boolean;
+  hasLoans: boolean;
 }
 
 export function ClientHeader({
@@ -38,6 +39,7 @@ export function ClientHeader({
   client,
   clientImage,
   canEditClient,
+  hasLoans,
 }: ClientHeaderProps) {
   const getStatusBadgeColor = (status: string | null, active: boolean) => {
     if (active) return "bg-green-500";
@@ -178,6 +180,18 @@ export function ClientHeader({
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {hasLoans && (
+                <Button asChild size="sm" variant="outline">
+                  <Link
+                    href={`/api/fineract/clients/${clientId}/statement?format=html`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Consolidated Statement
+                  </Link>
+                </Button>
+              )}
               {client.active && client.externalId && (
                 <Link
                   href={`/leads/new?externalId=${encodeURIComponent(
