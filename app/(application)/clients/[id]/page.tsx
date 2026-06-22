@@ -103,6 +103,10 @@ type PagedResponse<T> = {
   documents?: T[];
 };
 
+type ClientAccountsResponse = {
+  loanAccounts?: Array<{ id: number | string }>;
+};
+
 /**
  * Fetch client data from Fineract
  */
@@ -358,6 +362,34 @@ async function getClientDocuments(
   }
 }
 
+async function getClientHasLoans(clientId: number): Promise<boolean> {
+  try {
+    const fineractTenantId = await getFineractTenantId();
+    const response = await fetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/accounts`,
+      {
+        method: "GET",
+        headers: getClientDetailsPageFineractHeaders(fineractTenantId),
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) {
+      console.error(
+        `Failed to fetch accounts for client ${clientId}:`,
+        response.status
+      );
+      return false;
+    }
+
+    const data = (await response.json()) as ClientAccountsResponse;
+    return Array.isArray(data.loanAccounts) && data.loanAccounts.length > 0;
+  } catch (error) {
+    console.error("Error fetching client accounts:", error);
+    return false;
+  }
+}
+
 export default async function ClientDetailPage({ params }: PageProps) {
   const { id } = await params;
   const clientId = Number.parseInt(id);
@@ -367,12 +399,14 @@ export default async function ClientDetailPage({ params }: PageProps) {
   }
 
   // Fetch all data server-side in parallel
-  const [client, clientImage, datatables, canEditClient] = await Promise.all([
-    getClientData(clientId),
-    getClientImage(clientId),
-    getDatatables(),
-    hasSuperAdminServer(),
-  ]);
+  const [client, clientImage, datatables, canEditClient, hasLoans] =
+    await Promise.all([
+      getClientData(clientId),
+      getClientImage(clientId),
+      getDatatables(),
+      hasSuperAdminServer(),
+      getClientHasLoans(clientId),
+    ]);
 
   // Fetch datatable data after we have the datatables list
   const datatableData = await getDatatableData(clientId, datatables || []);
@@ -409,6 +443,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
         client={client}
         clientImage={clientImage}
         canEditClient={canEditClient}
+        hasLoans={hasLoans}
       />
 
       {/* Client Overview Cards */}
