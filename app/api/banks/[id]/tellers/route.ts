@@ -4,6 +4,10 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getTellerVaultDisplay } from "@/lib/gl-balance";
+import {
+  canAccessOfficeId,
+  resolveVisibleOfficeIdsForUser,
+} from "@/lib/office-access";
 
 /**
  * GET /api/banks/[id]/tellers
@@ -16,14 +20,26 @@ export async function GET(
   try {
     const params = await context.params;
     const { id: bankId } = params;
-    const [tenant, orgCurrency] = await Promise.all([
+    const [tenant, orgCurrency, session] = await Promise.all([
       getTenantFromHeaders(),
       getOrgDefaultCurrencyCode(),
+      getSession(),
     ]);
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
+
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
 
     // Find the bank
     const bank = await prisma.bank.findFirst({
@@ -32,6 +48,10 @@ export async function GET(
 
     if (!bank) {
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    if (!canAccessOfficeId(bank.officeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Get tellers with their balances
@@ -123,6 +143,13 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
+
     const body = await request.json();
     const { tellerId } = body;
 
@@ -140,6 +167,10 @@ export async function POST(
 
     if (!bank) {
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    if (!canAccessOfficeId(bank.officeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Find the teller
@@ -195,6 +226,26 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
+
+    const bank = await prisma.bank.findFirst({
+      where: { id: bankId, tenantId: tenant.id },
+      select: { officeId: true },
+    });
+
+    if (!bank) {
+      return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    if (!canAccessOfficeId(bank.officeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const tellerId = searchParams.get("tellerId");
 
@@ -242,4 +293,3 @@ export async function DELETE(
     );
   }
 }
-
