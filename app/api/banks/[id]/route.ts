@@ -5,6 +5,10 @@ import { getSession } from "@/lib/auth";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getTellerVaultDisplay } from "@/lib/gl-balance";
+import {
+  canAccessOfficeId,
+  resolveVisibleOfficeIdsForUser,
+} from "@/lib/office-access";
 
 /**
  * GET /api/banks/[id]
@@ -17,14 +21,26 @@ export async function GET(
   try {
     const params = await context.params;
     const { id } = params;
-    const [tenant, orgCurrency] = await Promise.all([
+    const [tenant, orgCurrency, session] = await Promise.all([
       getTenantFromHeaders(),
       getOrgDefaultCurrencyCode(),
+      getSession(),
     ]);
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
+
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
 
     const bank = await prisma.bank.findFirst({
       where: {
@@ -52,6 +68,10 @@ export async function GET(
 
     if (!bank) {
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    if (!canAccessOfficeId(bank.officeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Only count vault allocations that actually drew from the bank (same logic as allocate route)
@@ -215,6 +235,18 @@ export async function PUT(
     const body = await request.json();
     const { name, code, description, officeId, officeName, glAccountId, glAccountName, glAccountCode, status, isActive } =
       body;
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
+    const normalizedOfficeId =
+      officeId !== undefined && officeId !== null && officeId !== ""
+        ? parseInt(officeId, 10)
+        : officeId === null
+          ? null
+          : undefined;
 
     // Find existing bank
     const existingBank = await prisma.bank.findFirst({
@@ -223,6 +255,17 @@ export async function PUT(
 
     if (!existingBank) {
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    if (!canAccessOfficeId(existingBank.officeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (
+      normalizedOfficeId !== undefined &&
+      !canAccessOfficeId(normalizedOfficeId, visibleOfficeIds)
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Check if code is being changed to an existing code
@@ -250,8 +293,8 @@ export async function PUT(
         ...(name && { name }),
         ...(code && { code: code.toUpperCase() }),
         ...(description !== undefined && { description }),
-        ...(officeId !== undefined && {
-          officeId: officeId ? parseInt(officeId) : null,
+        ...(normalizedOfficeId !== undefined && {
+          officeId: normalizedOfficeId,
         }),
         ...(officeName !== undefined && { officeName }),
         ...(glAccountId !== undefined && { glAccountId }),
@@ -297,6 +340,26 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
+
+    const existingBank = await prisma.bank.findFirst({
+      where: { id, tenantId: tenant.id },
+      select: { officeId: true },
+    });
+
+    if (!existingBank) {
+      return NextResponse.json({ error: "Bank not found" }, { status: 404 });
+    }
+
+    if (!canAccessOfficeId(existingBank.officeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     // Check if bank has active tellers
     const activeTellers = await prisma.teller.count({
       where: {
@@ -335,4 +398,3 @@ export async function DELETE(
     );
   }
 }
-

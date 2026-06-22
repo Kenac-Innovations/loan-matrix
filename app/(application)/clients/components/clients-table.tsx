@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import useSWR from "swr";
 import {
   Phone,
@@ -39,6 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getExistingClientTransferUiState } from "@/lib/fineract-client-office-transfer";
 
 interface FineractClient {
   id: number;
@@ -86,6 +88,7 @@ const officesFetcher = async (url: string) => {
 export function ClientsTable() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(20);
   const [searchInput, setSearchInput] = useState("");
@@ -542,6 +545,15 @@ export function ClientsTable() {
           </TableHeader>
           <TableBody>
             {clients.map((client) => {
+              const transferUiState = getExistingClientTransferUiState({
+                clientId: client.id,
+                clientDisplayName: client.displayName,
+                clientOfficeId: client.officeId,
+                clientOfficeName: client.officeName,
+                creatorOfficeId: session?.user?.officeId,
+                creatorOfficeName: session?.user?.officeName,
+              });
+
               return (
                 <TableRow
                   key={client.id}
@@ -602,9 +614,24 @@ export function ClientsTable() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />
-                      {client.officeName}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        {client.officeName}
+                      </div>
+                      {transferUiState ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-700 dark:bg-amber-900/50 dark:text-amber-100"
+                          >
+                            {transferUiState.badgeLabel}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {transferUiState.officeHint}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell>
