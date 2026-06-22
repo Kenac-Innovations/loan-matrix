@@ -3,19 +3,19 @@ import test from "node:test";
 
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/testdb";
 
-test("flags loan details actions that must be blocked across branches", async () => {
+test("does not flag loan details actions as office-restricted", async () => {
   const {
     isLoanDetailsOfficeRestrictedAction,
   } = await import("../loan-details-office-gate");
 
-  assert.equal(isLoanDetailsOfficeRestrictedAction("add-charge"), true);
-  assert.equal(isLoanDetailsOfficeRestrictedAction("make-repayment"), true);
-  assert.equal(isLoanDetailsOfficeRestrictedAction("reverse-payout"), true);
+  assert.equal(isLoanDetailsOfficeRestrictedAction("add-charge"), false);
+  assert.equal(isLoanDetailsOfficeRestrictedAction("make-repayment"), false);
+  assert.equal(isLoanDetailsOfficeRestrictedAction("reverse-payout"), false);
   assert.equal(isLoanDetailsOfficeRestrictedAction("approve-loan"), false);
   assert.equal(isLoanDetailsOfficeRestrictedAction(null), false);
 });
 
-test("builds a transfer requirement when the loan client belongs to another branch", async () => {
+test("does not require a transfer when the loan client belongs to another branch", async () => {
   const {
     getLoanDetailsOfficeTransferRequirement,
   } = await import("../loan-details-office-gate");
@@ -29,17 +29,10 @@ test("builds a transfer requirement when the loan client belongs to another bran
     userOfficeName: "Lusaka",
   });
 
-  assert.deepEqual(requirement, {
-    clientId: 104,
-    clientDisplayName: "Jane Doe",
-    clientOfficeId: 12,
-    clientOfficeName: "Kitwe",
-    destinationOfficeId: 5,
-    destinationOfficeName: "Lusaka",
-  });
+  assert.equal(requirement, null);
 });
 
-test("falls back to the loan office when the client payload does not include office details", async () => {
+test("does not require a transfer when only the loan office differs", async () => {
   const {
     getLoanDetailsOfficeTransferRequirement,
   } = await import("../loan-details-office-gate");
@@ -55,14 +48,7 @@ test("falls back to the loan office when the client payload does not include off
     userOfficeName: "Lusaka",
   });
 
-  assert.deepEqual(requirement, {
-    clientId: 104,
-    clientDisplayName: "Jane Doe",
-    clientOfficeId: 8,
-    clientOfficeName: "Ndola",
-    destinationOfficeId: 5,
-    destinationOfficeName: "Lusaka",
-  });
+  assert.equal(requirement, null);
 });
 
 test("does not require a transfer when the loan client already belongs to the user's branch", async () => {
