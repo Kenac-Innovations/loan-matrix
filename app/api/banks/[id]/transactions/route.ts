@@ -6,6 +6,17 @@ import {
   buildBankVaultTransactions,
   summarizeBankVaultTransactions,
 } from "@/lib/bank-vault-transactions";
+import { getSession } from "@/lib/auth";
+import {
+  canAccessOfficeId,
+  resolveVisibleOfficeIdsForUser,
+} from "@/lib/office-access";
+
+interface FineractUserSummary {
+  id: number;
+  username?: string | null;
+  displayName?: string | null;
+}
 
 /**
  * GET /api/banks/[id]/transactions
@@ -18,11 +29,25 @@ export async function GET(
   try {
     const params = await context.params;
     const { id: bankId } = params;
-    const tenant = await getTenantFromHeaders();
+    const [tenant, session] = await Promise.all([
+      getTenantFromHeaders(),
+      getSession(),
+    ]);
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
+
+    if (!session?.user?.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const visibleOfficeIds = await resolveVisibleOfficeIdsForUser({
+      tenantId: tenant.id,
+      fineractUserId: session.user.userId,
+      sessionOfficeId: session.user.officeId,
+      sessionOfficeName: session.user.officeName,
+    });
 
     const bank = await prisma.bank.findFirst({
       where: {
@@ -35,11 +60,15 @@ export async function GET(
       return NextResponse.json({ error: "Bank not found" }, { status: 404 });
     }
 
-    let userMap: Record<string, string> = {};
+    if (!canAccessOfficeId(bank.officeId, visibleOfficeIds)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const userMap: Record<string, string> = {};
     try {
       const fineractService = await getFineractServiceWithSession();
       const users = await fineractService.getUsers();
-      users.forEach((user: any) => {
+      (users as FineractUserSummary[]).forEach((user) => {
         userMap[user.id.toString()] =
           user.username || user.displayName || `User ${user.id}`;
       });

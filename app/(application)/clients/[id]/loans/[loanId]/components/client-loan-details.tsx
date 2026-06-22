@@ -381,6 +381,13 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       })
     : null;
   const hasLoanClientOfficeMismatch = !!loanClientTransferRequirement;
+  const loanClientTransferBannerMessage = loanClientTransferRequirement
+    ? `${loanClientTransferRequirement.clientDisplayName} belongs to ${
+        loanClientTransferRequirement.clientOfficeName || "another branch"
+      }. Transfer the client to ${
+        loanClientTransferRequirement.destinationOfficeName || "your branch"
+      } before using restricted loan actions.`
+    : null;
 
   // Close actions menu when clicking outside
 
@@ -3345,6 +3352,53 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </Card>
         )}
       </div>
+
+      {loanClientTransferRequirement ? (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertDescription className="w-full">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-1">
+                <p className="font-medium">Client Branch Transfer Required</p>
+                <p className="text-sm text-amber-900 dark:text-amber-100">
+                  {loanClientTransferBannerMessage}
+                </p>
+                {loanClientTransferErrorMessage ? (
+                  <p className="text-sm font-medium text-red-700 dark:text-red-300">
+                    {loanClientTransferErrorMessage}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-700 dark:bg-amber-900/50 dark:text-amber-100"
+                >
+                  {loanClientTransferRequirement.clientOfficeName || "Other branch"} to{" "}
+                  {loanClientTransferRequirement.destinationOfficeName || "Your branch"}
+                </Badge>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setLoanClientTransferErrorMessage(null);
+                    void handleTransferLoanClientOffice();
+                  }}
+                  disabled={isTransferringLoanClient}
+                >
+                  {isTransferringLoanClient ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Transferring...
+                    </>
+                  ) : (
+                    "Transfer Client"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {/* Client Information */}
       <Card className="border shadow-sm">
