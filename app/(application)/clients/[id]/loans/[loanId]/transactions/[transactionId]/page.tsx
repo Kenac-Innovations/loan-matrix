@@ -17,13 +17,37 @@ import { toast } from "@/components/ui/use-toast";
 interface LoanResponse {
   id: number;
   currency?: { code: string; name: string };
-  transactions?: any[];
+  transactions?: LoanTransaction[];
 }
 
 interface PaymentTypeOption {
   id: number;
   name: string;
   isCashPayment?: boolean;
+}
+
+interface PaymentTypesResponse {
+  pageItems?: PaymentTypeOption[];
+}
+
+interface LoanTransaction {
+  id: number;
+  transactionId?: string | null;
+  externalId?: string | null;
+  amount?: number;
+  date?: number[];
+  manuallyReversed?: boolean;
+  type?: {
+    repayment?: boolean;
+    recoveryRepayment?: boolean;
+    disbursement?: boolean;
+  };
+  paymentDetailData?: {
+    paymentType?: {
+      id?: number;
+      name?: string;
+    };
+  };
 }
 
 interface RepaymentCashLinkData {
@@ -43,17 +67,21 @@ interface RepaymentCashLinkData {
   reversedAt?: string | null;
 }
 
+interface LoanTransactionCreatorResponse {
+  name?: string | null;
+  source?: "journal" | "report" | "none";
+}
+
 export default function TransactionDetailsPage() {
   const router = useRouter();
   const params = useParams();
-  const clientId = params.id as string;
   const loanId = params.loanId as string;
   const transactionId = Number(params.transactionId as string);
 
   const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [transaction, setTransaction] = useState<any | null>(null);
+  const [transaction, setTransaction] = useState<LoanTransaction | null>(null);
   const [loanCurrency, setLoanCurrency] = useState<string>("");
   const [showChargeback, setShowChargeback] = useState(false);
   const [showUndo, setShowUndo] = useState(false);
@@ -65,6 +93,8 @@ export default function TransactionDetailsPage() {
   const [undoError, setUndoError] = useState<string | null>(null);
   const [repaymentLink, setRepaymentLink] = useState<RepaymentCashLinkData | null>(null);
   const [loadingRepaymentLink, setLoadingRepaymentLink] = useState(false);
+  const [repaymentCreatorName, setRepaymentCreatorName] = useState<string | null>(null);
+  const [loadingRepaymentCreator, setLoadingRepaymentCreator] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -75,28 +105,28 @@ export default function TransactionDetailsPage() {
         if (!res.ok) throw new Error(`Failed to fetch loan: ${res.statusText}`);
         const data: LoanResponse = await res.json();
         setLoanCurrency(data.currency?.code || orgCurrency);
-        const tx = (data.transactions || []).find((t: any) => Number(t.id) === transactionId);
+        const tx = (data.transactions || []).find((t) => Number(t.id) === transactionId);
         setTransaction(tx || null);
         if (!tx) setError("Transaction not found");
-      } catch (e: any) {
-        setError(e.message || "Unknown error");
+      } catch (error: unknown) {
+        setError(error instanceof Error ? error.message : "Unknown error");
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [loanId, transactionId]);
+  }, [loanId, orgCurrency, transactionId]);
 
   useEffect(() => {
     const fetchPaymentTypes = async () => {
       try {
         const res = await fetch('/api/fineract/paymenttypes');
         if (!res.ok) return;
-        const data = await res.json();
+        const data: PaymentTypeOption[] | PaymentTypesResponse = await res.json();
         if (Array.isArray(data)) {
           setPaymentTypes(
-            data.map((p: any) => ({
+            data.map((p) => ({
               id: p.id,
               name: p.name,
               isCashPayment: p.isCashPayment,
@@ -104,7 +134,7 @@ export default function TransactionDetailsPage() {
           );
         } else if (Array.isArray(data.pageItems)) {
           setPaymentTypes(
-            data.pageItems.map((p: any) => ({
+            data.pageItems.map((p) => ({
               id: p.id,
               name: p.name,
               isCashPayment: p.isCashPayment,
@@ -126,6 +156,52 @@ export default function TransactionDetailsPage() {
   );
   const isCashRepaymentUndo =
     isRepaymentTransaction && !!transactionPaymentType?.isCashPayment;
+
+  useEffect(() => {
+    if (!isRepaymentTransaction || !transaction) {
+      setRepaymentCreatorName(null);
+      setLoadingRepaymentCreator(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchRepaymentCreator = async () => {
+      try {
+        setLoadingRepaymentCreator(true);
+        const response = await fetch(
+          `/api/fineract/loans/${loanId}/transactions/${transactionId}/creator`
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch repayment creator: ${response.statusText}`
+          );
+        }
+
+        const data: LoanTransactionCreatorResponse = await response.json();
+
+        if (!cancelled) {
+          setRepaymentCreatorName(data.name?.trim() || null);
+        }
+      } catch (err) {
+        console.error("Error fetching repayment creator:", err);
+        if (!cancelled) {
+          setRepaymentCreatorName(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingRepaymentCreator(false);
+        }
+      }
+    };
+
+    void fetchRepaymentCreator();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isRepaymentTransaction, loanId, transaction, transactionId]);
 
   useEffect(() => {
     if (showUndo && isCashRepaymentUndo) {
@@ -255,6 +331,16 @@ export default function TransactionDetailsPage() {
               <div className="text-sm text-muted-foreground">Payment Type</div>
               <div className="font-medium">{transaction?.paymentDetailData?.paymentType?.name || ""}</div>
             </div>
+            {isRepaymentTransaction && (
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">Recorded By</div>
+                <div className="font-medium">
+                  {loadingRepaymentCreator
+                    ? "Loading..."
+                    : repaymentCreatorName || "Not available"}
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
