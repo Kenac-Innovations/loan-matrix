@@ -321,58 +321,65 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
         });
       }
 
-      // After 200: call allocate with stored teller/cashier (never sent in repayment payload)
-      if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
-        const amount = parseFloat(formData.transactionAmount);
-        const currency = template?.currency?.code ?? orgCurrency;
-        const normalizedCurrency = normalizeCurrencyCode(currency);
-        const date = formData.transactionDate || new Date().toISOString().split("T")[0];
-
-        try {
-          const allocRes = await fetch(
-            `/api/tellers/${selectedTeller}/cashiers/${selectedCashier}/allocate`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                amount,
-                currency: normalizedCurrency,
-                date,
-                notes: "Loan repayment",
-                source: "repayment",
-                fineractTransactionId: result.resourceId,
-                loanId: Number(loanId),
-                transactionType: "REPAYMENT",
-                isCash: true,
-              }),
-            }
-          );
-          if (!allocRes.ok) {
-            const errData = await allocRes.json();
-            const message = `Repayment recorded, but till balance was not updated: ${errData.error || allocRes.statusText}`;
-            setError(message);
-            toast({
-              title: "Repayment partly completed",
-              description: message,
-              variant: "destructive",
-            });
-            setSubmitting(false);
-            return;
-          }
-        } catch (allocErr) {
-          console.error("Allocate after repayment failed:", allocErr);
-          const message =
-            "Repayment recorded, but till balance was not updated. Please allocate manually.";
-          setError(message);
-          toast({
-            title: "Repayment partly completed",
-            description: message,
-            variant: "destructive",
-          });
-          setSubmitting(false);
-          return;
-        }
-      }
+      /*
+       * Legacy till-update flow kept for reference.
+       * Disabled because Fineract already includes cash loan repayments in
+       * cashier summary/transactions, so this extra allocate call created
+       * duplicate cashier rows.
+       *
+       * if (selectedPaymentTypeIsCash && selectedTeller && selectedCashier) {
+       *   const amount = parseFloat(formData.transactionAmount);
+       *   const currency = template?.currency?.code ?? orgCurrency;
+       *   const normalizedCurrency = normalizeCurrencyCode(currency);
+       *   const date =
+       *     formData.transactionDate || new Date().toISOString().split("T")[0];
+       *
+       *   try {
+       *     const allocRes = await fetch(
+       *       `/api/tellers/${selectedTeller}/cashiers/${selectedCashier}/allocate`,
+       *       {
+       *         method: "POST",
+       *         headers: { "Content-Type": "application/json" },
+       *         body: JSON.stringify({
+       *           amount,
+       *           currency: normalizedCurrency,
+       *           date,
+       *           notes: "Loan repayment",
+       *           source: "repayment",
+       *           fineractTransactionId: result.resourceId,
+       *           loanId: Number(loanId),
+       *           transactionType: "REPAYMENT",
+       *           isCash: true,
+       *         }),
+       *       }
+       *     );
+       *     if (!allocRes.ok) {
+       *       const errData = await allocRes.json();
+       *       const message = `Repayment recorded, but till balance was not updated: ${errData.error || allocRes.statusText}`;
+       *       setError(message);
+       *       toast({
+       *         title: "Repayment partly completed",
+       *         description: message,
+       *         variant: "destructive",
+       *       });
+       *       setSubmitting(false);
+       *       return;
+       *     }
+       *   } catch (allocErr) {
+       *     console.error("Allocate after repayment failed:", allocErr);
+       *     const message =
+       *       "Repayment recorded, but till balance was not updated. Please allocate manually.";
+       *     setError(message);
+       *     toast({
+       *       title: "Repayment partly completed",
+       *       description: message,
+       *       variant: "destructive",
+       *     });
+       *     setSubmitting(false);
+       *     return;
+       *   }
+       * }
+       */
 
       setSuccess(true);
       toast({
