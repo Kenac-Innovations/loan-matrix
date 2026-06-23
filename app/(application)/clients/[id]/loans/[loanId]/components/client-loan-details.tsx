@@ -67,6 +67,7 @@ import {
   getLoanDetailsOfficeTransferRequirement,
   isLoanDetailsOfficeRestrictedAction,
 } from "@/lib/loan-details-office-gate";
+import { getLoanLifecycleUndoAction } from "@/lib/loan-lifecycle-actions";
 
 interface ClientLoanDetailsProps {
   clientId: number;
@@ -250,6 +251,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [showUndoDisbursalModal, setShowUndoDisbursalModal] = useState(false);
   const [isSubmittingUndoDisbursal, setIsSubmittingUndoDisbursal] = useState(false);
   const [undoDisbursalNote, setUndoDisbursalNote] = useState('');
+  const [showUndoApprovalModal, setShowUndoApprovalModal] = useState(false);
+  const [isSubmittingUndoApproval, setIsSubmittingUndoApproval] = useState(false);
+  const [undoApprovalNote, setUndoApprovalNote] = useState('');
 
   // Interest Pause Modal State
   const [showInterestPauseModal, setShowInterestPauseModal] = useState(false);
@@ -439,6 +443,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
     const container = document.getElementById('loan-actions-container');
     if (container && loan) {
       const isClosed = loan?.status?.closed === true;
+      const undoLifecycleAction = getLoanLifecycleUndoAction(loan);
 
       // When loan is closed, only show: Goodwill credit, Interest payment waiver, Payout refund, Merchant issued refund
       const closedActionsOnly = `
@@ -528,12 +533,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               </svg>
               Reverse payout
             </button>
-            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="undo-disbursal">
+            <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="${undoLifecycleAction.action}">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M3 7v6h6"/>
                 <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
               </svg>
-              Undo Disbursal
+              ${undoLifecycleAction.label}
             </button>
             <button class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm" data-action="add-interest-pause">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -949,6 +954,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 break;
               case 'undo-disbursal':
                 openUndoDisbursalModal();
+                break;
+              case 'undo-approval':
+                openUndoApprovalModal();
                 break;
               case 'add-interest-pause':
                 openInterestPauseModal();
@@ -2709,6 +2717,56 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const openUndoDisbursalModal = () => {
     setShowUndoDisbursalModal(true);
     setUndoDisbursalNote('');
+  };
+
+  // Handle Undo Approval
+  const handleSubmitUndoApproval = async () => {
+    if (!undoApprovalNote.trim() || isSubmittingUndoApproval) return;
+
+    setIsSubmittingUndoApproval(true);
+    try {
+      const response = await fetch(`/api/fineract/loans/${loanId}/undoapproval`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          note: undoApprovalNote.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.defaultUserMessage ||
+            errorData.error ||
+            'Failed to undo approval'
+        );
+      }
+
+      toast({
+        title: "Success",
+        description: "Loan approval undone successfully",
+      });
+
+      setShowUndoApprovalModal(false);
+      setUndoApprovalNote('');
+      window.location.reload();
+    } catch (error: any) {
+      console.error('Error undoing approval:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to undo approval",
+      });
+    } finally {
+      setIsSubmittingUndoApproval(false);
+    }
+  };
+
+  const openUndoApprovalModal = () => {
+    setShowUndoApprovalModal(true);
+    setUndoApprovalNote('');
   };
 
   // Handle Interest Pause
@@ -5595,6 +5653,52 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
               className="bg-red-600 hover:bg-red-700"
             >
               {isSubmittingUndoDisbursal ? "Processing..." : "Undo Disbursal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Undo Approval Modal */}
+      <Dialog open={showUndoApprovalModal} onOpenChange={setShowUndoApprovalModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Undo Approval</DialogTitle>
+            <DialogDescription>
+              This will move the loan back from approved awaiting disbursement to pending approval in Fineract.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="undoApprovalNote" className="text-red-600">Note *</Label>
+              <textarea
+                id="undoApprovalNote"
+                value={undoApprovalNote}
+                onChange={(e) => setUndoApprovalNote(e.target.value)}
+                placeholder="Enter mandatory note for undo approval"
+                className="w-full min-h-[80px] p-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              />
+              {!undoApprovalNote.trim() && (
+                <p className="text-sm text-red-500">Note is mandatory</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowUndoApprovalModal(false);
+                setUndoApprovalNote('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitUndoApproval}
+              disabled={!undoApprovalNote.trim() || isSubmittingUndoApproval}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isSubmittingUndoApproval ? "Processing..." : "Undo Approval"}
             </Button>
           </DialogFooter>
         </DialogContent>
