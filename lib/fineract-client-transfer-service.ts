@@ -15,12 +15,6 @@ function formatClientTransferDate(date = new Date()) {
   return `${day} ${month} ${year}`;
 }
 
-function getTomorrowDate(baseDate = new Date()) {
-  const tomorrow = new Date(baseDate);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow;
-}
-
 export function buildClientTransferCommandBody(args: {
   command: "proposeTransfer" | "acceptTransfer" | "rejectTransfer";
   destinationOfficeId?: number;
@@ -29,7 +23,7 @@ export function buildClientTransferCommandBody(args: {
   if (args.command === "proposeTransfer") {
     return {
       destinationOfficeId: args.destinationOfficeId,
-      transferDate: formatClientTransferDate(getTomorrowDate()),
+      transferDate: formatClientTransferDate(),
       dateFormat: "dd MMMM yyyy",
       locale: "en",
       note: args.note,
