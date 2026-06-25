@@ -331,6 +331,18 @@ export async function sendMfaChallengeMessage(input: {
 }) {
   const { tenantId, username, channel, destination, code } = input;
   const message = `Your Loan Matrix ${MFA_CODE_LENGTH}-digit verification code is ${code}. It expires in ${MFA_EXPIRY_MINUTES} minutes.`;
+  const isLocalDevFallback =
+    process.env.NODE_ENV === "development" &&
+    channel === "sms" &&
+    !process.env.NOTIFICATION_SERVICE_URL;
+
+  if (isLocalDevFallback) {
+    console.warn(
+      `[MFA DEV FALLBACK] Notification service is not configured. Using terminal-delivered MFA code for ${username} (${destination}).`
+    );
+    console.log(`[MFA DEV FALLBACK] Verification code for ${username}: ${code}`);
+    return true;
+  }
 
   if (channel === "sms") {
     return sendSms([destination], message, {

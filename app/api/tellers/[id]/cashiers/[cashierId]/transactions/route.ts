@@ -58,6 +58,99 @@ type CashierSummaryPayload = {
   [key: string]: unknown;
 };
 
+const DEFAULT_CASHIER_PAGE_SIZE = 500;
+
+function extractCashierTransactions(
+  payload: CashierSummaryPayload | null | undefined
+): CashierTransaction[] {
+  const cashierTransactions = payload?.cashierTransactions;
+  if (Array.isArray(cashierTransactions?.pageItems)) {
+    return cashierTransactions.pageItems;
+  }
+  if (Array.isArray(cashierTransactions)) {
+    return cashierTransactions;
+  }
+  return [];
+}
+
+async function fetchAllCashierSummaryAndTransactions(
+  fineractService: {
+    getCashierSummaryAndTransactions: (
+      tellerId: number,
+      cashierId: number,
+      currencyCode: string,
+      options?: { offset?: number; limit?: number }
+    ) => Promise<CashierSummaryPayload>;
+  },
+  tellerId: number,
+  cashierId: number,
+  currencyCode: string,
+  options?: { offset?: number; limit?: number }
+): Promise<CashierSummaryPayload> {
+  const requestedOffset = options?.offset ?? 0;
+  const requestedLimit = options?.limit;
+
+  if (requestedLimit != null || requestedOffset > 0) {
+    return fineractService.getCashierSummaryAndTransactions(
+      tellerId,
+      cashierId,
+      currencyCode,
+      options
+    );
+  }
+
+  const firstPage = await fineractService.getCashierSummaryAndTransactions(
+    tellerId,
+    cashierId,
+    currencyCode,
+    { offset: 0, limit: DEFAULT_CASHIER_PAGE_SIZE }
+  );
+
+  const firstItems = extractCashierTransactions(firstPage);
+  const totalFilteredRecords =
+    typeof firstPage?.cashierTransactions === "object" &&
+    firstPage?.cashierTransactions &&
+    "totalFilteredRecords" in firstPage.cashierTransactions
+      ? Number(firstPage.cashierTransactions.totalFilteredRecords ?? firstItems.length)
+      : firstItems.length;
+
+  if (!Number.isFinite(totalFilteredRecords) || firstItems.length >= totalFilteredRecords) {
+    return firstPage;
+  }
+
+  const mergedItems = [...firstItems];
+  let nextOffset = DEFAULT_CASHIER_PAGE_SIZE;
+
+  while (nextOffset < totalFilteredRecords) {
+    const nextPage = await fineractService.getCashierSummaryAndTransactions(
+      tellerId,
+      cashierId,
+      currencyCode,
+      { offset: nextOffset, limit: DEFAULT_CASHIER_PAGE_SIZE }
+    );
+    const nextItems = extractCashierTransactions(nextPage);
+    if (nextItems.length === 0) {
+      break;
+    }
+    mergedItems.push(...nextItems);
+    if (nextItems.length < DEFAULT_CASHIER_PAGE_SIZE) {
+      break;
+    }
+    nextOffset += DEFAULT_CASHIER_PAGE_SIZE;
+  }
+
+  return {
+    ...firstPage,
+    cashierTransactions: {
+      ...(typeof firstPage.cashierTransactions === "object" && !Array.isArray(firstPage.cashierTransactions)
+        ? firstPage.cashierTransactions
+        : {}),
+      pageItems: mergedItems,
+      totalFilteredRecords: mergedItems.length,
+    },
+  };
+}
+
 const LOAN_REPAYMENT_NOTE_REGEX = /loan repayment\s*#\s*(\d+)/i;
 
 function extractLoanIdFromNotes(notes: string | null | undefined): number | null {
@@ -173,6 +266,129 @@ function matchLoanPayoutForTransaction(
   });
 
   return byNarration[0] ?? candidates[0] ?? null;
+}
+
+function getTransactionTypeValue(tx: CashierTransaction): string {
+  if (typeof tx?.txnType === "object") {
+    return tx.txnType?.value || tx.txnType?.code || "";
+  }
+
+  if (typeof tx?.transactionType === "object") {
+    return tx.transactionType?.value || tx.transactionType?.code || "";
+  }
+
+  return String(tx?.txnType ?? tx?.transactionType ?? "");
+}
+
+function normalizeTransactionText(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function transactionDateKey(tx: CashierTransaction): string {
+  const date = getTransactionDate(tx?.txnDate ?? tx?.transactionDate ?? tx?.createdDate);
+  if (!date) return "unknown";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function getTransactionAmount(tx: CashierTransaction): number {
+  return Math.abs(Number(tx?.txnAmount ?? tx?.amount ?? 0));
+}
+
+function getTransactionCurrencyCode(
+  tx: CashierTransaction,
+  fallbackCurrencyCode?: string
+): string {
+  return (tx?.currency?.code || tx?.currencyCode || fallbackCurrencyCode || "").toUpperCase();
+}
+
+function getDeduplicationKey(
+  tx: CashierTransaction,
+  fallbackCurrencyCode?: string
+): string {
+  const amount = getTransactionAmount(tx).toFixed(2);
+  const currency = getTransactionCurrencyCode(tx, fallbackCurrencyCode);
+  const direction = getSignedCashierTransactionAmount(tx) >= 0 ? "in" : "out";
+
+  return [transactionDateKey(tx), amount, currency, direction].join("|");
+}
+
+function getSignedCashierTransactionAmount(tx: CashierTransaction): number {
+  const rawAmount = Number(tx?.txnAmount ?? tx?.amount ?? 0);
+  const amount = Math.abs(rawAmount);
+  const txnTypeValue = normalizeTransactionText(getTransactionTypeValue(tx));
+  const isReversal =
+    txnTypeValue.includes("reversal") || Boolean((tx as { _isReversal?: boolean })._isReversal);
+  const isAllocate =
+    txnTypeValue.includes("allocate") ||
+    txnTypeValue.includes("credit") ||
+    txnTypeValue.includes("deposit");
+  const isSettle =
+    txnTypeValue.includes("settle") ||
+    txnTypeValue.includes("debit") ||
+    txnTypeValue.includes("withdrawal") ||
+    txnTypeValue.includes("expense");
+
+  if (isReversal || isAllocate) return amount;
+  if (isSettle) return -amount;
+  return rawAmount;
+}
+
+function isGenericLoanRepayment(tx: CashierTransaction): boolean {
+  const note = normalizeText(tx?.txnNote ?? tx?.notes);
+  const type = normalizeTransactionText(getTransactionTypeValue(tx));
+
+  return (
+    note === "loan repayment" &&
+    getTransactionAmount(tx) > 0 &&
+    getSignedCashierTransactionAmount(tx) > 0 &&
+    (type.includes("allocate") || type.includes("deposit") || type.includes("cash"))
+  );
+}
+
+function isEnrichedLoanRepayment(tx: CashierTransaction): boolean {
+  const note = normalizeTransactionText(tx?.txnNote ?? tx?.notes);
+
+  return (
+    getTransactionAmount(tx) > 0 &&
+    getSignedCashierTransactionAmount(tx) > 0 &&
+    (
+      Boolean((tx as { linkedLoanId?: number | null }).linkedLoanId) ||
+      Boolean((tx as { linkedClientId?: number | null }).linkedClientId) ||
+      Boolean((tx as { linkedFullName?: string | null }).linkedFullName) ||
+      note.startsWith("repayment") ||
+      note.includes("loan repayment")
+    )
+  );
+}
+
+function removeGenericRepaymentDuplicates(
+  txns: CashierTransaction[],
+  fallbackCurrencyCode?: string
+): CashierTransaction[] {
+  const enrichedCountsByKey = new Map<string, number>();
+
+  for (const tx of txns) {
+    if (!isEnrichedLoanRepayment(tx)) continue;
+    const key = getDeduplicationKey(tx, fallbackCurrencyCode);
+    enrichedCountsByKey.set(key, (enrichedCountsByKey.get(key) ?? 0) + 1);
+  }
+
+  const removedGenericCountsByKey = new Map<string, number>();
+
+  return txns.filter((tx) => {
+    if (!isGenericLoanRepayment(tx)) return true;
+
+    const key = getDeduplicationKey(tx, fallbackCurrencyCode);
+    const enrichedCount = enrichedCountsByKey.get(key) ?? 0;
+    const removedCount = removedGenericCountsByKey.get(key) ?? 0;
+
+    if (removedCount >= enrichedCount) return true;
+
+    removedGenericCountsByKey.set(key, removedCount + 1);
+    return false;
+  });
 }
 
 function isDuplicateFineractAllocationError(error: unknown) {
@@ -347,13 +563,13 @@ export async function GET(
     const currencyCode = searchParams.get("currencyCode") || rawCurrency;
     const limitParam = searchParams.get("limit");
     const offsetParam = searchParams.get("offset");
-    const limit = limitParam ? parseInt(limitParam, 10) : 500;
+    const limit = limitParam ? parseInt(limitParam, 10) : DEFAULT_CASHIER_PAGE_SIZE;
     const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
     const fineractService = await getFineractServiceWithSession();
     const paginationOptions =
-      offset > 0 || limit !== 500
-        ? { offset, limit: Math.min(limit, 500) }
+      offset > 0 || limit !== DEFAULT_CASHIER_PAGE_SIZE
+        ? { offset, limit: Math.min(limit, DEFAULT_CASHIER_PAGE_SIZE) }
         : undefined;
 
     // Dual-fetch: some orgs have repayments stored under both ZMK and ZMW due to historical
@@ -361,15 +577,16 @@ export async function GET(
     const needsDualFetch = rawCurrency !== normalizedCurrency;
     const altCurrency = currencyCode === rawCurrency ? normalizedCurrency : rawCurrency;
     const [primaryResult, secondaryResult] = await Promise.all([
-      fineractService.getCashierSummaryAndTransactions(
+      fetchAllCashierSummaryAndTransactions(
+        fineractService,
         teller.fineractTellerId,
         fineractCashierId,
         currencyCode,
         paginationOptions
       ),
       needsDualFetch
-        ? fineractService
-            .getCashierSummaryAndTransactions(
+        ? fetchAllCashierSummaryAndTransactions(
+            fineractService,
               teller.fineractTellerId,
               fineractCashierId,
               altCurrency,
@@ -624,10 +841,16 @@ export async function GET(
       };
     });
 
+    const dedupedItems = removeGenericRepaymentDuplicates(
+      enrichedItems,
+      responseCurrencyCode
+    );
+
     if (Array.isArray(cashierTransactions?.pageItems)) {
-      cashierTransactions.pageItems = enrichedItems;
+      cashierTransactions.pageItems = dedupedItems;
+      cashierTransactions.totalFilteredRecords = dedupedItems.length;
     } else if (Array.isArray(cashierTransactions)) {
-      summaryAndTransactions.cashierTransactions = enrichedItems;
+      summaryAndTransactions.cashierTransactions = dedupedItems;
     }
 
     return NextResponse.json(summaryAndTransactions);

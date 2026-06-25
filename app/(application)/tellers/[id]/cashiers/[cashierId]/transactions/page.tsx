@@ -138,6 +138,80 @@ function getSignedTransactionAmount(tx: Transaction): number {
   return rawAmount;
 }
 
+function getTransactionTypeValue(tx: Transaction): string {
+  if (typeof tx.txnType === "object") {
+    return tx.txnType?.value || "";
+  }
+
+  return tx.txnType || tx.transactionType?.value || tx.transactionType?.code || "";
+}
+
+function normalizeTransactionText(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function getDeduplicationKey(tx: Transaction, fallbackCurrencyCode?: string): string {
+  const amount = Math.abs(Number(tx.txnAmount ?? tx.amount ?? 0)).toFixed(2);
+  const currency = getTransactionCurrencyCode(tx, fallbackCurrencyCode) ?? "";
+  const direction = getSignedTransactionAmount(tx) >= 0 ? "in" : "out";
+
+  return [
+    transactionDateToIsoDate(tx),
+    amount,
+    currency.toUpperCase(),
+    direction,
+  ].join("|");
+}
+
+function isGenericLoanRepayment(tx: Transaction): boolean {
+  const note = normalizeTransactionText(tx.txnNote || tx.notes);
+  const type = normalizeTransactionText(getTransactionTypeValue(tx));
+
+  return (
+    note === "loan repayment" &&
+    getSignedTransactionAmount(tx) > 0 &&
+    (type.includes("allocate") || type.includes("deposit") || type.includes("cash"))
+  );
+}
+
+function isEnrichedLoanRepayment(tx: Transaction): boolean {
+  const note = normalizeTransactionText(tx.txnNote || tx.notes);
+
+  return (
+    getSignedTransactionAmount(tx) > 0 &&
+    Boolean(tx.linkedLoanId || tx.linkedClientId || tx.linkedFullName) &&
+    (note.startsWith("repayment") || note.includes("loan repayment"))
+  );
+}
+
+function removeGenericRepaymentDuplicates(
+  txns: Transaction[],
+  fallbackCurrencyCode?: string
+): Transaction[] {
+  const enrichedCountsByKey = new Map<string, number>();
+
+  for (const tx of txns) {
+    if (!isEnrichedLoanRepayment(tx)) continue;
+    const key = getDeduplicationKey(tx, fallbackCurrencyCode);
+    enrichedCountsByKey.set(key, (enrichedCountsByKey.get(key) ?? 0) + 1);
+  }
+
+  const removedGenericCountsByKey = new Map<string, number>();
+
+  return txns.filter((tx) => {
+    if (!isGenericLoanRepayment(tx)) return true;
+
+    const key = getDeduplicationKey(tx, fallbackCurrencyCode);
+    const enrichedCount = enrichedCountsByKey.get(key) ?? 0;
+    const removedCount = removedGenericCountsByKey.get(key) ?? 0;
+
+    if (removedCount >= enrichedCount) return true;
+
+    removedGenericCountsByKey.set(key, removedCount + 1);
+    return false;
+  });
+}
+
 interface Summary {
   sumCashAllocation?: number;
   sumCashSettlement?: number;
@@ -244,14 +318,27 @@ export default function CashierTransactionsPage({
           data?.cashierTransactions?.pageItems &&
           Array.isArray(data.cashierTransactions.pageItems)
         ) {
-          setTransactions(sortByDateDesc(data.cashierTransactions.pageItems));
+          setTransactions(
+            sortByDateDesc(
+              removeGenericRepaymentDuplicates(
+                data.cashierTransactions.pageItems,
+                currencyCode
+              )
+            )
+          );
         } else if (
           data?.cashierTransactions &&
           Array.isArray(data.cashierTransactions)
         ) {
-          setTransactions(sortByDateDesc(data.cashierTransactions));
+          setTransactions(
+            sortByDateDesc(
+              removeGenericRepaymentDuplicates(data.cashierTransactions, currencyCode)
+            )
+          );
         } else if (Array.isArray(data)) {
-          setTransactions(sortByDateDesc(data));
+          setTransactions(
+            sortByDateDesc(removeGenericRepaymentDuplicates(data, currencyCode))
+          );
         } else {
           setTransactions([]);
         }
@@ -704,7 +791,7 @@ export default function CashierTransactionsPage({
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
           <CardDescription>
-            {summary?.cashierTransactions?.totalFilteredRecords ?? transactionsWithRunningBalance.length} transactions
+            {transactionsWithRunningBalance.length} transactions
           </CardDescription>
         </CardHeader>
         <CardContent>

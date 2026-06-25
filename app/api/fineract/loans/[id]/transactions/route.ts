@@ -1,28 +1,19 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
-import { getFineractServiceWithSession } from '@/lib/fineract-api';
 import { isPaymentTypeCash } from '@/lib/cash-repayment-teller';
 import { upsertRepaymentCashLink } from '@/lib/repayment-cash-link';
 import { getTenantFromHeaders } from '@/lib/tenant-service';
 import { getOrgRawCurrencyCode } from '@/lib/currency-utils';
 import { fetchLoanNotificationDetails, resolveLoanNotificationTarget } from '@/lib/loan-notification-target';
 import { sendLoanRepaymentSms } from '@/lib/notification-service';
-
-/** Ensure date is yyyy-MM-dd for Fineract allocate */
-function formatDateForAllocate(isoDate: string): string {
-  const d = new Date(isoDate);
-  const year = d.getFullYear();
-  const month = (d.getMonth() + 1).toString().padStart(2, '0');
-  const day = d.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import { prisma } from '@/lib/prisma';
 
 /**
  * POST /api/fineract/loans/[id]/transactions
  * Proxies to Fineract's loan transactions endpoint.
- * For repayment command: reads tellerId and cashierId from body, strips them before
- * forwarding to Fineract. After successful repayment, if payment is cash, calls
- * Fineract allocate with tellerId/cashierId in the path.
+ * For cash repayments, Fineract records the cashier receipt itself. Loan Matrix
+ * records the local teller/cashier association only; it must not post a second
+ * allocation because that duplicates the cash-in entry.
  */
 export async function POST(
   request: Request,
@@ -44,22 +35,6 @@ export async function POST(
 
     const body = await request.json();
 
-    // Parse tellerId and cashierId from request body (support "fineract-123" format)
-    let tellerId: number | null = null;
-    if (body.tellerId != null) {
-      if (typeof body.tellerId === 'string' && body.tellerId.startsWith('fineract-')) {
-        tellerId = parseInt(body.tellerId.replace('fineract-', ''), 10);
-      } else {
-        tellerId = Number(body.tellerId);
-      }
-      if (isNaN(tellerId)) tellerId = null;
-    }
-    let cashierId: number | null = null;
-    if (body.cashierId != null) {
-      cashierId = Number(body.cashierId);
-      if (isNaN(cashierId)) cashierId = null;
-    }
-
     // Build repayment body for Fineract WITHOUT local teller/cashier metadata
     const repaymentBody = { ...body } as Record<string, unknown>;
     delete repaymentBody.tellerId;
@@ -75,9 +50,7 @@ export async function POST(
       data?.resourceId ?? data?.transactionId ?? data?.id
     );
 
-    let cashierAllocateResult: { success: boolean; error?: string; details?: unknown } | undefined;
-
-    // After successful repayment: if payment is cash, call allocate to update cashier balance
+    // Link the single Fineract receipt to the selected local till for display and audit.
     if (
       command === 'repayment' &&
       body.paymentTypeId != null &&
@@ -90,6 +63,28 @@ export async function POST(
       console.log("[CashRepayment]: ")
 
       if (tenant && Number.isFinite(fineractTransactionId) && fineractTransactionId > 0) {
+        const dbTellerId =
+          typeof body.dbTellerId === 'string' ? body.dbTellerId : null;
+        const dbCashierId =
+          typeof body.dbCashierId === 'string' ? body.dbCashierId : null;
+        const [teller, cashier] = await Promise.all([
+          dbTellerId
+            ? prisma.teller.findFirst({
+                where: { id: dbTellerId, tenantId: tenant.id },
+                select: { id: true },
+              })
+            : Promise.resolve(null),
+          dbCashierId
+            ? prisma.cashier.findFirst({
+                where: { id: dbCashierId, tenantId: tenant.id },
+                select: { id: true, tellerId: true },
+              })
+            : Promise.resolve(null),
+        ]);
+
+        const hasMatchingTill =
+          teller != null && cashier != null && cashier.tellerId === teller.id;
+
         await upsertRepaymentCashLink({
           tenantId: tenant.id,
           fineractTransactionId,
@@ -97,92 +92,10 @@ export async function POST(
           transactionType: command.toUpperCase(),
           amount: Number(body.transactionAmount),
           currency,
-          // These local foreign keys are enriched later by the allocate route after
-          // it resolves the selected teller/cashier to real Prisma records.
-          tellerId: null,
-          cashierId: null,
+          tellerId: hasMatchingTill ? teller.id : null,
+          cashierId: hasMatchingTill ? cashier.id : null,
           isCash,
         });
-      }
-
-      console.log('[CashRepayment] Repayment succeeded', {
-        loanId,
-        paymentTypeId: body.paymentTypeId,
-        isCash,
-        tellerId,
-        cashierId,
-        hasTellerCashier: tellerId != null && cashierId != null,
-      });
-
-      if (isCash) {
-        const transactionDate =
-          typeof body.transactionDate === 'string'
-            ? body.transactionDate
-            : new Date().toISOString().split('T')[0];
-
-        if (
-          tellerId != null &&
-          !isNaN(tellerId) &&
-          cashierId != null &&
-          !isNaN(cashierId)
-        ) {
-          // Request includes tellerId/cashierId - call allocate here
-          try {
-            const fineractService = await getFineractServiceWithSession();
-            await fineractService.allocateCashToCashier(
-              tellerId,
-              cashierId,
-              {
-                txnDate: formatDateForAllocate(transactionDate),
-                txnAmount: String(body.transactionAmount),
-                currencyCode: currency,
-                txnNote: 'Loan repayment',
-                dateFormat: 'yyyy-MM-dd',
-                locale: 'en',
-              }
-            );
-            cashierAllocateResult = { success: true };
-            console.log(
-              `[CashRepayment] Allocated ${body.transactionAmount} ${currency} for loan ${loanId} to teller ${tellerId}/cashier ${cashierId}`
-            );
-          } catch (err: unknown) {
-            type AllocationError = {
-              response?: {
-                data?: {
-                  defaultUserMessage?: string;
-                  errors?: Array<{ defaultUserMessage?: string }>;
-                };
-                status?: number;
-              };
-              message?: string;
-            };
-            const allocationError = err as AllocationError;
-            const fineractError = allocationError.response?.data;
-            cashierAllocateResult = {
-              success: false,
-              error:
-                fineractError?.defaultUserMessage ||
-                fineractError?.errors?.[0]?.defaultUserMessage ||
-                allocationError.message ||
-                'Allocate failed',
-              details: fineractError || { message: allocationError.message },
-            };
-            console.error('[CashRepayment] Allocate failed:', {
-              message: allocationError.message,
-              status: allocationError.response?.status,
-              data: allocationError.response?.data,
-            });
-          }
-        } else {
-          // No tellerId/cashierId in request - frontend will call allocate after 200
-          // (Repayment modal uses active till from allocate modal)
-          cashierAllocateResult = {
-            success: true,
-            error: 'Skipped - allocate handled by frontend with active till',
-          };
-        }
-      } else {
-        cashierAllocateResult = { success: false, error: 'Skipped - payment type is not cash' };
       }
     }
 
@@ -234,13 +147,7 @@ export async function POST(
       });
     }
 
-    // Include allocate result in response so it's visible in network tab when debugging
-    const responseData =
-      cashierAllocateResult != null
-        ? { ...data, _cashierAllocate: cashierAllocateResult }
-        : data;
-
-    return NextResponse.json(responseData);
+    return NextResponse.json(data);
   } catch (error: unknown) {
     type LoanTransactionError = {
       status?: number;
