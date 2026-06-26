@@ -2283,21 +2283,40 @@ export function ClientRegistrationForm({
   // Auto-search for client when externalId is provided in URL (from client details page)
   const hasTriggeredAutoSearch = useRef(false);
   const pendingAutoSearch = useRef<string | null>(null);
+  const pendingAutoSearchClientId = useRef<number | null>(null);
 
   useEffect(() => {
+    const clientIdFromUrlRaw = searchParams?.get("clientId");
     const externalIdFromUrl = searchParams?.get("externalId");
+    const clientIdFromUrl = clientIdFromUrlRaw
+      ? Number(clientIdFromUrlRaw)
+      : null;
+
     if (
-      externalIdFromUrl &&
+      (externalIdFromUrl || clientIdFromUrl) &&
       !hasTriggeredAutoSearch.current &&
       !isLoading &&
       offices.length > 0
     ) {
       hasTriggeredAutoSearch.current = true;
-      console.log(
-        "Auto-searching for client with externalId:",
-        externalIdFromUrl
-      );
-      setNationalIdLookup(externalIdFromUrl);
+
+      if (externalIdFromUrl) {
+        console.log(
+          "Auto-searching for client with externalId:",
+          externalIdFromUrl
+        );
+        setNationalIdLookup(externalIdFromUrl);
+      }
+
+      if (clientIdFromUrl && Number.isFinite(clientIdFromUrl)) {
+        console.log("Auto-loading lead creation for client ID:", clientIdFromUrl);
+        void handleClientLookup({
+          clientId: clientIdFromUrl,
+          externalId: externalIdFromUrl,
+        });
+        return;
+      }
+
       pendingAutoSearch.current = externalIdFromUrl;
     }
   }, [searchParams, isLoading, offices.length]);
@@ -3285,8 +3304,17 @@ export function ClientRegistrationForm({
   };
 
   // Handle client lookup by National ID
-  const handleClientLookup = async () => {
-    if (!nationalIdLookup.trim()) {
+  const handleClientLookup = async (options?: {
+    clientId?: number | null;
+    externalId?: string | null;
+  }) => {
+    const lookupValue = options?.externalId?.trim() || nationalIdLookup.trim();
+    const directClientId =
+      options?.clientId && Number.isFinite(Number(options.clientId))
+        ? Number(options.clientId)
+        : null;
+
+    if (!lookupValue && !directClientId) {
       validationError("Please enter a national ID number");
       return;
     }
@@ -3371,99 +3399,144 @@ export function ClientRegistrationForm({
       // Step 1: Try to get client details from Fineract (PRIMARY SOURCE)
       console.log("==========> Trying to get client details from Fineract");
       try {
-        console.log(
-          "==========> Trying to get client details from Fineract by external ID"
-        );
-        console.log(
-          "==========> [CLIENT] Making POST request to /api/fineract/clients/external-id"
-        );
-        console.log("==========> [CLIENT] Request body:", {
-          externalId: nationalIdLookup,
-        });
-        console.log(
-          "==========> [CLIENT] Full URL:",
-          `${window.location.origin}/api/fineract/clients/external-id`
-        );
-
-        const externalIdResponse = await fetch(
-          `/api/fineract/clients/external-id`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ externalId: nationalIdLookup }),
-          }
-        );
-
-        console.log(
-          "==========> [CLIENT] Response status:",
-          externalIdResponse.status
-        );
-        console.log("==========> [CLIENT] Response ok:", externalIdResponse.ok);
-
-        if (externalIdResponse.ok) {
-          // Client found by external ID - this gives us the email address
-          const clientData = await externalIdResponse.json();
+        if (directClientId) {
+          const fullClientResponse = await fetch(
+            `/api/fineract/clients/${directClientId}`
+          );
 
           console.log(
-            "==========> Client data found by external ID from Fineract:",
-            clientData
+            "==========> Full client response for direct client lookup:",
+            fullClientResponse
           );
-
-          // Now we need to get the FULL client details using the client ID
-          // This will give us gender, client type, classification, etc.
-          const fullClientResponse = await fetch(
-            `/api/fineract/clients/${clientData.id}`
-          );
-
-          console.log("==========> Full client response:", fullClientResponse);
 
           if (fullClientResponse.ok) {
             const fullClientData = await fullClientResponse.json();
 
+            let externalIdClientData: any = null;
+
+            if (lookupValue || fullClientData.externalId) {
+              const lookupExternalId = lookupValue || fullClientData.externalId;
+              const externalIdResponse = await fetch(
+                `/api/fineract/clients/external-id`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ externalId: lookupExternalId }),
+                }
+              );
+
+              if (externalIdResponse.ok) {
+                externalIdClientData = await externalIdResponse.json();
+              }
+            }
+
+            fineractData = {
+              ...fullClientData,
+              emailAddress:
+                externalIdClientData?.emailAddress || fullClientData.emailAddress,
+              externalId:
+                externalIdClientData?.externalId ||
+                fullClientData.externalId ||
+                lookupValue,
+            };
+          }
+        } else {
+          console.log(
+            "==========> Trying to get client details from Fineract by external ID"
+          );
+          console.log(
+            "==========> [CLIENT] Making POST request to /api/fineract/clients/external-id"
+          );
+          console.log("==========> [CLIENT] Request body:", {
+            externalId: lookupValue,
+          });
+          console.log(
+            "==========> [CLIENT] Full URL:",
+            `${window.location.origin}/api/fineract/clients/external-id`
+          );
+
+          const externalIdResponse = await fetch(
+            `/api/fineract/clients/external-id`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ externalId: lookupValue }),
+            }
+          );
+
+          console.log(
+            "==========> [CLIENT] Response status:",
+            externalIdResponse.status
+          );
+          console.log("==========> [CLIENT] Response ok:", externalIdResponse.ok);
+
+          if (externalIdResponse.ok) {
+            // Client found by external ID - this gives us the email address
+            const clientData = await externalIdResponse.json();
+
             console.log(
-              "==========> DEBUG: Full Fineract client data:",
-              fullClientData
-            );
-            console.log(
-              "==========> DEBUG: Available fields:",
-              Object.keys(fullClientData)
-            );
-            console.log(
-              "==========> DEBUG: Account number field:",
-              fullClientData.accountNo
-            );
-            console.log(
-              "==========> DEBUG: Activation date field:",
-              fullClientData.activationDate
-            );
-            console.log(
-              "==========> DEBUG: Activation date is array:",
-              Array.isArray(fullClientData.activationDate)
-            );
-            console.log(
-              "==========> DEBUG: Submitted on date field:",
-              fullClientData.submittedOnDate
-            );
-            console.log(
-              "==========> DEBUG: Submitted on date is array:",
-              Array.isArray(fullClientData.submittedOnDate)
+              "==========> Client data found by external ID from Fineract:",
+              clientData
             );
 
-            // Combine both Fineract responses
-            fineractData = {
-              ...fullClientData, // Base data (gender, client type, classification, etc.)
-              emailAddress: clientData.emailAddress, // Email from external ID endpoint
-              externalId: clientData.externalId, // External ID from external ID endpoint
-            };
-          } else {
-            // Fall back to using just the external ID data if full client lookup fails
-            fineractData = {
-              ...clientData,
-              emailAddress: clientData.emailAddress,
-              externalId: clientData.externalId,
-            };
+            // Now we need to get the FULL client details using the client ID
+            // This will give us gender, client type, classification, etc.
+            const fullClientResponse = await fetch(
+              `/api/fineract/clients/${clientData.id}`
+            );
+
+            console.log("==========> Full client response:", fullClientResponse);
+
+            if (fullClientResponse.ok) {
+              const fullClientData = await fullClientResponse.json();
+
+              console.log(
+                "==========> DEBUG: Full Fineract client data:",
+                fullClientData
+              );
+              console.log(
+                "==========> DEBUG: Available fields:",
+                Object.keys(fullClientData)
+              );
+              console.log(
+                "==========> DEBUG: Account number field:",
+                fullClientData.accountNo
+              );
+              console.log(
+                "==========> DEBUG: Activation date field:",
+                fullClientData.activationDate
+              );
+              console.log(
+                "==========> DEBUG: Activation date is array:",
+                Array.isArray(fullClientData.activationDate)
+              );
+              console.log(
+                "==========> DEBUG: Submitted on date field:",
+                fullClientData.submittedOnDate
+              );
+              console.log(
+                "==========> DEBUG: Submitted on date is array:",
+                Array.isArray(fullClientData.submittedOnDate)
+              );
+
+              // Combine both Fineract responses
+              fineractData = {
+                ...fullClientData, // Base data (gender, client type, classification, etc.)
+                emailAddress: clientData.emailAddress, // Email from external ID endpoint
+                externalId: clientData.externalId, // External ID from external ID endpoint
+              };
+            } else {
+              // Fall back to using just the external ID data if full client lookup fails
+              fineractData = {
+                ...clientData,
+                emailAddress: clientData.emailAddress,
+                externalId: clientData.externalId,
+              };
+            }
           }
         }
       } catch (externalIdError) {
@@ -3471,13 +3544,17 @@ export function ClientRegistrationForm({
 
         // Try search method as fallback
         try {
+          if (!lookupValue) {
+            throw externalIdError;
+          }
+
           const searchResponse = await fetch("/api/fineract/clients/search", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              text: nationalIdLookup,
+              text: lookupValue,
               page: 0,
               size: 50,
             }),
@@ -3524,9 +3601,13 @@ export function ClientRegistrationForm({
 
       // Step 2: Try to get additional data from local database (SECONDARY SOURCE)
       try {
+        if (!lookupValue) {
+          throw new Error("No external ID available for local lookup");
+        }
+
         const localResponse = await fetch(
           `/api/leads/search-by-external-id?externalId=${encodeURIComponent(
-            nationalIdLookup
+            lookupValue
           )}`
         );
 
@@ -3580,7 +3661,7 @@ export function ClientRegistrationForm({
           externalId: getBestValue(
             fineractData?.externalId,
             localData?.externalId,
-            nationalIdLookup
+            lookupValue
           ),
           firstname: getBestValue(
             fineractData?.firstname,
@@ -3917,7 +3998,7 @@ export function ClientRegistrationForm({
         );
         setClientLookupStatus("not_found");
         setIsFormDisabled(false);
-        form.setValue("externalId", nationalIdLookup);
+        form.setValue("externalId", lookupValue);
 
         success({
           title: "Client Not Found In Fineract",
@@ -3932,7 +4013,7 @@ export function ClientRegistrationForm({
       setIsFormDisabled(false);
 
       // Set the searched national ID in the form's externalId field for new client
-      form.setValue("externalId", nationalIdLookup);
+      form.setValue("externalId", lookupValue);
 
       success({
         title: "Client Not Found",
