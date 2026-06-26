@@ -194,7 +194,7 @@ export function ClientHeader({
               )}
               {client.active && client.externalId && (
                 <Link
-                  href={`/leads/new?externalId=${encodeURIComponent(
+                  href={`/leads/new?clientId=${clientId}&externalId=${encodeURIComponent(
                     client.externalId
                   )}`}
                 >

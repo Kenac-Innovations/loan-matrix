@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useCurrency } from "@/contexts/currency-context";
 
 import useSWR from 'swr';
@@ -11,6 +13,8 @@ import {
   DollarSign,
   Download,
   Check,
+  MoreVertical,
+  X,
 } from "lucide-react";
 import {
   Card,
@@ -21,6 +25,8 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -29,6 +35,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { GenericDataTable } from "@/components/tables/generic-data-table";
+import type { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
+import { getDisplayedTransactionType } from "@/lib/format-transaction";
 
 interface RepaymentSchedulePeriod {
   period: number;
@@ -90,7 +105,7 @@ interface RepaymentSchedule {
   disbursedAmountPercentage?: number;
   feeChargesAtDisbursementCharged?: number;
   scheduleRegenerated?: boolean;
-  futureSchedule?: any[];
+  futureSchedule?: unknown[];
   periods: RepaymentSchedulePeriod[];
 }
 
@@ -99,14 +114,75 @@ interface ClientTransactionsProps {
   loanId?: number;
 }
 
+type TransactionLike = {
+  id?: number;
+  officeName?: string;
+  externalId?: string;
+  date?: string | number[];
+  manuallyReversed?: boolean;
+  type?: {
+    value?: string;
+    disbursement?: boolean;
+    repayment?: boolean;
+    repaymentAtDisbursement?: boolean;
+    accrual?: boolean;
+    code?: string;
+  };
+  amount?: number;
+  principalPortion?: number;
+  interestPortion?: number;
+  feeChargesPortion?: number;
+  penaltyChargesPortion?: number;
+  outstandingLoanBalance?: number;
+  transactionId?: string;
+  loanChargePaidByList?: Array<{
+    amount?: number;
+    chargeName?: string;
+    name?: string;
+    loanChargeName?: string;
+    charge?: {
+      name?: string;
+    };
+  }>;
+};
+
+type ClientTransactionRecord = TransactionLike & {
+  loanId: number;
+  loanAccountNo: string;
+  loanProductName: string;
+  sortDate: number;
+};
+
+type DisplayRow = ClientTransactionRecord & {
+  rowNumber?: number;
+  transactionTypeLabel: string;
+  _chargeIndex?: number;
+  _chargeName?: string;
+  _chargeAmount?: number;
+  _groupSize?: number;
+};
+
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps) {
+  const router = useRouter();
   // If loanId is provided, fetch repayment schedule, otherwise fetch transactions
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const queryString = useMemo(() => {
+    if (loanId) return "";
+    const params = new URLSearchParams();
+    if (fromDate) params.set("from", fromDate);
+    if (toDate) params.set("to", toDate);
+    const query = params.toString();
+    return query ? `?${query}` : "";
+  }, [fromDate, toDate, loanId]);
+
   const endpoint = loanId
     ? `/api/fineract/loans/${loanId}?associations=all&exclude=guarantors,futureSchedule`
-    : `/api/fineract/clients/${clientId}/transactions`;
+    : `/api/fineract/clients/${clientId}/transactions${queryString}`;
 
   const { data, error, isLoading } = useSWR(endpoint, fetcher);
 
@@ -331,14 +407,8 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
 
         baseHeaders.push('Outstanding');
 
-        // Calculate column spans for header groups
-        const hasWaived = (repaymentSchedule.totalWaived || 0) > 0;
-        const loanBalanceCols = 2; // #, Days
-        const totalCostCols = 3; // Date, Paid Date, Balance Of Loan
-        const installmentCols = hasWaived ? 9 : 8; // Principal Due through Outstanding
-
         // Fix header alignment - based on the actual column structure
-        let headerGroups = [
+        const headerGroups = [
           { content: '', colSpan: 4 }, // #, Days, Date, Paid Date (no header)
           { content: 'Loan Amount and Balance', colSpan: 2 }, // Balance Of Loan, Principal Due
           { content: 'Total Cost of Loan', colSpan: 3 }, // Interest, Fees, Penalties
@@ -391,16 +461,16 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
             13: { halign: 'right' } // Outstanding
           },
           margin: { left: 15, right: 15 },
-          didParseCell: function (data: any) {
+          didParseCell: function (data: { row: { index: number }; cell: { styles: { fontStyle?: string; fillColor?: number[] } } }) {
             // Style the totals row
             if (data.row.index === tableData.length - 1) {
               data.cell.styles.fontStyle = 'bold';
               data.cell.styles.fillColor = [243, 244, 246]; // Light gray background
             }
           },
-          didDrawPage: function (data: any) {
+          didDrawPage: function (data: { pageNumber: number }) {
             // Add page number
-            const pageCount = (pdf as any).getNumberOfPages();
+            const pageCount = (pdf as jsPDF & { getNumberOfPages(): number }).getNumberOfPages();
             pdf.setFontSize(8);
             pdf.setTextColor(100, 100, 100);
             pdf.text(`Page ${data.pageNumber} of ${pageCount}`, 148, 205, { align: 'center' });
@@ -413,6 +483,331 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
       });
     });
   };
+
+  const transactions = (() => {
+    if (!data) return [];
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    if (data.pageItems && Array.isArray(data.pageItems)) {
+      return data.pageItems;
+    }
+
+    if (data.content && Array.isArray(data.content)) {
+      return data.content;
+    }
+
+    if (data.transactions && Array.isArray(data.transactions)) {
+      return data.transactions;
+    }
+
+    return [];
+  })() as ClientTransactionRecord[];
+
+  const getChargeName = (
+    charge: NonNullable<TransactionLike["loanChargePaidByList"]>[number]
+  ) => {
+    const rawName =
+      charge?.chargeName ||
+      charge?.name ||
+      charge?.loanChargeName ||
+      charge?.charge?.name ||
+      "Charge";
+
+    return rawName
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char: string) => char.toUpperCase());
+  };
+
+  const displayTransactions = useMemo(() => {
+    const rows: DisplayRow[] = [];
+
+    transactions.forEach((transaction, index) => {
+      const baseRow: DisplayRow = {
+        ...transaction,
+        rowNumber: index + 1,
+        transactionTypeLabel: getDisplayedTransactionType(transaction),
+      };
+
+      const paidCharges = transaction.loanChargePaidByList;
+      const isMultiCharge =
+        transaction.type?.repaymentAtDisbursement &&
+        Array.isArray(paidCharges) &&
+        paidCharges.length > 1;
+
+      if (!isMultiCharge) {
+        rows.push(baseRow);
+        return;
+      }
+
+      paidCharges.forEach((charge, chargeIndex) => {
+        rows.push({
+          ...baseRow,
+          _chargeIndex: chargeIndex,
+          _chargeName: getChargeName(charge),
+          _chargeAmount: Number(charge.amount ?? 0),
+          _groupSize: paidCharges.length,
+          transactionTypeLabel:
+            chargeIndex === 0
+              ? getDisplayedTransactionType(transaction)
+              : getChargeName(charge),
+        });
+      });
+    });
+
+    return rows;
+  }, [transactions]);
+
+  const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
+    { columnId: "transactionTypeLabel", value: "all", type: "select" },
+  ]);
+
+  const transactionTypes = useMemo(() => {
+    return Array.from(
+      new Set(
+        displayTransactions
+          .map((transaction) => transaction.transactionTypeLabel)
+          .filter(Boolean)
+      )
+    )
+      .sort((a, b) => a.localeCompare(b))
+      .map((label) => ({ label, value: label }));
+  }, [displayTransactions]);
+
+  const isSubCharge = (row: DisplayRow) =>
+    row._chargeIndex !== undefined && row._chargeIndex > 0;
+
+  const getTransactionRef = (row: DisplayRow): string | undefined => {
+    if (
+      typeof row.transactionId === "string" &&
+      /^L\d+$/.test(row.transactionId)
+    ) {
+      return row.transactionId;
+    }
+    if (typeof row.id === "number") {
+      return `L${row.id}`;
+    }
+    if (typeof row.externalId === "string" && /^L\d+$/.test(row.externalId)) {
+      return row.externalId;
+    }
+    return undefined;
+  };
+
+  const columns: DataTableColumn<DisplayRow>[] = [
+    {
+      id: "rowNumber",
+      header: "#",
+      accessorKey: "rowNumber",
+      cell: ({ row }) =>
+        isSubCharge(row.original) ? null : (
+          <span className="font-medium">{row.original.rowNumber}</span>
+        ),
+      enableSorting: false,
+      enableHiding: false,
+    },
+    {
+      id: "loanAccountNo",
+      header: "Loan Account",
+      accessorKey: "loanAccountNo",
+      getExportValue: (row) => row.loanAccountNo,
+    },
+    {
+      id: "loanProductName",
+      header: "Loan Product",
+      accessorKey: "loanProductName",
+      getExportValue: (row) => row.loanProductName,
+    },
+    {
+      id: "officeName",
+      header: "Office",
+      accessorKey: "officeName",
+      getExportValue: (row) => row.officeName || "",
+    },
+    {
+      id: "sortDate",
+      header: "Transaction Date",
+      accessorKey: "sortDate",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <Calendar className="h-3 w-3" />
+          {formatDate(row.original.date)}
+        </div>
+      ),
+      getExportValue: (row) => formatDate(row.date),
+    },
+    {
+      id: "transactionTypeLabel",
+      header: "Transaction Type",
+      accessorKey: "transactionTypeLabel",
+      cell: ({ row }) => {
+        const transaction = row.original;
+        return (
+          <div className="flex items-center gap-2">
+            {transaction.type?.disbursement ? (
+              <ArrowDownLeft className="h-4 w-4 text-green-500" />
+            ) : transaction.type?.repayment ? (
+              <ArrowUpRight className="h-4 w-4 text-blue-500" />
+            ) : (
+              <DollarSign className="h-4 w-4 text-gray-500" />
+            )}
+            <Badge variant="outline" className="text-sm">
+              {transaction.transactionTypeLabel}
+            </Badge>
+          </div>
+        );
+      },
+      getExportValue: (row) => row.transactionTypeLabel,
+      filterType: "select",
+      filterOptions: transactionTypes,
+    },
+    {
+      id: "amount",
+      header: "Amount",
+      accessorKey: "amount",
+      cell: ({ row }) =>
+        formatCurrency(
+          row.original._chargeAmount !== undefined
+            ? row.original._chargeAmount
+            : row.original.amount,
+          orgCurrency
+        ),
+      getExportValue: (row) =>
+        formatCurrency(
+          row._chargeAmount !== undefined ? row._chargeAmount : row.amount,
+          orgCurrency
+        ),
+    },
+    {
+      id: "principalPortion",
+      header: "Principal",
+      accessorKey: "principalPortion",
+      cell: ({ row }) =>
+        formatCurrency(
+          row.original._groupSize ? 0 : row.original.principalPortion,
+          orgCurrency
+        ),
+      getExportValue: (row) =>
+        formatCurrency(row._groupSize ? 0 : row.principalPortion, orgCurrency),
+    },
+    {
+      id: "interestPortion",
+      header: "Interest",
+      accessorKey: "interestPortion",
+      cell: ({ row }) =>
+        formatCurrency(
+          row.original._groupSize ? 0 : row.original.interestPortion,
+          orgCurrency
+        ),
+      getExportValue: (row) =>
+        formatCurrency(row._groupSize ? 0 : row.interestPortion, orgCurrency),
+    },
+    {
+      id: "feeChargesPortion",
+      header: "Fees",
+      accessorKey: "feeChargesPortion",
+      cell: ({ row }) =>
+        formatCurrency(
+          row.original._chargeAmount !== undefined
+            ? row.original._chargeAmount
+            : row.original.feeChargesPortion,
+          orgCurrency
+        ),
+      getExportValue: (row) =>
+        formatCurrency(
+          row._chargeAmount !== undefined
+            ? row._chargeAmount
+            : row.feeChargesPortion,
+          orgCurrency
+        ),
+    },
+    {
+      id: "penaltyChargesPortion",
+      header: "Penalties",
+      accessorKey: "penaltyChargesPortion",
+      cell: ({ row }) =>
+        formatCurrency(
+          row.original._groupSize ? 0 : row.original.penaltyChargesPortion,
+          orgCurrency
+        ),
+      getExportValue: (row) =>
+        formatCurrency(row._groupSize ? 0 : row.penaltyChargesPortion, orgCurrency),
+    },
+    {
+      id: "outstandingLoanBalance",
+      header: "Loan Balance",
+      accessorKey: "outstandingLoanBalance",
+      cell: ({ row }) =>
+        formatCurrency(
+          isSubCharge(row.original) ? 0 : row.original.outstandingLoanBalance,
+          orgCurrency
+        ),
+      getExportValue: (row) =>
+        formatCurrency(
+          isSubCharge(row) ? 0 : row.outstandingLoanBalance,
+          orgCurrency
+        ),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => {
+        const transaction = row.original;
+
+        if (isSubCharge(transaction) || !transaction.id) {
+          return <span className="text-muted-foreground text-xs">—</span>;
+        }
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(`/clients/${clientId}/loans/${transaction.loanId}`)
+                }
+              >
+                View Loan
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(
+                    `/clients/${clientId}/loans/${transaction.loanId}/transactions/${transaction.id}`
+                  )
+                }
+              >
+                View Transaction
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  const ref = getTransactionRef(transaction);
+                  if (!ref) {
+                    alert("No valid transaction reference found for this row");
+                    return;
+                  }
+
+                  router.push(
+                    `/clients/${clientId}/loans/${transaction.loanId}/journal-entries?transactionId=${encodeURIComponent(ref)}`
+                  );
+                }}
+              >
+                View Journal Entry
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+      enableSorting: false,
+      enableHiding: false,
+    },
+  ];
 
   if (isLoading) {
     return (
@@ -636,29 +1031,6 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
     );
   }
 
-  // Original transaction history code for when no loanId is provided
-  const transactions = (() => {
-    if (!data) return [];
-
-    if (Array.isArray(data)) {
-      return data;
-    }
-
-    if (data.pageItems && Array.isArray(data.pageItems)) {
-      return data.pageItems;
-    }
-
-    if (data.content && Array.isArray(data.content)) {
-      return data.content;
-    }
-
-    if (data.transactions && Array.isArray(data.transactions)) {
-      return data.transactions;
-    }
-
-    return [];
-  })();
-
   return (
     <Card>
       <CardHeader>
@@ -669,66 +1041,107 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
       </CardHeader>
       <CardContent>
         {transactions.length === 0 ? (
-          <div className="text-center py-8">
-            <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">
-              No transactions found for this client
-            </p>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-end">
+              <div className="grid gap-2">
+                <Label htmlFor="client-transactions-from-date">From date</Label>
+                <Input
+                  id="client-transactions-from-date"
+                  type="date"
+                  value={fromDate}
+                  onChange={(event) => setFromDate(event.target.value)}
+                  className="w-full md:w-44"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="client-transactions-to-date">To date</Label>
+                <Input
+                  id="client-transactions-to-date"
+                  type="date"
+                  value={toDate}
+                  onChange={(event) => setToDate(event.target.value)}
+                  className="w-full md:w-44"
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFromDate("");
+                  setToDate("");
+                }}
+                disabled={!fromDate && !toDate}
+                className="md:self-end"
+              >
+                <X className="mr-2 h-4 w-4" />
+                Clear dates
+              </Button>
+            </div>
+            <div className="text-center py-8">
+              <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                No transactions found for this client
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Principal</TableHead>
-                  <TableHead>Interest</TableHead>
-                  <TableHead>Balance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.map((transaction: any, index: number) => (
-                  <TableRow key={transaction.id || `transaction-${index}`}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-3 w-3" />
-                        {formatDate(transaction.date)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {transaction.type?.disbursement ? (
-                          <ArrowDownLeft className="h-4 w-4 text-green-500" />
-                        ) : transaction.type?.repayment ? (
-                          <ArrowUpRight className="h-4 w-4 text-blue-500" />
-                        ) : (
-                          <DollarSign className="h-4 w-4 text-gray-500" />
-                        )}
-                        <Badge variant="outline" className="text-sm">
-                          {transaction.type?.value || "Unknown"}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">
-                        {formatCurrency(transaction.amount)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {formatCurrency(transaction.principalPortion)}
-                    </TableCell>
-                    <TableCell>
-                      {formatCurrency(transaction.interestPortion)}
-                    </TableCell>
-                    <TableCell>
-                      {formatCurrency(transaction.outstandingLoanBalance)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-end">
+              <div className="grid gap-2">
+                <Label htmlFor="client-transactions-from-date">From date</Label>
+                <Input
+                  id="client-transactions-from-date"
+                  type="date"
+                  value={fromDate}
+                  onChange={(event) => setFromDate(event.target.value)}
+                  className="w-full md:w-44"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="client-transactions-to-date">To date</Label>
+                <Input
+                  id="client-transactions-to-date"
+                  type="date"
+                  value={toDate}
+                  onChange={(event) => setToDate(event.target.value)}
+                  className="w-full md:w-44"
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFromDate("");
+                  setToDate("");
+                }}
+                disabled={!fromDate && !toDate}
+                className="md:self-end"
+              >
+                <X className="mr-2 h-4 w-4" />
+                Clear dates
+              </Button>
+            </div>
+
+            <GenericDataTable<DisplayRow>
+              data={displayTransactions}
+              columns={columns}
+              searchPlaceholder="Search transactions..."
+              enablePagination={true}
+              enableColumnVisibility={false}
+              enableExport={true}
+              enableFilters={true}
+              pageSize={10}
+              tableId="client-transactions-table"
+              exportFileName={`client-${clientId}-transactions`}
+              emptyMessage="No transactions found for this client"
+              customFilters={customFilters}
+              onFilterChange={setCustomFilters}
+              defaultSorting={[{ id: "sortDate", desc: true }]}
+              searchResultInfo={`Showing ${displayTransactions.length} transaction${
+                displayTransactions.length === 1 ? "" : "s"
+              } across ${data?.loanCount ?? new Set(transactions.map((transaction) => transaction.loanId)).size} loan${
+                (data?.loanCount ?? new Set(transactions.map((transaction) => transaction.loanId)).size) === 1 ? "" : "s"
+              }`}
+              className="h-full"
+            />
           </div>
         )}
       </CardContent>

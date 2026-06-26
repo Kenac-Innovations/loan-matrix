@@ -1,89 +1,183 @@
-import { NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { NextRequest, NextResponse } from "next/server";
+import { fetchFineractAPI } from "@/lib/api";
 
-/**
- * GET /api/fineract/clients/[id]/transactions
- * Gets transactions for a specific client
- */
+type LoanAccountRef = {
+  id?: number;
+};
+
+type TransactionLike = {
+  id?: number;
+  officeName?: string;
+  externalId?: string;
+  date?: string | number[];
+  manuallyReversed?: boolean;
+  type?: {
+    value?: string;
+    disbursement?: boolean;
+    repayment?: boolean;
+    repaymentAtDisbursement?: boolean;
+    accrual?: boolean;
+    code?: string;
+  };
+  amount?: number;
+  principalPortion?: number;
+  interestPortion?: number;
+  feeChargesPortion?: number;
+  penaltyChargesPortion?: number;
+  outstandingLoanBalance?: number;
+  transactionId?: string;
+  loanChargePaidByList?: Array<{
+    amount?: number;
+    chargeName?: string;
+    name?: string;
+    loanChargeName?: string;
+    charge?: {
+      name?: string;
+    };
+  }>;
+};
+
+type LoanWithTransactions = {
+  id?: number;
+  accountNo?: string;
+  loanProductName?: string;
+  loanProductDescription?: string;
+  transactions?: TransactionLike[];
+};
+
+type AggregatedClientTransaction = TransactionLike & {
+  loanId: number;
+  loanAccountNo: string;
+  loanProductName: string;
+  sortDate: number;
+};
+
+function getTransactionTimestamp(
+  value: string | number[] | undefined
+): number | null {
+  if (!value) return null;
+
+  if (Array.isArray(value) && value.length >= 3) {
+    const [year, month, day] = value;
+    return new Date(year, month - 1, day).getTime();
+  }
+
+  if (typeof value === "string") {
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
+}
+
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const clientId = Number(id);
+
+    if (!Number.isFinite(clientId)) {
+      return NextResponse.json({ error: "Invalid client ID" }, { status: 400 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const offset = searchParams.get('offset') || '0';
-    const limit = searchParams.get('limit') || '20';
+    const fromDate = searchParams.get("from");
+    const toDate = searchParams.get("to");
 
-    console.log(`Fetching transactions for client ${id} with offset=${offset}, limit=${limit}`);
+    const fromTimestamp = fromDate
+      ? new Date(`${fromDate}T00:00:00`).getTime()
+      : null;
+    const toTimestamp = toDate
+      ? new Date(`${toDate}T23:59:59.999`).getTime()
+      : null;
 
-    // Try different possible Fineract endpoints for client transactions
-    let data;
-    let error;
-    
-    // First try the standard transactions endpoint with client filter
-    try {
-      const endpoint = `/loans/transactions?clientId=${id}&offset=${offset}&limit=${limit}`;
-      console.log(`Trying endpoint: ${endpoint}`);
-      data = await fetchFineractAPI(endpoint, { authMode: "service" });
-      console.log('First endpoint succeeded');
-    } catch (e: any) {
-      error = e;
-      console.log('First endpoint failed:', e.message);
-      
-      // Try alternative endpoint
-      try {
-        const endpoint = `/clients/${id}/transactions?offset=${offset}&limit=${limit}`;
-        console.log(`Trying alternative endpoint: ${endpoint}`);
-        data = await fetchFineractAPI(endpoint, { authMode: "service" });
-        console.log('Alternative endpoint succeeded');
-      } catch (e2: any) {
-        error = e2;
-        console.log('Alternative endpoint failed:', e2.message);
-        
-        // Try the general loans transactions endpoint
-        try {
-          const endpoint = `/loans/transactions?offset=${offset}&limit=${limit}`;
-          console.log(`Trying general loans endpoint: ${endpoint}`);
-          data = await fetchFineractAPI(endpoint, { authMode: "service" });
-          
-          // Filter by client ID if we get all transactions
-          if (data && Array.isArray(data.pageItems)) {
-            data.pageItems = data.pageItems.filter((transaction: any) => transaction.clientId == id);
+    const accountsData = await fetchFineractAPI(`/clients/${clientId}/accounts`, {
+      authMode: "service",
+      cache: "no-store",
+    });
+
+    const loanAccounts: LoanAccountRef[] = Array.isArray(accountsData?.loanAccounts)
+      ? accountsData.loanAccounts
+      : [];
+
+    if (loanAccounts.length === 0) {
+      return NextResponse.json({
+        pageItems: [],
+        totalRecords: 0,
+        loanCount: 0,
+        appliedFilters: { from: fromDate, to: toDate },
+      });
+    }
+
+    const loans = (
+      await Promise.all(
+        loanAccounts.map(async (loanAccount) => {
+          if (!loanAccount?.id) return null;
+
+          try {
+            return (await fetchFineractAPI(
+              `/loans/${loanAccount.id}?associations=transactions`,
+              {
+                authMode: "service",
+                cache: "no-store",
+              }
+            )) as LoanWithTransactions;
+          } catch (error) {
+            console.warn(
+              `Failed to fetch transactions for loan ${loanAccount.id}:`,
+              error
+            );
+            return null;
           }
-          console.log('General loans endpoint succeeded');
-        } catch (e3: any) {
-          error = e3;
-          console.log('All endpoints failed:', e3.message);
-          throw e3;
-        }
+        })
+      )
+    ).filter((loan): loan is LoanWithTransactions => Boolean(loan?.id));
+
+    const transactions: AggregatedClientTransaction[] = [];
+
+    for (const loan of loans) {
+      const loanId = Number(loan.id);
+      const loanAccountNo = loan.accountNo || String(loan.id || "");
+      const loanProductName =
+        loan.loanProductName || loan.loanProductDescription || "Loan";
+
+      for (const transaction of loan.transactions || []) {
+        const sortDate = getTransactionTimestamp(transaction.date);
+        if (sortDate == null) continue;
+
+        if (fromTimestamp != null && sortDate < fromTimestamp) continue;
+        if (toTimestamp != null && sortDate > toTimestamp) continue;
+
+        transactions.push({
+          ...transaction,
+          loanId,
+          loanAccountNo,
+          loanProductName,
+          sortDate,
+        });
       }
     }
-    
-    return NextResponse.json(data);
-  } catch (error: any) {
-    console.error('Error fetching client transactions:', error);
-    
-    // Provide more specific error messages based on the error type
-    let errorMessage = 'Unknown error';
-    let statusCode = 500;
-    
-    if (error.message?.includes('No access token available')) {
-      errorMessage = 'Authentication required - please log in';
-      statusCode = 401;
-    } else if (error.message?.includes('API error')) {
-      errorMessage = `API Error: ${error.message}`;
-      statusCode = error.status || 500;
-    } else {
-      errorMessage = error.message || 'Failed to fetch client transactions';
-    }
-    
+
+    transactions.sort((a, b) => {
+      if (b.sortDate !== a.sortDate) return b.sortDate - a.sortDate;
+      if ((b.loanId || 0) !== (a.loanId || 0)) return (b.loanId || 0) - (a.loanId || 0);
+      return (b.id || 0) - (a.id || 0);
+    });
+
+    return NextResponse.json({
+      pageItems: transactions,
+      totalRecords: transactions.length,
+      loanCount: loans.length,
+      appliedFilters: { from: fromDate, to: toDate },
+    });
+  } catch (error) {
+    console.error("Error fetching client transactions:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { 
-        error: errorMessage,
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
-      },
-      { status: statusCode }
+      { error: message || "Failed to fetch client transactions" },
+      { status: 500 }
     );
   }
 }
