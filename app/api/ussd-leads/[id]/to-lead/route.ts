@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
+import {
+  buildLeadClientBackfillData,
+  buildLeadDataFromUssdApplication,
+  getUssdLeadLookupExternalIds,
+} from '@/lib/ussd-lead-conversion';
+import { resolveUssdApplicationFineractClient } from '@/lib/ussd-fineract-client';
 
 /**
  * POST /api/ussd-leads/[id]/to-lead
@@ -26,53 +32,58 @@ export async function POST(
       return NextResponse.json({ error: 'Application not found' }, { status: 404 });
     }
 
-    // Attempt to find existing lead by externalId/reference mapping to avoid duplicates
+    const initialStage = await prisma.pipelineStage.findFirst({
+      where: {
+        tenantId: app.tenantId,
+        isInitialState: true,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    const initialStageId = initialStage?.id ?? null;
+
+    const lookupExternalIds = getUssdLeadLookupExternalIds(app);
+
+    // Attempt to find existing lead by the stable external ids we know for this applicant.
     const existing = await prisma.lead.findFirst({
       where: {
         tenantId: app.tenantId,
-        OR: [
-          { externalId: app.referenceNumber },
-          { externalId: app.messageId },
-        ],
+        OR: lookupExternalIds.map((externalId) => ({ externalId })),
       },
     });
     if (existing) {
+      if (!existing.fineractClientId || !existing.clientCreatedInFineract) {
+        const fineractClient = await resolveUssdApplicationFineractClient(app);
+        const backfill = buildLeadClientBackfillData(app, fineractClient);
+        await prisma.lead.update({
+          where: { id: existing.id },
+          data: {
+            ...backfill,
+            ...(existing.currentStageId == null && initialStageId
+              ? { currentStageId: initialStageId }
+              : {}),
+          },
+        });
+      } else if (existing.currentStageId == null && initialStageId) {
+        await prisma.lead.update({
+          where: { id: existing.id },
+          data: { currentStageId: initialStageId },
+        });
+      }
+
       return NextResponse.json({ success: true, leadId: existing.id, existed: true });
     }
-
-    // Map full name to first/last (best-effort)
-    const parts = (app.userFullName || '').trim().split(/\s+/);
-    const firstname = parts[0] || '';
-    const lastname = parts.slice(1).join(' ') || undefined;
 
     // Resolve current user for required Lead.userId
     const session = await getSession();
     const currentUserId = session?.user?.id || 'system';
+    const fineractClient = await resolveUssdApplicationFineractClient(app);
 
-    // Create a new Lead using available USSD fields
+    // Create a new lead already linked to the existing Fineract client when Rabbit provided it.
     const lead = await prisma.lead.create({
       data: {
-        tenantId: app.tenantId,
-        userId: currentUserId,
-        status: 'DRAFT',
-        externalId: app.referenceNumber || app.messageId,
-        firstname,
-        lastname,
-        mobileNo: app.userPhoneNumber,
-        requestedAmount: app.principalAmount,
-        loanTerm: app.loanTermMonths,
-        // Optional hints
-        bankName: app.bankName || undefined,
-        accountNumber: app.bankAccountNumber || undefined,
-        officeName: app.branchName || undefined,
-        // Store source information in stateMetadata for traceability
-        stateMetadata: {
-          source: 'USSD',
-          applicationId: app.loanApplicationUssdId,
-          messageId: app.messageId,
-          referenceNumber: app.referenceNumber,
-          payoutMethod: app.payoutMethod,
-        },
+        ...buildLeadDataFromUssdApplication(app, currentUserId, fineractClient),
+        ...(initialStageId ? { currentStageId: initialStageId } : {}),
       },
       select: { id: true },
     });
@@ -83,6 +94,3 @@ export async function POST(
     return NextResponse.json({ error: error.message || 'Unknown error' }, { status: 500 });
   }
 }
-
-
-

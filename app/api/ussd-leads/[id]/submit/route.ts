@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fetchFineractAPI } from '@/lib/api';
 import { format } from 'date-fns';
-import { sendLoanStatusSms } from '@/lib/notification-service';
+import {
+  buildLeadClientBackfillData,
+  buildUssdLoanPayloadFromTemplate,
+  resolveUssdLoanExternalId,
+} from '@/lib/ussd-lead-conversion';
+import { resolveUssdApplicationFineractClient } from '@/lib/ussd-fineract-client';
 
 /**
  * POST /api/ussd-leads/[id]/submit
@@ -30,6 +35,8 @@ export async function POST(
       // Ignore malformed optional payloads.
     }
 
+    const leadId = typeof incoming.leadId === "string" ? incoming.leadId : null;
+
     // Load application by loanApplicationUssdId
     const app = await prisma.ussdLoanApplication.findFirst({
       where: { loanApplicationUssdId: applicationId },
@@ -49,12 +56,15 @@ export async function POST(
     };
     baseDate = coerceValidDate(new Date(baseDate));
 
+    let fineractClient: Record<string, any> | null = null;
+
     // Align with client's activation date to satisfy domain rule
     if (app.loanMatrixClientId) {
       try {
         const client = await fetchFineractAPI(
           `/clients/${app.loanMatrixClientId}`
         );
+        fineractClient = client;
         const activationArr = client?.timeline?.activationDate as
           | number[]
           | undefined;
@@ -88,44 +98,27 @@ export async function POST(
       dateStr,
     });
 
-    const clampedRepayments = Math.max(3, Math.min(24, app.loanTermMonths ?? 6));
+    const stableExternalId =
+      resolveUssdLoanExternalId({
+        leadId,
+        applicationRecordId: app.id,
+        referenceNumber: app.referenceNumber,
+        messageId: app.messageId,
+      }) ?? undefined;
 
-    const repaymentEvery = 1; // months per installment
-    const loanTermFrequency = clampedRepayments * repaymentEvery; // align term with repayments
+    const productTemplate = await fetchFineractAPI(
+      `/loanproducts/${app.loanMatrixLoanProductId}?template=true`,
+      { authMode: 'service' }
+    );
 
-    const payload: Record<string, unknown> = {
-      clientId: app.loanMatrixClientId,
-      productId: app.loanMatrixLoanProductId,
-      principal: app.principalAmount,
-      loanTermFrequency,
-      loanTermFrequencyType: 2, // Months
-      numberOfRepayments: clampedRepayments,
-      repaymentEvery,
-      repaymentFrequencyType: 2, // Months
-      interestRatePerPeriod: 7, // default; adjust if you have product rates
-      interestRateFrequencyType: 2, // Per month
-      interestType: 0, // Flat
-      amortizationType: 1, // Equal installments
-      interestCalculationPeriodType: 1, // Same as repayment period
-      transactionProcessingStrategyCode: 'creocore-strategy',
-      submittedOnDate: dateStr,
-      expectedDisbursementDate: dateStr,
-      locale: 'en',
-      dateFormat: 'yyyy-MM-dd',
-      // Prefer provided leadId, else use the USSD application's primary key `id`,
-      // then fall back to referenceNumber or messageId
-      externalId:
-        (app.id ? String(app.id) : undefined) ||
-        (typeof incoming.leadId === "string" ? incoming.leadId : undefined) ||
-        app.referenceNumber ||
-        app.messageId ||
-        undefined,
-      allowPartialPeriodInterestCalcualtion: false,
-      isEqualAmortization: false,
-      charges: [],
-      collateral: [],
-      loanType: 'individual',
-    };
+    const payload = buildUssdLoanPayloadFromTemplate(
+      app,
+      productTemplate as Record<string, unknown>,
+      {
+        dateStr,
+        externalId: stableExternalId,
+      }
+    );
 
     // POST to Fineract /loans
     const result = await fetchFineractAPI('/loans', {
@@ -137,42 +130,56 @@ export async function POST(
     if (result && result.resourceId) {
       const loanId = result.resourceId;
       
-      // Update the loan with the external ID set to the loan ID
-      try {
-        await fetchFineractAPI(`/loans/${loanId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            externalId: String(loanId),
-            locale: 'en',
-            dateFormat: 'yyyy-MM-dd',
-          }),
-        });
-        
-        console.log(`Updated loan ${loanId} with external ID set to loan ID`);
-      } catch (updateError) {
-        console.error('Failed to update loan external ID:', updateError);
-        // Don't fail the entire operation if external ID update fails
+      if (stableExternalId) {
+        try {
+          await fetchFineractAPI(`/loans/${loanId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              externalId: stableExternalId,
+              locale: 'en',
+              dateFormat: 'yyyy-MM-dd',
+            }),
+          });
+          
+          console.log(`Updated loan ${loanId} with stable external ID ${stableExternalId}`);
+        } catch (updateError) {
+          console.error('Failed to update loan external ID:', updateError);
+          // Don't fail the entire operation if external ID update fails
+        }
       }
 
-      // Send SMS: loan submitted, pending approval (best-effort)
-      // if (app.userPhoneNumber) {
-      //   void (async () => {
-      //     const tenant = await prisma.tenant.findUnique({
-      //       where: { id: app.tenantId },
-      //       select: { slug: true },
-      //     });
-      //     await sendLoanStatusSms({
-      //       type: "pending_approval",
-      //       clientName: app.userFullName || "Customer",
-      //       phone: app.userPhoneNumber,
-      //       amount: Number(app.principalAmount) || 0,
-      //       tenantId: tenant?.slug,
-      //     });
-      //   })().catch((smsError) => {
-      //     console.error("Failed to send pending-approval SMS:", smsError);
-      //   });
-      // }
+      if (leadId) {
+        const existingLead = await prisma.lead.findUnique({
+          where: { id: leadId },
+          select: { stateMetadata: true },
+        });
+
+        const resolvedClient =
+          fineractClient ?? (await resolveUssdApplicationFineractClient(app));
+        const backfill = buildLeadClientBackfillData(app, resolvedClient);
+        const {
+          stateMetadata: backfillStateMetadata,
+          ...backfillFields
+        } = backfill as Record<string, unknown>;
+
+        await prisma.lead.update({
+          where: { id: leadId },
+          data: {
+            ...backfillFields,
+            fineractLoanId: loanId,
+            loanSubmittedToFineract: true,
+            loanSubmissionDate: new Date(),
+            stateMetadata: {
+              ...((existingLead?.stateMetadata as Record<string, unknown>) || {}),
+              ...((backfillStateMetadata as Record<string, unknown>) || {}),
+              loanCreatedAt: new Date().toISOString(),
+              loanExternalId: stableExternalId ?? null,
+              loanId,
+            },
+          },
+        });
+      }
     }
 
     return NextResponse.json({ success: true, coreResponse: result });
