@@ -3,9 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { getFineractBaseUrl } from "@/lib/fineract-base-url";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { buildLeadClientBackfillData } from "@/lib/ussd-lead-conversion";
+import { resolveUssdApplicationFineractClient } from "@/lib/ussd-fineract-client";
 
-const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw";
+const FINERACT_BASE_URL = getFineractBaseUrl();
 
 /**
  * GET /api/leads/[id]/complete-details
@@ -40,7 +43,7 @@ export async function GET(
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    const lead = await prisma.lead.findFirst({
+    let lead = await prisma.lead.findFirst({
       where: {
         id: leadId,
         tenantId: leadTenant.tenantId,
@@ -96,6 +99,78 @@ export async function GET(
       userId: lead.userId,
       createdByUserName: lead.createdByUserName,
     });
+
+    const currentStateMetadata =
+      (lead.stateMetadata as Record<string, unknown> | null) || {};
+    const ussdApplicationId =
+      typeof currentStateMetadata.applicationId === "number"
+        ? currentStateMetadata.applicationId
+        : typeof currentStateMetadata.applicationId === "string"
+        ? Number(currentStateMetadata.applicationId)
+        : null;
+    const ussdReferenceNumber =
+      typeof currentStateMetadata.referenceNumber === "string"
+        ? currentStateMetadata.referenceNumber
+        : null;
+
+    if (
+      !lead.fineractClientId &&
+      currentStateMetadata.source === "USSD" &&
+      (ussdApplicationId || ussdReferenceNumber)
+    ) {
+      try {
+        let ussdApplication = null;
+
+        if (typeof ussdApplicationId === "number" && Number.isFinite(ussdApplicationId)) {
+          ussdApplication = await prisma.ussdLoanApplication.findFirst({
+            where: { loanApplicationUssdId: ussdApplicationId },
+          });
+        }
+
+        if (!ussdApplication && ussdReferenceNumber) {
+          ussdApplication = await prisma.ussdLoanApplication.findFirst({
+            where: {
+              tenantId: lead.tenantId,
+              referenceNumber: ussdReferenceNumber,
+            },
+          });
+        }
+
+        if (ussdApplication) {
+          const recoveredClient =
+            await resolveUssdApplicationFineractClient(ussdApplication);
+
+          if (recoveredClient) {
+            const backfill = buildLeadClientBackfillData(
+              ussdApplication,
+              recoveredClient
+            ) as Record<string, unknown>;
+            const mergedStateMetadata = {
+              ...currentStateMetadata,
+              ...((backfill.stateMetadata as Record<string, unknown>) || {}),
+            };
+
+            const { stateMetadata: _ignored, ...backfillFields } = backfill;
+
+            await prisma.lead.update({
+              where: { id: lead.id },
+              data: {
+                ...backfillFields,
+                stateMetadata: mergedStateMetadata,
+              },
+            });
+
+            lead = {
+              ...lead,
+              ...(backfillFields as typeof lead),
+              stateMetadata: mergedStateMetadata,
+            };
+          }
+        }
+      } catch (recoveryError) {
+        console.error("Failed to recover linked USSD client data:", recoveryError);
+      }
+    }
 
     // Parse state metadata to get loan details
     const stateMetadata = lead.stateMetadata as any;

@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { error } from "console";
 import { transferClientToOfficeWithServiceAuth } from "./fineract-client-transfer-service";
+import { getFineractBaseUrl } from "./fineract-base-url";
 
 export interface FineractConfig {
   baseUrl: string;
@@ -1599,7 +1600,7 @@ export function getFineractService(
   // If we have an auth token, create a new instance with it
   if (authToken) {
     const config: FineractConfig = {
-      baseUrl: process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw",
+      baseUrl: getFineractBaseUrl(),
       username: "", // Not needed when using token
       password: "", // Not needed when using token
       tenantId: tenantId || process.env.FINERACT_TENANT_ID || "goodfellow",
@@ -1610,7 +1611,7 @@ export function getFineractService(
   // Fallback to singleton with env credentials
   if (!fineractService) {
     const config: FineractConfig = {
-      baseUrl: process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw",
+      baseUrl: getFineractBaseUrl(),
       username: process.env.FINERACT_USERNAME || "mifos",
       password: process.env.FINERACT_PASSWORD || "password",
       tenantId: tenantId || process.env.FINERACT_TENANT_ID || "goodfellow",
@@ -1696,7 +1697,7 @@ export async function getFineractServiceWithSystemAuth(): Promise<FineractAPISer
     const { getFineractTenantId } = await import("./fineract-tenant-service");
     const fineractTenantId = await getFineractTenantId();
     const config: FineractConfig = {
-      baseUrl: process.env.FINERACT_BASE_URL || "http://mifos-be.kenac.co.zw",
+      baseUrl: getFineractBaseUrl(),
       username: process.env.FINERACT_USERNAME || "mifos",
       password: process.env.FINERACT_PASSWORD || "password",
       tenantId: fineractTenantId,
