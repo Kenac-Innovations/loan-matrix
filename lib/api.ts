@@ -1,10 +1,11 @@
 import { getFineractTenantId as getFineractTenantIdFromService } from "./fineract-tenant-service";
+import { getFineractBaseUrl } from "./fineract-base-url";
 
 // Re-export for convenience
 export { getFineractTenantIdFromService as getFineractTenantId };
 
 // Get base URL from environment variable with fallback
-const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
+const baseUrl = getFineractBaseUrl();
 
 // Hardcoded service token for all API calls
 // TODO: Move to environment variable
