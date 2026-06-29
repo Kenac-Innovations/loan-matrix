@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCurrency } from "@/contexts/currency-context";
 import {
   Card,
@@ -16,13 +16,21 @@ import { RefreshCw, Receipt, ArrowRight } from "lucide-react";
 
 export default function SelectProductPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { locale } = useCurrency();
+  const queryString = searchParams?.toString();
+  const loanPath = queryString
+    ? `/leads/new/loan?${queryString}`
+    : "/leads/new/loan";
+  const rcfPath = queryString
+    ? `/leads/new/rcf?${queryString}`
+    : "/leads/new/rcf";
 
   useEffect(() => {
     if (!locale.hasRevolvingCredit) {
-      router.replace("/leads/new/loan");
+      router.replace(loanPath);
     }
-  }, [locale.hasRevolvingCredit, router]);
+  }, [locale.hasRevolvingCredit, loanPath, router]);
 
   if (!locale.hasRevolvingCredit) {
     return null;
@@ -41,7 +49,7 @@ export default function SelectProductPage() {
         {/* Term Loan */}
         <Card
           className="cursor-pointer border-2 hover:border-primary hover:shadow-md transition-all group"
-          onClick={() => router.push("/leads/new/loan")}
+          onClick={() => router.push(loanPath)}
         >
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -82,7 +90,7 @@ export default function SelectProductPage() {
         {/* RCF */}
         <Card
           className="cursor-pointer border-2 hover:border-primary hover:shadow-md transition-all group"
-          onClick={() => router.push("/leads/new/rcf")}
+          onClick={() => router.push(rcfPath)}
         >
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
