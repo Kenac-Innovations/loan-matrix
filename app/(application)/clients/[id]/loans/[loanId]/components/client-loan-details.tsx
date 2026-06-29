@@ -2391,7 +2391,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           ['Total Principal', formatCurrency(totalPrincipal, currencyCode)],
           ['Total Interest', formatCurrency(totalInterest, currencyCode)],
           ['Total Fees', formatCurrency(totalFees, currencyCode)],
-          ['Total Penalties', formatCurrency(totalPenalties, currencyCode)],
+          ['Total Arrears', formatCurrency(totalPenalties, currencyCode)],
           ['Currency', normalizeCurrencyCode(currencyCode)]
         ];
 
@@ -2447,7 +2447,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         autoTable.default(pdf, {
           startY: 80,
           head: [
-            ['#', 'Id', 'Office', 'External Id', 'Transaction Date', 'Transaction Type', 'Amount', 'Principal', 'Interest', 'Fees', 'Penalties', 'Loan Balance']
+            ['#', 'Id', 'Office', 'External Id', 'Transaction Date', 'Transaction Type', 'Amount', 'Principal', 'Interest', 'Fees', 'Arrears', 'Loan Balance']
           ],
           body: tableData,
           theme: 'grid',
@@ -3709,7 +3709,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                       <TableCell className="font-medium">{formatCurrency(loan.summary?.feeChargesOverdue ?? 0)}</TableCell>
                     </TableRow>
                     <TableRow className="border-b">
-                      <TableCell className="font-semibold">Penalties</TableCell>
+                      <TableCell className="font-semibold">Arrears</TableCell>
                       <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesCharged ?? 0)}</TableCell>
                       <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesPaid ?? 0)}</TableCell>
                       <TableCell className="font-medium">{formatCurrency(loan.summary?.penaltyChargesWaived ?? 0)}</TableCell>
@@ -5618,7 +5618,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="penaltyAmount">Penalty Amount</Label>
+                  <Label htmlFor="penaltyAmount">Arrears Amount</Label>
                   <Input
                     id="penaltyAmount"
                     type="number"
