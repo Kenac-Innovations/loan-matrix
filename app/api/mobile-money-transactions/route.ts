@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import {
   buildMobileMoneyTransactionLedger,
   getConfiguredMobileMoney,
@@ -20,6 +21,17 @@ export async function GET() {
       where: { tenantId: tenant.id },
       orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }],
     });
+    const createdByValues = Array.from(
+      new Set(
+        rows
+          .map((row) => row.createdBy?.trim())
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+    const numericCreatedByIds = createdByValues
+      .filter((value) => /^\d+$/.test(value))
+      .map((value) => Number.parseInt(value, 10))
+      .filter((value) => Number.isFinite(value) && value > 0);
 
     const loanIds = Array.from(
       new Set(
@@ -75,11 +87,76 @@ export async function GET() {
             },
           })
         : [];
+    const [userLogins, userRoles] =
+      numericCreatedByIds.length > 0
+        ? await Promise.all([
+            prisma.userLogin.findMany({
+              where: {
+                tenantId: tenant.id,
+                fineractUserId: { in: numericCreatedByIds },
+              },
+              select: {
+                fineractUserId: true,
+                username: true,
+              },
+            }),
+            prisma.userRole.findMany({
+              where: {
+                tenantId: tenant.id,
+                mifosUserId: { in: numericCreatedByIds },
+                isActive: true,
+              },
+              select: {
+                mifosUserId: true,
+                mifosUsername: true,
+              },
+            }),
+          ])
+        : [[], []];
 
     const nrcByLoanId = new Map<number, string>();
     const nrcByClientId = new Map<number, string>();
     const clientNameByLoanId = new Map<number, string>();
     const clientNameByClientId = new Map<number, string>();
+    const createdByDisplayNameByValue = new Map<string, string>();
+
+    if (numericCreatedByIds.length > 0) {
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const users = await fineractService.getUsers();
+
+        for (const user of users) {
+          const userId = Number(user?.id);
+          if (!Number.isFinite(userId) || !numericCreatedByIds.includes(userId)) {
+            continue;
+          }
+
+          const displayName =
+            [user?.firstname, user?.lastname].filter(Boolean).join(" ").trim() ||
+            user?.displayName?.trim() ||
+            user?.username?.trim() ||
+            `User ${userId}`;
+
+          createdByDisplayNameByValue.set(String(userId), displayName);
+        }
+      } catch (error) {
+        console.error("Error fetching Fineract users for mobile money transactions:", error);
+      }
+    }
+
+    for (const userLogin of userLogins) {
+      const key = String(userLogin.fineractUserId);
+      if (!createdByDisplayNameByValue.has(key) && userLogin.username?.trim()) {
+        createdByDisplayNameByValue.set(key, userLogin.username.trim());
+      }
+    }
+
+    for (const userRole of userRoles) {
+      const key = String(userRole.mifosUserId);
+      if (!createdByDisplayNameByValue.has(key) && userRole.mifosUsername?.trim()) {
+        createdByDisplayNameByValue.set(key, userRole.mifosUsername.trim());
+      }
+    }
 
     for (const lead of leads) {
       const normalizedExternalId = lead.externalId?.trim() || null;
@@ -153,6 +230,12 @@ export async function GET() {
         (typeof row.fineractClientId === "number"
           ? nrcByClientId.get(row.fineractClientId)
           : null) ??
+        null,
+      createdByDisplayName:
+        (row.createdBy?.trim()
+          ? createdByDisplayNameByValue.get(row.createdBy.trim())
+          : null) ??
+        row.createdBy?.trim() ??
         null,
       loanId: row.fineractLoanId ?? null,
     }));

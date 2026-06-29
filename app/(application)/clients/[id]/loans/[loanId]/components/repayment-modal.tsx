@@ -533,7 +533,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-sm">Penalties</span>
+                  <span className="text-sm">Arrears</span>
                   <span className="font-medium">
                     {formatCurrency(template.penaltyChargesPortion, template.currency.code)}
                   </span>
