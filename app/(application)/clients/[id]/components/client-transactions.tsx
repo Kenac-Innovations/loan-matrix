@@ -315,7 +315,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
         const summaryData = [
           ['Principal Amount', formatCurrency(repaymentSchedule.totalPrincipalExpected, currencyCode)],
           ['Total Interest', formatCurrency(repaymentSchedule.totalInterestCharged, currencyCode)],
-          ['Total Fees & Penalties', formatCurrency((repaymentSchedule.totalFeeChargesCharged || 0) + (repaymentSchedule.totalPenaltyChargesCharged || 0), currencyCode)],
+          ['Total Fees & Arrears', formatCurrency((repaymentSchedule.totalFeeChargesCharged || 0) + (repaymentSchedule.totalPenaltyChargesCharged || 0), currencyCode)],
           ['Total Repayment', formatCurrency(repaymentSchedule.totalRepaymentExpected, currencyCode)],
           ['Currency', normalizeCurrencyCode(currencyCode)]
         ];
@@ -397,7 +397,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
         // Prepare dynamic header
         const baseHeaders = [
           '#', 'Days', 'Date', 'Paid Date', 'Balance Of Loan',
-          'Principal Due', 'Interest', 'Fees', 'Penalties', 'Due',
+          'Principal Due', 'Interest', 'Fees', 'Arrears', 'Due',
           'Paid', 'In advance', 'Late'
         ];
 
@@ -913,7 +913,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
                       <TableHead className="font-semibold text-right">Principal Due</TableHead>
                       <TableHead className="font-semibold text-right">Interest</TableHead>
                       <TableHead className="font-semibold text-right">Fees</TableHead>
-                      <TableHead className="font-semibold text-right">Penalties</TableHead>
+                      <TableHead className="font-semibold text-right">Arrears</TableHead>
                       <TableHead className="font-semibold text-right">Due</TableHead>
                       <TableHead className="font-semibold text-right">Paid</TableHead>
                       <TableHead className="font-semibold text-right">In advance</TableHead>

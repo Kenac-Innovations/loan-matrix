@@ -77,6 +77,7 @@ interface MobileMoneyTransaction {
   currency: string;
   notes: string | null;
   createdBy: string;
+  createdByDisplayName?: string | null;
   status: string;
   canReverse: boolean;
   clientName?: string | null;
@@ -317,7 +318,7 @@ export default function MobileMoneyPage() {
         "Loan ID": transaction.loanId ?? "",
         "Loan Account No": transaction.loanAccountNo || "",
         Notes: transaction.notes || "",
-        By: transaction.createdBy || "",
+        By: transaction.createdByDisplayName || transaction.createdBy || "",
         Amount: transaction.signedAmount,
         Currency: transaction.currency,
         Balance: transaction.runningBalance,
@@ -360,7 +361,8 @@ export default function MobileMoneyPage() {
           Currency: transaction.currency,
           Status: transaction.status,
           Notes: transaction.notes || "",
-          "Processed By": transaction.createdBy || "",
+          "Processed By":
+            transaction.createdByDisplayName || transaction.createdBy || "",
         }));
 
       if (provisioningRows.length === 0) {
@@ -723,7 +725,11 @@ export default function MobileMoneyPage() {
                           <TableCell className="max-w-[360px] truncate">
                             {transaction.notes || "—"}
                           </TableCell>
-                          <TableCell>{transaction.createdBy || "System"}</TableCell>
+                          <TableCell>
+                            {transaction.createdByDisplayName ||
+                              transaction.createdBy ||
+                              "System"}
+                          </TableCell>
                           <TableCell
                             className={`text-right font-medium ${amountClass}`}
                           >
