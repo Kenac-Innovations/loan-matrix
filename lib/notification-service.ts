@@ -199,9 +199,9 @@ export async function sendEmail(
     const tenantId = await resolveNotificationServiceTenantId(options?.tenantId);
     const payload = {
       tenantId,
-      emailAddresses: validEmails,
+      to: validEmails,
       subject,
-      html,
+      body: html,
       text: options?.text,
       fromEmail: options?.fromEmail || process.env.MFA_EMAIL_FROM,
       messageId:
