@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
     const delivery = await sendMfaChallengeMessages({
       tenantId: tenant.id,
       username: authUser.username,
+      tenantName: tenant.name,
       targets: deliveryTargets,
       code,
     });

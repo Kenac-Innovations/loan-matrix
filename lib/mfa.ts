@@ -34,6 +34,29 @@ function getMfaChannelLabel(channel: MfaChannel) {
   return channel === "sms" ? "SMS" : "email";
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getPublicBaseUrl() {
+  return (
+    process.env.NEXTAUTH_URL ||
+    process.env.APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    ""
+  ).replace(/\/$/, "");
+}
+
+function getKenacLogoUrl() {
+  const baseUrl = getPublicBaseUrl();
+  return baseUrl ? `${baseUrl}/kenac_logo.png` : "/kenac_logo.png";
+}
+
 type SerializedMfaAuthContext = {
   id: string;
   tenantId: string;
@@ -371,14 +394,103 @@ export function parseMfaAuthContext(
   };
 }
 
+export function buildMfaChallengeEmail(input: {
+  tenantName?: string | null;
+  username: string;
+  code: string;
+}) {
+  const trimmedTenantName = input.tenantName?.trim();
+  const tenantProductName = trimmedTenantName
+    ? `${trimmedTenantName} Loan Matrix`
+    : "Loan Matrix";
+  const safeTenantProductName = escapeHtml(tenantProductName);
+  const safeUsername = escapeHtml(input.username || "there");
+  const safeCode = escapeHtml(input.code);
+  const logoUrl = escapeHtml(getKenacLogoUrl());
+  const subject = `${tenantProductName} verification code`;
+  const text = [
+    `${tenantProductName}`,
+    "",
+    `Hello ${input.username || "there"},`,
+    "",
+    `Your verification code is ${input.code}.`,
+    `This code expires in ${MFA_EXPIRY_MINUTES} minutes.`,
+    "",
+    "Do not share this code. Kenac will never ask for this code.",
+  ].join("\n");
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${escapeHtml(subject)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;margin:0;padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dbeafe;box-shadow:0 18px 42px rgba(37,99,235,0.14);">
+            <tr>
+              <td style="background:#2563eb;background:linear-gradient(135deg,#2563eb 0%,#3b82f6 100%);padding:26px 30px 30px 30px;text-align:left;">
+                <img src="${logoUrl}" width="118" alt="Kenac" style="display:block;border:0;outline:none;text-decoration:none;max-width:118px;height:auto;margin-bottom:22px;">
+                <div style="font-size:13px;line-height:18px;letter-spacing:0.08em;text-transform:uppercase;font-weight:700;color:#bfdbfe;">Secure sign in</div>
+                <h1 style="margin:8px 0 0 0;font-size:24px;line-height:31px;font-weight:800;color:#ffffff;">${safeTenantProductName}</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 30px 10px 30px;">
+                <p style="margin:0 0 10px 0;font-size:16px;line-height:24px;color:#111827;">Hello ${safeUsername},</p>
+                <p style="margin:0;font-size:15px;line-height:23px;color:#4b5563;">Use this verification code to complete your Loan Matrix sign in.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:22px 30px 8px 30px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;">
+                  <tr>
+                    <td align="center" style="padding:24px 16px;">
+                      <div style="font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:0.12em;font-weight:700;color:#2563eb;margin-bottom:10px;">Verification code</div>
+                      <div style="font-size:32px;line-height:38px;letter-spacing:0.28em;font-weight:800;color:#111827;font-family:'SFMono-Regular',Consolas,'Liberation Mono',monospace;">${safeCode}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 30px 30px 30px;">
+                <p style="margin:0 0 14px 0;font-size:14px;line-height:22px;color:#374151;">This code expires in ${MFA_EXPIRY_MINUTES} minutes.</p>
+                <div style="border-left:4px solid #3b82f6;background:#f8fafc;border-radius:8px;padding:12px 14px;">
+                  <p style="margin:0;font-size:13px;line-height:20px;color:#475569;">Do not share this code. Kenac will never ask for this code.</p>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#f8fafc;padding:18px 30px;text-align:center;border-top:1px solid #e5e7eb;">
+                <p style="margin:0;font-size:12px;line-height:18px;color:#64748b;">If you did not request this code, contact your system administrator.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  return {
+    subject,
+    html,
+    text,
+  };
+}
+
 export async function sendMfaChallengeMessage(input: {
   tenantId: string;
   username: string;
   channel: MfaChannel;
   destination: string;
   code: string;
+  tenantName?: string | null;
 }) {
-  const { tenantId, username, channel, destination, code } = input;
+  const { tenantId, username, channel, destination, code, tenantName } = input;
   const message = `Your Loan Matrix ${MFA_CODE_LENGTH}-digit verification code is ${code}. It expires in ${MFA_EXPIRY_MINUTES} minutes.`;
 
   if (channel === "sms") {
@@ -388,12 +500,15 @@ export async function sendMfaChallengeMessage(input: {
     });
   }
 
-  const subject = "Your Loan Matrix verification code";
-  const html = `<p>Hello ${username},</p><p>Your Loan Matrix ${MFA_CODE_LENGTH}-digit verification code is <strong>${code}</strong>.</p><p>This code expires in ${MFA_EXPIRY_MINUTES} minutes.</p>`;
+  const email = buildMfaChallengeEmail({
+    tenantName,
+    username,
+    code,
+  });
 
-  return sendEmail([destination], subject, html, {
+  return sendEmail([destination], email.subject, email.html, {
     tenantId,
-    text: `Hello ${username},\n\n${message}`,
+    text: email.text,
     logLabel: "mfa-login-email",
   });
 }
@@ -401,6 +516,7 @@ export async function sendMfaChallengeMessage(input: {
 export async function sendMfaChallengeMessages(input: {
   tenantId: string;
   username: string;
+  tenantName?: string | null;
   targets: MfaDeliveryTarget[];
   code: string;
   sendMessage?: typeof sendMfaChallengeMessage;
@@ -415,6 +531,7 @@ export async function sendMfaChallengeMessages(input: {
           channel: target.channel,
           destination: target.destination,
           code: input.code,
+          tenantName: input.tenantName,
         });
 
         return {
@@ -525,7 +642,7 @@ async function getMfaChallengeDeliveryContext(
   const [tenant, userLogin] = await Promise.all([
     prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { settings: true },
+      select: { name: true, settings: true },
     }),
     getUserLoginByFineractUserId(tenantId, challenge.fineractUserId),
   ]);
@@ -540,6 +657,7 @@ async function getMfaChallengeDeliveryContext(
   return {
     configuredChannels: tenantMfaConfig.channels,
     destinations,
+    tenantName: tenant?.name,
     targets: resolveMfaDeliveryTargets({
       configuredChannels: tenantMfaConfig.channels,
       destinations,
@@ -649,6 +767,7 @@ export async function resendMfaChallenge(tenantId: string, challengeId: string) 
   const delivery = await sendMfaChallengeMessages({
     tenantId,
     username: updatedChallenge.username,
+    tenantName: deliveryContext.tenantName,
     targets: deliveryContext.targets,
     code,
   });

@@ -86,3 +86,27 @@ test("sends MFA challenge messages to every target and counts successful deliver
   assert.equal(result.successfulDeliveries, 1);
   assert.deepEqual(result.deliveredChannels, ["email"]);
 });
+
+test("builds a branded MFA email template with tenant name, logo, prominent OTP, and security copy", async () => {
+  process.env.DATABASE_URL ||= "postgresql://user:pass@localhost:5432/loan_matrix";
+  process.env.NEXTAUTH_URL = "https://app.kenacloanmatrix.com";
+
+  const { buildMfaChallengeEmail } = await import("../mfa");
+
+  const email = buildMfaChallengeEmail({
+    tenantName: "Goodfellow",
+    username: "alice",
+    code: "123456",
+  });
+
+  assert.equal(email.subject, "Goodfellow Loan Matrix verification code");
+  assert.match(email.html, /Goodfellow Loan Matrix/);
+  assert.match(email.html, /https:\/\/app\.kenacloanmatrix\.com\/kenac_logo\.png/);
+  assert.match(email.html, /123456/);
+  assert.match(email.html, /letter-spacing:\s*0\.28em/);
+  assert.match(email.html, /font-size:\s*32px/);
+  assert.match(email.html, /This code expires in 10 minutes/);
+  assert.match(email.html, /Kenac will never ask for this code/);
+  assert.match(email.text, /Goodfellow Loan Matrix/);
+  assert.match(email.text, /123456/);
+});
