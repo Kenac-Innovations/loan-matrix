@@ -43,20 +43,6 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-function getPublicBaseUrl() {
-  return (
-    process.env.NEXTAUTH_URL ||
-    process.env.APP_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    ""
-  ).replace(/\/$/, "");
-}
-
-function getKenacLogoUrl() {
-  const baseUrl = getPublicBaseUrl();
-  return baseUrl ? `${baseUrl}/kenac_logo.png` : "/kenac_logo.png";
-}
-
 type SerializedMfaAuthContext = {
   id: string;
   tenantId: string;
@@ -418,7 +404,6 @@ export function buildMfaChallengeEmail(input: {
   const safeTenantProductName = escapeHtml(tenantProductName);
   const safeUsername = escapeHtml(input.username || "there");
   const safeCode = escapeHtml(input.code);
-  const logoUrl = escapeHtml(getKenacLogoUrl());
   const subject = `${tenantProductName} verification code`;
   const text = [
     `${tenantProductName}`,
@@ -444,7 +429,6 @@ export function buildMfaChallengeEmail(input: {
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dbeafe;box-shadow:0 18px 42px rgba(37,99,235,0.14);">
             <tr>
               <td style="background:#2563eb;background:linear-gradient(135deg,#2563eb 0%,#3b82f6 100%);padding:26px 30px 30px 30px;text-align:left;">
-                <img src="${logoUrl}" width="118" alt="Kenac" style="display:block;border:0;outline:none;text-decoration:none;max-width:118px;height:auto;margin-bottom:22px;">
                 <div style="font-size:13px;line-height:18px;letter-spacing:0.08em;text-transform:uppercase;font-weight:700;color:#bfdbfe;">Secure sign in</div>
                 <h1 style="margin:8px 0 0 0;font-size:24px;line-height:31px;font-weight:800;color:#ffffff;">${safeTenantProductName}</h1>
               </td>

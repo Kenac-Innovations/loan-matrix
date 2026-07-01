@@ -131,7 +131,7 @@ test("sends MFA challenge messages to every target and counts successful deliver
   assert.deepEqual(result.deliveredChannels, ["email"]);
 });
 
-test("builds a branded MFA email template with tenant name, logo, prominent OTP, and security copy", async () => {
+test("builds a branded MFA email template with tenant name, no logo, prominent OTP, and security copy", async () => {
   process.env.DATABASE_URL ||= "postgresql://user:pass@localhost:5432/loan_matrix";
   process.env.NEXTAUTH_URL = "https://app.kenacloanmatrix.com";
 
@@ -145,7 +145,8 @@ test("builds a branded MFA email template with tenant name, logo, prominent OTP,
 
   assert.equal(email.subject, "Goodfellow Loan Matrix verification code");
   assert.match(email.html, /Goodfellow Loan Matrix/);
-  assert.match(email.html, /https:\/\/app\.kenacloanmatrix\.com\/kenac_logo\.png/);
+  assert.doesNotMatch(email.html, /kenac_logo\.png/);
+  assert.doesNotMatch(email.html, /<img\b/i);
   assert.match(email.html, /123456/);
   assert.match(email.html, /letter-spacing:\s*0\.28em/);
   assert.match(email.html, /font-size:\s*32px/);
