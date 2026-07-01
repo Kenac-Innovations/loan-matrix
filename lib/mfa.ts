@@ -25,6 +25,15 @@ const MFA_ALLOWED_CHANNELS: MfaChannel[] = ["email", "sms"];
 
 type MfaDestinations = Record<MfaChannel, string | null>;
 
+type MfaDeliveryTarget = {
+  channel: MfaChannel;
+  destination: string;
+};
+
+function getMfaChannelLabel(channel: MfaChannel) {
+  return channel === "sms" ? "SMS" : "email";
+}
+
 type SerializedMfaAuthContext = {
   id: string;
   tenantId: string;
@@ -98,9 +107,11 @@ export function getTenantMfaConfig(settings: unknown): {
       ? config.mfaChannels
       : [];
 
-  const channels = rawChannels.filter((channel): channel is MfaChannel =>
+  const configuredChannels = rawChannels.filter((channel): channel is MfaChannel =>
     MFA_ALLOWED_CHANNELS.includes(channel as MfaChannel)
   );
+  const channels =
+    configuredChannels.length > 0 ? configuredChannels : (["email"] as MfaChannel[]);
   const rawMaxAttempts = featureConfig.mfaMaxAttempts ?? config.mfaMaxAttempts;
   const parsedMaxAttempts =
     typeof rawMaxAttempts === "number"
@@ -144,6 +155,32 @@ export function getAvailableMfaChannels(
   return configuredChannels.filter((channel) => Boolean(destinations[channel]));
 }
 
+export function resolveMfaDeliveryTargets(input: {
+  configuredChannels: MfaChannel[];
+  destinations: MfaDestinations;
+}): MfaDeliveryTarget[] {
+  const seenChannels = new Set<MfaChannel>();
+
+  return input.configuredChannels.reduce<MfaDeliveryTarget[]>((targets, channel) => {
+    if (seenChannels.has(channel)) {
+      return targets;
+    }
+
+    seenChannels.add(channel);
+    const destination = input.destinations[channel];
+
+    if (!destination) {
+      return targets;
+    }
+
+    targets.push({
+      channel,
+      destination,
+    });
+    return targets;
+  }, []);
+}
+
 export function maskEmailAddress(email: string) {
   const trimmed = email.trim();
   const [localPart, domain] = trimmed.split("@");
@@ -171,6 +208,18 @@ export function maskMfaDestination(channel: MfaChannel, destination: string) {
   return channel === "email"
     ? maskEmailAddress(destination)
     : maskPhoneNumber(destination);
+}
+
+export function formatMfaDeliveryTargets(targets: MfaDeliveryTarget[]) {
+  return targets
+    .map(
+      (target) =>
+        `${getMfaChannelLabel(target.channel)} to ${maskMfaDestination(
+          target.channel,
+          target.destination
+        )}`
+    )
+    .join(", ");
 }
 
 export function buildMissingMfaContactMessage(input: {
@@ -349,6 +398,51 @@ export async function sendMfaChallengeMessage(input: {
   });
 }
 
+export async function sendMfaChallengeMessages(input: {
+  tenantId: string;
+  username: string;
+  targets: MfaDeliveryTarget[];
+  code: string;
+  sendMessage?: typeof sendMfaChallengeMessage;
+}) {
+  const sendMessage = input.sendMessage ?? sendMfaChallengeMessage;
+  const results = await Promise.all(
+    input.targets.map(async (target) => {
+      try {
+        const delivered = await sendMessage({
+          tenantId: input.tenantId,
+          username: input.username,
+          channel: target.channel,
+          destination: target.destination,
+          code: input.code,
+        });
+
+        return {
+          ...target,
+          delivered,
+        };
+      } catch (error) {
+        console.error(
+          `Failed to send MFA ${target.channel} notification:`,
+          error
+        );
+        return {
+          ...target,
+          delivered: false,
+        };
+      }
+    })
+  );
+  const deliveredTargets = results.filter((result) => result.delivered);
+
+  return {
+    results,
+    deliveredTargets,
+    deliveredChannels: deliveredTargets.map((target) => target.channel),
+    successfulDeliveries: deliveredTargets.length,
+  };
+}
+
 export async function invalidateActiveMfaChallenges(
   tenantId: string,
   fineractUserId: number
@@ -421,6 +515,38 @@ async function getTenantChallengeOrThrow(tenantId: string, challengeId: string) 
   return challenge;
 }
 
+async function getMfaChallengeDeliveryContext(
+  tenantId: string,
+  challenge: {
+    fineractUserId: number;
+    authContext: unknown;
+  }
+) {
+  const [tenant, userLogin] = await Promise.all([
+    prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    }),
+    getUserLoginByFineractUserId(tenantId, challenge.fineractUserId),
+  ]);
+  const tenantMfaConfig = getTenantMfaConfig(tenant?.settings);
+  const authContext = parseMfaAuthContext(challenge.authContext);
+  const destinations = resolveMfaDestinations({
+    email: userLogin?.email || authContext?.email,
+    phone: userLogin?.phone,
+    countryCode: userLogin?.countryCode,
+  });
+
+  return {
+    configuredChannels: tenantMfaConfig.channels,
+    destinations,
+    targets: resolveMfaDeliveryTargets({
+      configuredChannels: tenantMfaConfig.channels,
+      destinations,
+    }),
+  };
+}
+
 export async function getMfaChallengeSummary(tenantId: string, challengeId: string) {
   const challenge = await getTenantChallengeOrThrow(tenantId, challengeId);
 
@@ -437,6 +563,7 @@ export async function getMfaChallengeSummary(tenantId: string, challengeId: stri
     username: challenge.username,
     channel: challenge.channel as MfaChannel,
     maskedDestination: challenge.maskedDestination,
+    deliveryDescription: challenge.maskedDestination,
     expiresAt: challenge.expiresAt,
     resendAvailableAt: getMfaResendAvailableAt(challenge.lastSentAt),
     ...getMfaAttemptState(challenge),
@@ -489,6 +616,20 @@ export async function resendMfaChallenge(tenantId: string, challengeId: string) 
 
   const code = generateMfaCode();
   const expiresAt = getMfaExpiryDate();
+  const deliveryContext = await getMfaChallengeDeliveryContext(
+    tenantId,
+    challenge
+  );
+
+  if (deliveryContext.targets.length === 0) {
+    throw new MfaChallengeError(
+      buildMissingMfaContactMessage({
+        configuredChannels: deliveryContext.configuredChannels,
+        destinations: deliveryContext.destinations,
+      }),
+      400
+    );
+  }
 
   const updatedChallenge = await prisma.mfaChallenge.update({
     where: { id: challenge.id },
@@ -505,15 +646,14 @@ export async function resendMfaChallenge(tenantId: string, challengeId: string) 
     },
   });
 
-  const delivered = await sendMfaChallengeMessage({
+  const delivery = await sendMfaChallengeMessages({
     tenantId,
     username: updatedChallenge.username,
-    channel: updatedChallenge.channel as MfaChannel,
-    destination: updatedChallenge.destination,
+    targets: deliveryContext.targets,
     code,
   });
 
-  if (!delivered) {
+  if (delivery.successfulDeliveries === 0) {
     await prisma.mfaChallenge.update({
       where: { id: challenge.id },
       data: {
@@ -527,13 +667,31 @@ export async function resendMfaChallenge(tenantId: string, challengeId: string) 
     );
   }
 
+  const primaryDeliveredTarget = delivery.deliveredTargets[0];
+  if (!primaryDeliveredTarget) {
+    throw new MfaChallengeError(
+      "We could not resend the verification code. Please log in again or contact your system administrator for help.",
+      500
+    );
+  }
+
+  const deliveredChallenge = await prisma.mfaChallenge.update({
+    where: { id: challenge.id },
+    data: {
+      channel: primaryDeliveredTarget.channel,
+      destination: primaryDeliveredTarget.destination,
+      maskedDestination: formatMfaDeliveryTargets(delivery.deliveredTargets),
+    },
+  });
+
   return {
-    id: updatedChallenge.id,
-    channel: updatedChallenge.channel as MfaChannel,
-    maskedDestination: updatedChallenge.maskedDestination,
-    expiresAt: updatedChallenge.expiresAt,
-    resendAvailableAt: getMfaResendAvailableAt(updatedChallenge.lastSentAt),
-    ...getMfaAttemptState(updatedChallenge),
+    id: deliveredChallenge.id,
+    channel: deliveredChallenge.channel as MfaChannel,
+    maskedDestination: deliveredChallenge.maskedDestination,
+    deliveryDescription: deliveredChallenge.maskedDestination,
+    expiresAt: deliveredChallenge.expiresAt,
+    resendAvailableAt: getMfaResendAvailableAt(deliveredChallenge.lastSentAt),
+    ...getMfaAttemptState(deliveredChallenge),
   };
 }
 
