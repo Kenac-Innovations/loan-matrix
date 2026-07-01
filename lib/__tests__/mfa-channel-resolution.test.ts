@@ -94,12 +94,17 @@ test("builds login MFA destinations from UserLogin email only", async () => {
   );
 });
 
-test("login and resend MFA flows keep UserLogin as the single email source", () => {
+test("login, session, and resend MFA flows keep UserLogin as the single email source", () => {
   const startRoute = readRepoFile("app/api/auth/mfa/start/route.ts");
+  const authModule = readRepoFile("lib/auth.ts");
   const mfaModule = readRepoFile("lib/mfa.ts");
+  const lastLoginUpdateCall =
+    authModule.match(/updateUserLoginLastLogin\(\{[\s\S]*?\}\);/)?.[0] ?? "";
 
   assert.match(startRoute, /resolveMfaLoginDestinations/);
   assert.doesNotMatch(startRoute, /authUser\.fineractEmail/);
+  assert.match(lastLoginUpdateCall, /updateUserLoginLastLogin/);
+  assert.doesNotMatch(lastLoginUpdateCall, /\bemail\s*:/);
   assert.doesNotMatch(mfaModule, /email:\s*userLogin\?\.email\s*\|\|\s*authContext\?\.email/);
 });
 
