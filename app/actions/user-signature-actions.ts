@@ -5,6 +5,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { hasPermissionServer } from "@/lib/authorization";
+import {
+  getUserSignatureCreateData,
+  getUserSignatureDeleteWhere,
+  getUserSignatureUniqueWhere,
+} from "@/lib/user-signature-scope";
+import { requireCurrentTenant } from "@/lib/user-login-service";
 import { SpecificPermission } from "@/shared/types/auth";
 
 const maxSignatureSizeBytes = 2 * 1024 * 1024;
@@ -72,9 +78,12 @@ async function resolveUserId(): Promise<number> {
 }
 
 export async function getMySignature(): Promise<{ signatureData: string | null }> {
-  const fineractUserId = await resolveUserId();
+  const [fineractUserId, tenant] = await Promise.all([
+    resolveUserId(),
+    requireCurrentTenant(),
+  ]);
   const record = await prisma.userSignature.findUnique({
-    where: { fineractUserId },
+    where: getUserSignatureUniqueWhere(tenant.id, fineractUserId),
     select: { signatureData: true },
   });
   return { signatureData: record?.signatureData ?? null };
@@ -88,18 +97,26 @@ export async function saveMySignature(
     return { success: false, error: validationError };
   }
 
-  const fineractUserId = await resolveUserId();
+  const [fineractUserId, tenant] = await Promise.all([
+    resolveUserId(),
+    requireCurrentTenant(),
+  ]);
   await prisma.userSignature.upsert({
-    where: { fineractUserId },
-    create: { fineractUserId, signatureData },
+    where: getUserSignatureUniqueWhere(tenant.id, fineractUserId),
+    create: getUserSignatureCreateData(tenant.id, fineractUserId, signatureData),
     update: { signatureData },
   });
   return { success: true };
 }
 
 export async function deleteMySignature(): Promise<{ success: boolean }> {
-  const fineractUserId = await resolveUserId();
-  await prisma.userSignature.deleteMany({ where: { fineractUserId } });
+  const [fineractUserId, tenant] = await Promise.all([
+    resolveUserId(),
+    requireCurrentTenant(),
+  ]);
+  await prisma.userSignature.deleteMany({
+    where: getUserSignatureDeleteWhere(tenant.id, fineractUserId),
+  });
   return { success: true };
 }
 
@@ -112,8 +129,9 @@ export async function getUserSignatureAction(
   );
 
   const parsed = managedUserSignatureSchema.parse({ userId });
+  const tenant = await requireCurrentTenant();
   const record = await prisma.userSignature.findUnique({
-    where: { fineractUserId: parsed.userId },
+    where: getUserSignatureUniqueWhere(tenant.id, parsed.userId),
     select: { signatureData: true },
   });
 
@@ -131,6 +149,7 @@ export async function saveUserSignatureAction(input: {
     );
 
     const parsed = managedUserSignatureSchema.parse(input);
+    const tenant = await requireCurrentTenant();
     const validationError = validateSignatureData(input.signatureData);
 
     if (validationError) {
@@ -138,11 +157,12 @@ export async function saveUserSignatureAction(input: {
     }
 
     await prisma.userSignature.upsert({
-      where: { fineractUserId: parsed.userId },
-      create: {
-        fineractUserId: parsed.userId,
-        signatureData: input.signatureData,
-      },
+      where: getUserSignatureUniqueWhere(tenant.id, parsed.userId),
+      create: getUserSignatureCreateData(
+        tenant.id,
+        parsed.userId,
+        input.signatureData
+      ),
       update: {
         signatureData: input.signatureData,
       },
@@ -172,9 +192,10 @@ export async function deleteUserSignatureAction(input: {
     );
 
     const parsed = managedUserSignatureSchema.parse(input);
+    const tenant = await requireCurrentTenant();
 
     await prisma.userSignature.deleteMany({
-      where: { fineractUserId: parsed.userId },
+      where: getUserSignatureDeleteWhere(tenant.id, parsed.userId),
     });
 
     revalidateSignaturePaths(parsed.userId);
