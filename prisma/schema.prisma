@@ -33,6 +33,7 @@ model Tenant {
   slaConfigs             SLAConfig[]
   teams                  Team[]
   userLogins             UserLogin[]
+  userSignatures         UserSignature[]
   userLoginBlockEvents   UserLoginBlockEvent[]
   mfaChallenges          MfaChallenge[]
   validationRules        ValidationRule[]
@@ -1476,12 +1477,15 @@ model RepaymentCashLink {
 
 model UserSignature {
   id              String   @id @default(cuid())
-  fineractUserId  Int      @unique
+  tenantId        String
+  fineractUserId  Int
   signatureData   String   @db.Text
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@index([fineractUserId])
+  @@unique([tenantId, fineractUserId])
+  @@index([tenantId, fineractUserId])
 }
 
 enum RevolvingCreditDrawdownStatus {
