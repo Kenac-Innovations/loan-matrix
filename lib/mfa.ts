@@ -171,6 +171,18 @@ export function resolveMfaDestinations(input: {
   };
 }
 
+export function resolveMfaLoginDestinations(input: {
+  userLoginEmail?: string | null;
+  phone?: string | null;
+  countryCode?: string | null;
+}): MfaDestinations {
+  return resolveMfaDestinations({
+    email: input.userLoginEmail,
+    phone: input.phone,
+    countryCode: input.countryCode,
+  });
+}
+
 export function getAvailableMfaChannels(
   configuredChannels: MfaChannel[],
   destinations: MfaDestinations
@@ -647,9 +659,8 @@ async function getMfaChallengeDeliveryContext(
     getUserLoginByFineractUserId(tenantId, challenge.fineractUserId),
   ]);
   const tenantMfaConfig = getTenantMfaConfig(tenant?.settings);
-  const authContext = parseMfaAuthContext(challenge.authContext);
-  const destinations = resolveMfaDestinations({
-    email: userLogin?.email || authContext?.email,
+  const destinations = resolveMfaLoginDestinations({
+    userLoginEmail: userLogin?.email,
     phone: userLogin?.phone,
     countryCode: userLogin?.countryCode,
   });

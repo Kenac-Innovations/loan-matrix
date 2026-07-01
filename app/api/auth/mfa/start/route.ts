@@ -12,7 +12,7 @@ import {
   invalidateActiveMfaChallenges,
   formatMfaDeliveryTargets,
   resolveMfaDeliveryTargets,
-  resolveMfaDestinations,
+  resolveMfaLoginDestinations,
   sendMfaChallengeMessages,
   serializeMfaAuthContext,
 } from "@/lib/mfa";
@@ -59,9 +59,6 @@ export async function POST(request: NextRequest) {
       tenantId: tenant.id,
       fineractUserId: authUser.userId,
       username: authUser.username,
-      ...(authUser.fineractEmail
-        ? { email: authUser.fineractEmail }
-        : {}),
     });
 
     const tenantMfaConfig = getTenantMfaConfig(tenant.settings);
@@ -82,8 +79,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const destinations = resolveMfaDestinations({
-      email: userLogin.email || authUser.fineractEmail,
+    const destinations = resolveMfaLoginDestinations({
+      userLoginEmail: userLogin.email,
       phone: userLogin.phone,
       countryCode: userLogin.countryCode,
     });
@@ -173,7 +170,6 @@ export async function POST(request: NextRequest) {
       tenantId: tenant.id,
       fineractUserId: authUser.userId,
       username: authUser.username,
-      email: userLogin.email || authUser.fineractEmail,
       phone: userLogin.phone,
       countryCode: userLogin.countryCode,
       lastMfaChannel: delivery.deliveredChannels.join(","),

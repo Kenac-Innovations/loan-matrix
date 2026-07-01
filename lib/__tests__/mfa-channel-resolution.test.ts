@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+
+const repoRoot = path.resolve(process.cwd());
+
+function readRepoFile(relativePath: string): string {
+  return readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
 
 test("defaults MFA channels to email when tenant settings do not configure channels", () => {
   process.env.DATABASE_URL ||= "postgresql://user:pass@localhost:5432/loan_matrix";
@@ -57,6 +65,42 @@ test("builds MFA delivery targets only for configured channels with destinations
     }),
     []
   );
+});
+
+test("builds login MFA destinations from UserLogin email only", async () => {
+  process.env.DATABASE_URL ||= "postgresql://user:pass@localhost:5432/loan_matrix";
+
+  const { resolveMfaLoginDestinations } = await import("../mfa");
+
+  assert.deepEqual(
+    resolveMfaLoginDestinations({
+      userLoginEmail: " login.user@example.com ",
+      phone: "0971234567",
+      countryCode: "+260",
+    }),
+    {
+      email: "login.user@example.com",
+      sms: "+260971234567",
+    }
+  );
+
+  assert.equal(
+    resolveMfaLoginDestinations({
+      userLoginEmail: null,
+      phone: null,
+      countryCode: null,
+    }).email,
+    null
+  );
+});
+
+test("login and resend MFA flows keep UserLogin as the single email source", () => {
+  const startRoute = readRepoFile("app/api/auth/mfa/start/route.ts");
+  const mfaModule = readRepoFile("lib/mfa.ts");
+
+  assert.match(startRoute, /resolveMfaLoginDestinations/);
+  assert.doesNotMatch(startRoute, /authUser\.fineractEmail/);
+  assert.doesNotMatch(mfaModule, /email:\s*userLogin\?\.email\s*\|\|\s*authContext\?\.email/);
 });
 
 test("sends MFA challenge messages to every target and counts successful deliveries", async () => {
