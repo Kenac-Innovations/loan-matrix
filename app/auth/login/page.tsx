@@ -21,17 +21,12 @@ import { useAuth } from "@/contexts/auth-context";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ThemeAwareLogo } from "@/components/ui/theme-aware-logo";
-import type { MfaChannel } from "@/shared/types/tenant";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [availableChannels, setAvailableChannels] = useState<MfaChannel[]>([]);
-  const [channelDestinations, setChannelDestinations] = useState<
-    Partial<Record<MfaChannel, string | null>>
-  >({});
   const { login, status } = useAuth();
   const router = useRouter();
 
@@ -42,7 +37,7 @@ export default function LoginPage() {
     }
   }, [status, router]);
 
-  const submitLogin = async (channel?: MfaChannel) => {
+  const submitLogin = async () => {
     setError("");
 
     if (!username || !password) {
@@ -53,7 +48,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const result = await login(username, password, channel);
+      const result = await login(username, password);
 
       if (result.success) {
         window.location.href = "/leads";
@@ -61,12 +56,6 @@ export default function LoginPage() {
       }
 
       if (result.requiresMfa) {
-        if ("requiresChannelSelection" in result && result.requiresChannelSelection) {
-          setAvailableChannels(result.availableChannels);
-          setChannelDestinations(result.destinations);
-          return;
-        }
-
         if ("challengeId" in result) {
           router.push(`/auth/mfa?challengeId=${encodeURIComponent(result.challengeId)}`);
           return;
@@ -75,8 +64,6 @@ export default function LoginPage() {
 
       if ("error" in result) {
         setError(result.error || "Login failed");
-        setAvailableChannels([]);
-        setChannelDestinations({});
       }
     } catch (err) {
       setError("An error occurred during login");
@@ -211,36 +198,6 @@ export default function LoginPage() {
                   </div>
                 )}
 
-                {availableChannels.length > 0 && (
-                  <div className="rounded-md border border-blue-500/30 bg-blue-500/5 p-4 space-y-3">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-foreground">
-                        Choose where to receive your verification code
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Select one of the configured MFA channels for your account.
-                      </p>
-                    </div>
-                    <div className="grid gap-2">
-                      {availableChannels.map((channel) => (
-                        <Button
-                          key={channel}
-                          type="button"
-                          variant="outline"
-                          disabled={isLoading}
-                          onClick={() => submitLogin(channel)}
-                          className="justify-between"
-                        >
-                          <span className="uppercase">{channel}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {channelDestinations[channel] || ""}
-                          </span>
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 <div className="space-y-2">
                   <Label
                     htmlFor="username"
@@ -255,11 +212,7 @@ export default function LoginPage() {
                       placeholder="Enter your username"
                       className="pl-10 py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground"
                       value={username}
-                      onChange={(e) => {
-                        setUsername(e.target.value);
-                        setAvailableChannels([]);
-                        setChannelDestinations({});
-                      }}
+                      onChange={(e) => setUsername(e.target.value)}
                       required
                     />
                     <svg
@@ -299,11 +252,7 @@ export default function LoginPage() {
                       type="password"
                       className="pl-10 py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground"
                       value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        setAvailableChannels([]);
-                        setChannelDestinations({});
-                      }}
+                      onChange={(e) => setPassword(e.target.value)}
                       required
                     />
                     <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-blue-500" />

@@ -203,7 +203,6 @@ export async function updateUserLoginLastLogin(input: {
   tenantId: string;
   fineractUserId: number;
   username: string;
-  email?: string | null;
 }) {
   return upsertUserLogin({
     ...input,
