@@ -67,6 +67,9 @@ export function getDisplayedTransactionType(
   if (!transaction) return "";
 
   const baseLabel = getTransactionTypeDisplayLabel(transaction.type);
+  const isRepayment =
+    Boolean(transaction.type?.repayment) &&
+    !Boolean(transaction.type?.repaymentAtDisbursement);
   const paidCharges = transaction.loanChargePaidByList;
   if (Array.isArray(paidCharges) && paidCharges.length > 0) {
     const chargeNames = Array.from(
@@ -77,15 +80,15 @@ export function getDisplayedTransactionType(
       )
     );
 
+    if (isRepayment) {
+      return baseLabel;
+    }
+
     if (chargeNames.length === 1) {
       return chargeNames[0];
     }
 
     if (chargeNames.length > 1) {
-      if (transaction.type?.repayment && !transaction.type?.repaymentAtDisbursement) {
-        return baseLabel;
-      }
-
       return chargeNames.join(", ");
     }
   }

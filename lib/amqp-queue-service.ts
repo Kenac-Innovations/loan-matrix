@@ -1,6 +1,11 @@
 import amqp, { Connection, Channel, ConsumeMessage } from "amqplib";
 import prisma from "./prisma";
 import { getTenantBySlug } from "./tenant-service";
+import {
+  findMatchingUssdAutoLeadRule,
+  getTenantUssdAutoLeadRules,
+} from "./tenant-ussd-auto-lead-rules";
+import { createOrReuseLeadFromUssdApplication } from "./ussd-lead-creation-service";
 
 export interface UssdLoanApplicationMessage {
   loanApplicationUssdId: number;
@@ -40,6 +45,9 @@ export class AmqpQueueService {
   private channel: Channel | null = null;
   private isConnected = false;
   private isConsuming = false;
+  private shouldConsume = false;
+  private isShuttingDown = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000; // 5 seconds
@@ -58,18 +66,17 @@ export class AmqpQueueService {
 
       this.connection = await amqp.connect(amqpUrl);
       this.channel = await this.connection.createChannel();
+      this.isShuttingDown = false;
 
       // Set up connection event handlers
       this.connection.on("error", (err) => {
         console.error("AMQP connection error:", err);
-        this.isConnected = false;
-        this.handleReconnect();
+        this.handleDisconnect();
       });
 
       this.connection.on("close", () => {
         console.log("AMQP connection closed");
-        this.isConnected = false;
-        this.handleReconnect();
+        this.handleDisconnect();
       });
 
       // Set up channel event handlers
@@ -89,6 +96,12 @@ export class AmqpQueueService {
 
       console.log("Successfully connected to AMQP broker");
       console.log("Queue service is ready to consume messages");
+
+      if (this.shouldConsume && !this.isConsuming) {
+        void this.startConsuming().catch((error) => {
+          console.error("Failed to resume AMQP consumer:", error);
+        });
+      }
     } catch (error) {
       console.error("Failed to connect to AMQP broker:", error);
       this.handleReconnect();
@@ -137,6 +150,21 @@ export class AmqpQueueService {
     }
   }
 
+  private handleDisconnect(): void {
+    this.isConnected = false;
+    this.channel = null;
+    this.connection = null;
+
+    if (this.isConsuming) {
+      this.isConsuming = false;
+      global.__amqpConsumerActive = false;
+    }
+
+    if (!this.isShuttingDown) {
+      void this.handleReconnect();
+    }
+  }
+
   private async handleReconnect(): Promise<void> {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error(
@@ -145,17 +173,24 @@ export class AmqpQueueService {
       return;
     }
 
+    if (this.reconnectTimer) {
+      return;
+    }
+
     this.reconnectAttempts++;
     console.log(
       `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${this.reconnectDelay}ms...`
     );
 
-    setTimeout(() => {
-      this.connect();
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect();
     }, this.reconnectDelay);
   }
 
   public async startConsuming(): Promise<void> {
+    this.shouldConsume = true;
+
     // Prevent multiple consumers globally
     if (global.__amqpConsumerActive) {
       console.log("AMQP consumer already active globally, skipping...");
@@ -310,6 +345,24 @@ export class AmqpQueueService {
       console.log(
         `Successfully processed USSD application: ${ussdApplication.id} (${ussdApplication.messageId})`
       );
+
+      const autoLeadRules = getTenantUssdAutoLeadRules(
+        (tenant.settings as Record<string, unknown> | null) || null
+      );
+      const matchingRule = findMatchingUssdAutoLeadRule(
+        autoLeadRules,
+        ussdApplication.loanMatrixLoanProductId
+      );
+
+      if (matchingRule) {
+        const leadResult = await createOrReuseLeadFromUssdApplication(
+          ussdApplication,
+          { currentUserId: "system" }
+        );
+        console.log(
+          `Auto-created or reopened lead ${leadResult.leadId} for USSD application ${ussdApplication.loanApplicationUssdId}`
+        );
+      }
     } catch (error) {
       console.error("Error processing USSD loan application message:", error);
       throw error;
@@ -348,13 +401,23 @@ export class AmqpQueueService {
 
   public async close(): Promise<void> {
     try {
+      this.shouldConsume = false;
+      this.isShuttingDown = true;
+      this.isConsuming = false;
+      this.isConnected = false;
+      global.__amqpConsumerActive = false;
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
       if (this.channel) {
         await this.channel.close();
       }
       if (this.connection) {
         await this.connection.close();
       }
-      this.isConnected = false;
+      this.channel = null;
+      this.connection = null;
       console.log("AMQP connection closed");
     } catch (error) {
       console.error("Error closing AMQP connection:", error);

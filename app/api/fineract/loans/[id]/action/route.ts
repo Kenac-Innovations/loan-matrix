@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { sendLoanStatusSms } from "@/lib/notification-service";
 import { applyTopupDisbursementCharges } from "@/lib/topup-disbursement-charge-service";
+import { getPipelineStageNameForLoanAction } from "@/lib/fineract-stage-sync";
 
 // POST /api/fineract/loans/[id]/action - Perform an action on a loan
 export async function POST(
@@ -261,14 +262,7 @@ async function transitionLeadStage(
   action: string,
   tenantSlug: string
 ) {
-  // Map loan actions to target stage names
-  const actionToStageMap: Record<string, string> = {
-    approve: "Approval",
-    reject: "Rejected",
-    disburse: "Disbursement",
-  };
-
-  const targetStageName = actionToStageMap[action];
+  const targetStageName = getPipelineStageNameForLoanAction(action);
   if (!targetStageName) {
     console.log(`No stage transition needed for action: ${action}`);
     return;

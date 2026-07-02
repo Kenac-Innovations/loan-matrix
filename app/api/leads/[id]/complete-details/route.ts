@@ -7,6 +7,11 @@ import { getFineractBaseUrl } from "@/lib/fineract-base-url";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { buildLeadClientBackfillData } from "@/lib/ussd-lead-conversion";
 import { resolveUssdApplicationFineractClient } from "@/lib/ussd-fineract-client";
+import { syncLinkedLeadOfficesForFineractClient } from "@/lib/lead-office-sync";
+import { enrichLeadBorrowerProfile } from "@/lib/lead-profile-enrichment";
+import { getPipelineStageNameForFineractStatus } from "@/lib/fineract-stage-sync";
+import { callCDEAndStore } from "@/lib/cde-utils";
+import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
 
 const FINERACT_BASE_URL = getFineractBaseUrl();
 
@@ -100,22 +105,22 @@ export async function GET(
       createdByUserName: lead.createdByUserName,
     });
 
-    const currentStateMetadata =
+    let ussdStateMetadata =
       (lead.stateMetadata as Record<string, unknown> | null) || {};
     const ussdApplicationId =
-      typeof currentStateMetadata.applicationId === "number"
-        ? currentStateMetadata.applicationId
-        : typeof currentStateMetadata.applicationId === "string"
-        ? Number(currentStateMetadata.applicationId)
+      typeof ussdStateMetadata.applicationId === "number"
+        ? ussdStateMetadata.applicationId
+        : typeof ussdStateMetadata.applicationId === "string"
+        ? Number(ussdStateMetadata.applicationId)
         : null;
     const ussdReferenceNumber =
-      typeof currentStateMetadata.referenceNumber === "string"
-        ? currentStateMetadata.referenceNumber
+      typeof ussdStateMetadata.referenceNumber === "string"
+        ? ussdStateMetadata.referenceNumber
         : null;
 
     if (
       !lead.fineractClientId &&
-      currentStateMetadata.source === "USSD" &&
+      ussdStateMetadata.source === "USSD" &&
       (ussdApplicationId || ussdReferenceNumber)
     ) {
       try {
@@ -146,7 +151,7 @@ export async function GET(
               recoveredClient
             ) as Record<string, unknown>;
             const mergedStateMetadata = {
-              ...currentStateMetadata,
+              ...ussdStateMetadata,
               ...((backfill.stateMetadata as Record<string, unknown>) || {}),
             };
 
@@ -165,6 +170,7 @@ export async function GET(
               ...(backfillFields as typeof lead),
               stateMetadata: mergedStateMetadata,
             };
+            ussdStateMetadata = mergedStateMetadata;
           }
         }
       } catch (recoveryError) {
@@ -172,13 +178,81 @@ export async function GET(
       }
     }
 
+    lead = await enrichLeadBorrowerProfile(lead);
+
+    let currentStateMetadata =
+      (lead.stateMetadata as Record<string, unknown> | null) || {};
+    let cdeResult =
+      (currentStateMetadata.cdeResult as Record<string, unknown> | null) || null;
+
+    if (lead.loanSubmittedToFineract && lead.fineractLoanId && !cdeResult) {
+      try {
+        cdeResult = await callCDEAndStore(lead.id);
+        if (cdeResult?.decision) {
+          await TeamAwareStateMachineService.autoProgressToDisbursementFromCdeResult(
+            lead.id,
+            "system",
+            cdeResult
+          );
+        }
+
+        if (cdeResult) {
+          const refreshedLead = await prisma.lead.findFirst({
+            where: {
+              id: lead.id,
+              tenantId: leadTenant.tenantId,
+            },
+            include: {
+              tenant: {
+                select: {
+                  slug: true,
+                  settings: true,
+                },
+              },
+              currentStage: true,
+              familyMembers: true,
+              entityStakeholders: {
+                orderBy: [{ role: "asc" }, { sortOrder: "asc" }],
+                include: { proofOfResidenceDocument: true },
+              },
+              entityBankAccounts: { orderBy: { sortOrder: "asc" } },
+              stateTransitions: {
+                include: {
+                  fromStage: true,
+                  toStage: true,
+                },
+                orderBy: {
+                  triggeredAt: "desc",
+                },
+              },
+              invoiceDiscountingCase: {
+                include: {
+                  invoices: {
+                    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+                  },
+                },
+              },
+            },
+          });
+
+          if (refreshedLead) {
+            lead = refreshedLead;
+            currentStateMetadata =
+              (lead.stateMetadata as Record<string, unknown> | null) || {};
+          }
+        }
+      } catch (cdeError) {
+        console.error("Failed to auto-run CDE during lead details load:", cdeError);
+      }
+    }
+
     // Parse state metadata to get loan details
-    const stateMetadata = lead.stateMetadata as any;
+    const stateMetadata = currentStateMetadata as any;
     const loanDetails = stateMetadata?.loanDetails || null;
     const loanTerms = stateMetadata?.loanTerms || null;
     const repaymentSchedule = stateMetadata?.repaymentSchedule || null;
     const signatures = stateMetadata?.signatures || null;
-    const cdeResult = stateMetadata?.cdeResult || null;
+    const autoDisbursement = stateMetadata?.autoDisbursement || null;
 
     // Build response object
     const response: any = {
@@ -255,6 +329,7 @@ export async function GET(
         signatures,
       },
       cdeResult,
+      autoDisbursement,
       fineractClient: null,
       fineractLoan: null,
       invoiceDiscounting: lead.invoiceDiscountingCase || null,
@@ -376,6 +451,41 @@ export async function GET(
     // Enrich lead response from Fineract client data (Fineract is source of truth)
     if (response.fineractClient) {
       const clientData = response.fineractClient;
+      const fineractOfficeId =
+        typeof clientData.officeId === "number"
+          ? clientData.officeId
+          : Number(clientData.officeId) || null;
+      const fineractOfficeName =
+        typeof clientData.officeName === "string"
+          ? clientData.officeName.trim() || null
+          : null;
+
+      if (
+        lead.fineractClientId &&
+        fineractOfficeId &&
+        (lead.officeId !== fineractOfficeId || lead.officeName !== fineractOfficeName)
+      ) {
+        try {
+          await syncLinkedLeadOfficesForFineractClient({
+            tenantId: lead.tenantId,
+            fineractClientId: lead.fineractClientId,
+            officeId: fineractOfficeId,
+            officeName: fineractOfficeName,
+          });
+
+          lead = {
+            ...lead,
+            officeId: fineractOfficeId,
+            officeName: fineractOfficeName,
+          };
+        } catch (officeSyncError) {
+          console.error(
+            "Failed to self-heal stale lead office from Fineract client data:",
+            officeSyncError
+          );
+        }
+      }
+
       if (clientData.firstname) {
         response.lead.firstname = clientData.firstname;
       }
@@ -604,17 +714,8 @@ export async function GET(
 
     // Auto-sync pipeline stage based on Fineract loan status
     if (response.fineractLoan?.status?.value && lead.tenantId) {
-      const fineractStatus = response.fineractLoan.status.value.toLowerCase();
-      let targetStageName: string | null = null;
-
-      // Map Fineract status to pipeline stage
-      if (fineractStatus.includes("reject") || fineractStatus.includes("withdrawn")) {
-        targetStageName = "Rejected";
-      } else if (fineractStatus.includes("active") || fineractStatus.includes("closed")) {
-        targetStageName = "Disbursement";
-      } else if (fineractStatus.includes("approved")) {
-        targetStageName = "Approval";
-      }
+      const fineractStatus = response.fineractLoan.status.value;
+      const targetStageName = getPipelineStageNameForFineractStatus(fineractStatus);
 
       // Check if stage needs to be updated
       if (targetStageName && lead.currentStage?.name !== targetStageName) {

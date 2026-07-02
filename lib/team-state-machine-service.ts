@@ -1,4 +1,6 @@
 import { prisma } from "./prisma";
+import { fetchFineractAPI } from "./api";
+import { callCDEAndStore } from "./cde-utils";
 import { getFineractServiceWithSession } from "./fineract-api";
 import { applyTopupDisbursementCharges } from "./topup-disbursement-charge-service";
 import { getPaymentTypeInfo, isPaymentTypeCash } from "./cash-repayment-teller";
@@ -26,11 +28,20 @@ import {
 import {
   getDisbursementBlockReason,
   getOriginatorAssignmentData,
+  getOriginatorDesignatedDisburserData,
   getTenantLeadPolicyFlags,
   isApprovalActionStage,
   isDisbursementActionStage,
 } from "./lead-policy";
 import { getLocalIsoDate, isGoodfellowTenantSlug } from "./goodfellow-tenant";
+import {
+  findMatchingAutoDisbursementRule,
+  getAutoDisbursementIneligibilityReason,
+  isAutoDisbursementDecisionAllowed,
+  resolveAutoProgressTriggeredBy,
+} from "./lead-auto-disbursement-policy";
+import { getTenantAutoDisbursementRules } from "./tenant-auto-disbursement-rules";
+import { resolvePaymentTypeForPreferredMethod } from "./payment-method-resolution";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -59,6 +70,8 @@ export interface StateTransitionRequest {
   event?: string;
   context?: any;
   triggeredBy: string;
+  reason?: string;
+  fineractOverrides?: FineractOverrides;
 }
 
 export interface StateTransitionResult {
@@ -67,6 +80,7 @@ export interface StateTransitionResult {
   lead?: any;
   transition?: any;
   assignedTeam?: any;
+  assignedMember?: any;
 }
 
 export interface TeamPermissionCheck {
@@ -379,6 +393,328 @@ export class TeamAwareStateMachineService {
     return overrides;
   }
 
+  private static async updateLeadAutoDisbursementMetadata(
+    leadId: string,
+    patch: Record<string, unknown>
+  ) {
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { stateMetadata: true },
+    });
+
+    const currentStateMetadata =
+      (lead?.stateMetadata as Record<string, unknown> | null) || {};
+    const currentAutoDisbursement =
+      (currentStateMetadata.autoDisbursement as Record<string, unknown> | null) ||
+      {};
+
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        stateMetadata: {
+          ...currentStateMetadata,
+          autoDisbursement: {
+            ...currentAutoDisbursement,
+            ...patch,
+          },
+        } as any,
+      },
+    });
+  }
+
+  private static async resolveAutomaticDisbursementOverrides(lead: any) {
+    const paymentTypes = await fetchFineractAPI("/paymenttypes");
+    const paymentTypeList = Array.isArray(paymentTypes)
+      ? paymentTypes
+      : paymentTypes?.pageItems ?? [];
+
+    const resolvedPaymentType = resolvePaymentTypeForPreferredMethod(
+      lead.preferredPaymentMethod,
+      paymentTypeList
+    );
+
+    if (!resolvedPaymentType) {
+      return {
+        error:
+          "Could not resolve a disbursement payment type from the saved preferred payment method.",
+      };
+    }
+
+    return {
+      fineractOverrides: {
+        paymentTypeId: Number(resolvedPaymentType.paymentTypeId),
+        payoutMethod: resolvedPaymentType.method,
+        accountNumber: lead.mobileNo || lead.accountNumber || undefined,
+      } satisfies FineractOverrides,
+    };
+  }
+
+  private static async getNextForwardAutoTransition(
+    leadId: string,
+    triggeredBy?: string
+  ) {
+    const transitions = await this.getAvailableTransitionsWithTeams(
+      leadId,
+      triggeredBy
+    );
+    const forwardTransitions = transitions.filter((transition) => !transition.isBackward);
+
+    if (forwardTransitions.length === 0) {
+      return null;
+    }
+
+    const stages = await prisma.pipelineStage.findMany({
+      where: {
+        id: { in: forwardTransitions.map((transition) => transition.stageId) },
+      },
+      select: {
+        id: true,
+        order: true,
+      },
+    });
+
+    const stageOrderById = new Map(stages.map((stage) => [stage.id, stage.order]));
+
+    return [...forwardTransitions].sort(
+      (left, right) =>
+        (stageOrderById.get(left.stageId) ?? Number.MAX_SAFE_INTEGER) -
+        (stageOrderById.get(right.stageId) ?? Number.MAX_SAFE_INTEGER)
+    )[0];
+  }
+
+  private static async maybeAutoProgressToDisbursement(
+    leadId: string,
+    triggeredBy: string
+  ): Promise<string | null> {
+    const cdeResult = await callCDEAndStore(leadId);
+    return this.autoProgressToDisbursementFromCdeResult(
+      leadId,
+      triggeredBy,
+      cdeResult
+    );
+  }
+
+  static async autoProgressToDisbursementFromCdeResult(
+    leadId: string,
+    triggeredBy: string,
+    cdeResultInput: { decision?: string | null } | null | undefined
+  ): Promise<string | null> {
+    const cdeResult = cdeResultInput;
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      include: {
+        currentStage: true,
+        tenant: {
+          select: {
+            settings: true,
+          },
+        },
+      },
+    });
+
+    if (!lead) {
+      return null;
+    }
+
+    const effectiveTriggeredBy = resolveAutoProgressTriggeredBy(
+      lead,
+      triggeredBy
+    );
+
+    const autoDisbursementRules = getTenantAutoDisbursementRules(
+      (lead.tenant?.settings as Record<string, unknown> | null) || null
+    );
+
+    if (autoDisbursementRules.length === 0) {
+      return null;
+    }
+
+    const stageIds = new Set<string>([
+      lead.currentStageId,
+      ...autoDisbursementRules.map((rule) => rule.triggerStageId),
+    ].filter((stageId): stageId is string => Boolean(stageId)));
+
+    const stages = await prisma.pipelineStage.findMany({
+      where: {
+        tenantId: lead.tenantId,
+        id: { in: [...stageIds] },
+      },
+      select: {
+        id: true,
+        order: true,
+      },
+    });
+
+    const stageOrderLookup = new Map(
+      stages.map((stage) => [stage.id, stage.order] as const)
+    );
+
+    const rule = findMatchingAutoDisbursementRule(
+      (lead.tenant?.settings as Record<string, unknown> | null) || null,
+      lead,
+      stageOrderLookup
+    );
+
+    if (!rule) {
+      return null;
+    }
+
+    const ineligibleReason = getAutoDisbursementIneligibilityReason(lead);
+    if (ineligibleReason) {
+      await this.updateLeadAutoDisbursementMetadata(lead.id, {
+        status: "skipped",
+        stopReason: ineligibleReason,
+        lastRunBy: effectiveTriggeredBy,
+        lastAttemptedAt: new Date().toISOString(),
+      });
+      return `Auto disbursement skipped: ${ineligibleReason}`;
+    }
+
+    await this.updateLeadAutoDisbursementMetadata(lead.id, {
+      status: "running",
+      triggerStageId: rule.triggerStageId,
+      triggerStageName: lead.currentStage?.name || lead.currentStage?.id || null,
+      loanProductId: rule.loanProductId,
+      allowedCdeDecisions: rule.allowedCdeDecisions,
+      lastRunBy: effectiveTriggeredBy,
+      lastAttemptedAt: new Date().toISOString(),
+      attemptedStages: [],
+      stopReason: null,
+    });
+
+    if (!cdeResult?.decision) {
+      await this.updateLeadAutoDisbursementMetadata(lead.id, {
+        status: "failed",
+        cdeDecision: null,
+        stopReason: "cde_call_failed",
+      });
+      return "Auto disbursement stopped: CDE call failed";
+    }
+
+    if (!isAutoDisbursementDecisionAllowed(rule, cdeResult.decision)) {
+      await this.updateLeadAutoDisbursementMetadata(lead.id, {
+        status: "stopped",
+        cdeDecision: cdeResult.decision,
+        stopReason: `cde_decision_${String(cdeResult.decision).toLowerCase()}`,
+      });
+      return `Auto disbursement stopped: CDE returned ${cdeResult.decision}`;
+    }
+
+    const paymentResolution = await this.resolveAutomaticDisbursementOverrides(
+      lead
+    );
+
+    if ("error" in paymentResolution) {
+      await this.updateLeadAutoDisbursementMetadata(lead.id, {
+        status: "failed",
+        cdeDecision: cdeResult.decision,
+        stopReason: "payment_type_resolution_failed",
+      });
+      return `Auto disbursement stopped: ${paymentResolution.error}`;
+    }
+
+    let currentLead = lead;
+    const attemptedStages: Array<Record<string, unknown>> = [];
+
+    for (let hop = 0; hop < 10; hop += 1) {
+      const nextTransition = await this.getNextForwardAutoTransition(
+        currentLead.id,
+        effectiveTriggeredBy
+      );
+
+      if (!nextTransition) {
+        await this.updateLeadAutoDisbursementMetadata(currentLead.id, {
+          status: "stopped",
+          cdeDecision: cdeResult.decision,
+          attemptedStages,
+          lastCompletedStageId: currentLead.currentStageId,
+          lastCompletedStageName: currentLead.currentStage?.name || null,
+          stopReason: "no_forward_transition",
+        });
+        return "Auto disbursement stopped: no forward transition available";
+      }
+
+      attemptedStages.push({
+        stageId: nextTransition.stageId,
+        stageName: nextTransition.stageName,
+        fineractAction:
+          nextTransition.skipToFineractAction || nextTransition.fineractAction,
+      });
+
+      const isDisbursementHop =
+        nextTransition.fineractAction === "disburse" ||
+        nextTransition.skipToFineractAction === "disburse";
+
+      const transitionResult = await this.executeTransition({
+        leadId: currentLead.id,
+        targetStageId: nextTransition.stageId,
+        event: "AUTO_CDE_PROGRESS",
+        triggeredBy: effectiveTriggeredBy,
+        reason: `Auto-progressed after CDE ${cdeResult.decision}`,
+        fineractOverrides: isDisbursementHop
+          ? {
+              ...paymentResolution.fineractOverrides,
+              note: `Auto-progressed after CDE ${cdeResult.decision}`,
+              payoutNote: `Auto-progressed after CDE ${cdeResult.decision}`,
+            }
+          : {
+              note: `Auto-progressed after CDE ${cdeResult.decision}`,
+        },
+      });
+
+      if (!transitionResult.success) {
+        await this.updateLeadAutoDisbursementMetadata(currentLead.id, {
+          status: "failed",
+          cdeDecision: cdeResult.decision,
+          attemptedStages,
+          lastCompletedStageId: currentLead.currentStageId,
+          lastCompletedStageName: currentLead.currentStage?.name || null,
+          stopReason: transitionResult.message,
+        });
+        return `Auto disbursement stopped: ${transitionResult.message}`;
+      }
+
+      const reloadedLead = await prisma.lead.findUnique({
+        where: { id: currentLead.id },
+        include: {
+          currentStage: true,
+          tenant: {
+            select: {
+              settings: true,
+            },
+          },
+        },
+      });
+
+      if (!reloadedLead) {
+        return null;
+      }
+
+      currentLead = reloadedLead;
+
+      if (isDisbursementHop) {
+        await this.updateLeadAutoDisbursementMetadata(currentLead.id, {
+          status: "completed",
+          cdeDecision: cdeResult.decision,
+          attemptedStages,
+          lastCompletedStageId: currentLead.currentStageId,
+          lastCompletedStageName: currentLead.currentStage?.name || null,
+          stopReason: null,
+          completedAt: new Date().toISOString(),
+        });
+        return `Auto disbursement completed after CDE ${cdeResult.decision}`;
+      }
+    }
+
+    await this.updateLeadAutoDisbursementMetadata(lead.id, {
+      status: "failed",
+      cdeDecision: cdeResult.decision,
+      attemptedStages,
+      stopReason: "max_hops_exceeded",
+    });
+    return "Auto disbursement stopped: maximum stage hops exceeded";
+  }
+
   /**
    * Execute a full state transition: validate -> move stage -> auto-assign -> audit trail
    */
@@ -405,7 +741,10 @@ export class TeamAwareStateMachineService {
         lead.currentStageId,
         request.targetStageId,
         lead.tenantId,
-        request.triggeredBy
+        request.triggeredBy,
+        {
+          skipTeamValidation: request.event === "AUTO_CDE_PROGRESS",
+        }
       );
 
       if (!validation.isValid) {
@@ -769,6 +1108,17 @@ export class TeamAwareStateMachineService {
           skippedStageRecords.some((stage) => isApprovalActionStage(stage)))
           ? getOriginatorAssignmentData(lead)
           : null;
+      const approvalDesignatedDisburser =
+        tenantLeadPolicy.autoAssignLeadOnApproval &&
+        !isBackward &&
+        (isApprovalActionStage(targetStage) ||
+          skippedStageRecords.some((stage) => isApprovalActionStage(stage)))
+          ? getOriginatorDesignatedDisburserData({
+              originatorUserId: lead.userId,
+              originatorUserName: lead.createdByUserName,
+              assignedByFineractUserId: request.triggeredBy,
+            })
+          : null;
 
       // 4. Actions succeeded (or weren't needed) — now commit the DB transition
       const [updatedLead, transition] = await prisma.$transaction([
@@ -780,7 +1130,16 @@ export class TeamAwareStateMachineService {
             assignedToUserName: approvalAssignment?.assignedToUserName ?? null,
             assignedAt: approvalAssignment?.assignedAt ?? null,
             assignedByUserId: approvalAssignment?.assignedByUserId ?? null,
+            designatedDisburserUserId:
+              approvalDesignatedDisburser?.designatedDisburserUserId ?? null,
+            designatedDisburserUserName:
+              approvalDesignatedDisburser?.designatedDisburserUserName ?? null,
+            designatedDisburserAssignedByUserId:
+              approvalDesignatedDisburser?.designatedDisburserAssignedByUserId ?? null,
+            designatedDisburserAssignedAt:
+              approvalDesignatedDisburser?.designatedDisburserAssignedAt ?? null,
             stateMetadata: {
+              ...(((lead.stateMetadata as Record<string, unknown> | null) || {})),
               lastTransition: new Date().toISOString(),
               lastTransitionEvent: request.event || "MANUAL_TRANSITION",
               reason: request.reason,
@@ -904,9 +1263,19 @@ export class TeamAwareStateMachineService {
         )
       );
 
+      let autoProgressMessage: string | null = null;
+      if (request.event !== "AUTO_CDE_PROGRESS") {
+        autoProgressMessage = await this.maybeAutoProgressToDisbursement(
+          updatedLead.id,
+          request.triggeredBy
+        );
+      }
+
       return {
         success: true,
-        message: baseMsg,
+        message: autoProgressMessage
+          ? `${baseMsg} ${autoProgressMessage}`
+          : baseMsg,
         lead: updatedLead,
         transition,
         assignedTeam: validation.teamInfo,
@@ -1050,7 +1419,10 @@ export class TeamAwareStateMachineService {
     currentStageId: string | null,
     targetStageId: string,
     tenantId: string,
-    userId?: string
+    userId?: string,
+    options?: {
+      skipTeamValidation?: boolean;
+    }
   ): Promise<{ isValid: boolean; message: string; teamInfo?: any }> {
     try {
       // First validate basic state machine rules
@@ -1062,6 +1434,13 @@ export class TeamAwareStateMachineService {
 
       if (!basicValidation.isValid) {
         return basicValidation;
+      }
+
+      if (options?.skipTeamValidation) {
+        return {
+          isValid: true,
+          message: "Valid transition with team validation skipped",
+        };
       }
 
       // Check team permissions for the target stage

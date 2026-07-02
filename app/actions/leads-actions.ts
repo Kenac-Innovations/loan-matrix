@@ -195,6 +195,7 @@ export async function getLeadsData(
     search?: string; // Text search for client name
     leadStatus?: string; // Filter by Fineract loan status
     officeId?: number; // Restrict to a specific office
+    source?: "USSD"; // Filter leads by origin source
   } = {}
 ): Promise<LeadsData> {
   try {
@@ -209,6 +210,7 @@ export async function getLeadsData(
       search,
       leadStatus,
       officeId,
+      source,
     } = options;
 
     // Get tenant - prefer headers for consistency with API routes
@@ -237,6 +239,13 @@ export async function getLeadsData(
 
     if (officeId) {
       where.officeId = officeId;
+    }
+
+    if (source) {
+      where.stateMetadata = {
+        path: ["source"],
+        equals: source,
+      };
     }
 
     if (stage) {

@@ -37,8 +37,10 @@ test("buildLeadDataFromUssdApplication keeps the linked Fineract client metadata
       referenceNumber: "LA8853963",
       userPhoneNumber: "260963003442",
       loanMatrixClientId: 58902,
+      loanMatrixLoanProductId: 12,
       userFullName: "KUDZAI JUSTICE MACHEYO",
       userNationalId: "48147220J12",
+      loanProductName: "Yango Driver Loan",
       principalAmount: 200,
       loanTermMonths: 30,
       payoutMethod: "MOBILE_MONEY",
@@ -74,6 +76,8 @@ test("buildLeadDataFromUssdApplication keeps the linked Fineract client metadata
   assert.equal(leadData.clientTypeName, "Yango Driver");
   assert.equal(leadData.clientClassificationId, 4);
   assert.equal(leadData.clientClassificationName, "Retail");
+  assert.equal(leadData.loanProductId, 12);
+  assert.equal(leadData.loanProductName, "Yango Driver Loan");
   assert.deepEqual(leadData.stateMetadata, {
     source: "USSD",
     applicationId: 177953,
@@ -81,6 +85,8 @@ test("buildLeadDataFromUssdApplication keeps the linked Fineract client metadata
     referenceNumber: "LA8853963",
     payoutMethod: "MOBILE_MONEY",
     loanMatrixClientId: 58902,
+    loanMatrixLoanProductId: 12,
+    loanProductName: "Yango Driver Loan",
     userNationalId: "48147220J12",
   });
 });
@@ -125,6 +131,20 @@ test("USSD submit route keeps the lead-linked external id stable", () => {
 
   assert.match(source, /resolveUssdLoanExternalId/);
   assert.doesNotMatch(source, /externalId:\s*String\(loanId\)/);
+});
+
+test("USSD submit route triggers auto progression after CDE approval", () => {
+  const source = readRepoFile("app/api/ussd-leads/[id]/submit/route.ts");
+
+  assert.match(source, /autoProgressToDisbursementFromCdeResult/);
+  assert.match(source, /TeamAwareStateMachineService/);
+});
+
+test("lead CDE route triggers auto progression after CDE approval", () => {
+  const source = readRepoFile("app/api/leads/[id]/call-cde/route.ts");
+
+  assert.match(source, /autoProgressToDisbursementFromCdeResult/);
+  assert.match(source, /TeamAwareStateMachineService/);
 });
 
 test("USSD lead and lead-details flows share the same Fineract base URL helper", async () => {
@@ -223,9 +243,24 @@ test("buildUssdLoanPayloadFromTemplate uses the live product template instead of
 });
 
 test("USSD to-lead route assigns the tenant initial pipeline stage", () => {
-  const source = readRepoFile("app/api/ussd-leads/[id]/to-lead/route.ts");
+  const source = readRepoFile("lib/ussd-lead-creation-service.ts");
 
   assert.match(source, /pipelineStage\.findFirst/);
   assert.match(source, /isInitialState:\s*true/);
   assert.match(source, /currentStageId:/);
+});
+
+test("USSD to-lead route reuses only the lead for the same USSD application", () => {
+  const source = readRepoFile("lib/ussd-lead-creation-service.ts");
+
+  assert.match(source, /path:\s*\[(["'])applicationId\1\]/);
+  assert.match(source, /path:\s*\[(["'])referenceNumber\1\]/);
+  assert.match(source, /path:\s*\[(["'])messageId\1\]/);
+  assert.doesNotMatch(source, /lookupExternalIds\.map\(\(externalId\) => \(\{ externalId \}\)\)/);
+});
+
+test("USSD to-lead route delegates create-or-reopen logic to the shared service", () => {
+  const source = readRepoFile("app/api/ussd-leads/[id]/to-lead/route.ts");
+
+  assert.match(source, /createOrReuseLeadFromUssdApplication/);
 });
