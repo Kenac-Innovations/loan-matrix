@@ -75,6 +75,11 @@ export interface TenantMobileMoneySettings {
   payoutClearingGlAccountCode?: string;
 }
 
+export interface TenantUssdAutoLeadRule {
+  enabled?: boolean;
+  loanProductId: number;
+}
+
 /**
  * Tenant settings stored in the database
  */
@@ -95,6 +100,8 @@ export interface TenantSettings {
   firstRepaymentDate?: FirstRepaymentDateConfig;
   /** Mobile money pool configuration */
   mobileMoney?: TenantMobileMoneySettings;
+  /** Product-specific rules for automatic USSD lead creation */
+  ussdAutoLeadRules?: TenantUssdAutoLeadRule[];
 }
 
 /**
