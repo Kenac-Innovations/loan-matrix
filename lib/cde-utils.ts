@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getAccessToken } from "@/lib/api";
 import { normalizeCurrencyCode } from "@/lib/format-currency";
+import { enrichLeadBorrowerProfile } from "@/lib/lead-profile-enrichment";
 
 /**
  * Build CDE evaluation payload from lead data
@@ -12,6 +13,7 @@ export function buildCDEPayload(
   fineractLoan?: any
 ) {
   console.log("Fineract Loan:", fineractLoan);
+  const stateMetadata = (lead.stateMetadata as Record<string, unknown> | null) || {};
   // Calculate age from date of birth
   const calculateAge = (dob: Date | string | null): number | null => {
     if (!dob) return null;
@@ -117,11 +119,26 @@ export function buildCDEPayload(
       email: lead.emailAddress || "",
       address: lead.address || lead.residentialAddress || "",
       employmentType: mapEmploymentType(lead.employmentStatus),
-      employer: lead.employerName || lead.employmentStatus || "",
+      employer:
+        lead.employerName ||
+        (typeof stateMetadata.employerName === "string"
+          ? stateMetadata.employerName
+          : "") ||
+        "",
       employmentLengthMonths: employmentLengthMonths,
       incomeType: mapIncomeType(lead.employmentStatus),
-      occupation: lead.occupation || "",
-      industry: lead.industry || "",
+      occupation:
+        lead.occupation ||
+        (typeof stateMetadata.occupation === "string"
+          ? stateMetadata.occupation
+          : "") ||
+        "",
+      industry:
+        lead.industry ||
+        (typeof stateMetadata.industry === "string"
+          ? stateMetadata.industry
+          : "") ||
+        "",
       grossMonthlyIncome:
         additionalData?.grossMonthlyIncome || lead.grossMonthlyIncome || 0,
       netMonthlyIncome:
@@ -137,12 +154,12 @@ export function buildCDEPayload(
       payslipsProvided: 0,
       hasBankStatements: lead.hasBankStatements || false,
       bankStatementMonths: 0,
-      hasValidNationalId: !!lead.idNumber,
+      hasValidNationalId: !!(lead.idNumber || lead.externalId),
       soundMind: true,
       hasProofOfIncome:
         lead.hasProofOfIncome || additionalData?.hasProofOfIncome || false,
       collateralOffered: (lead.collateralValue || 0) > 0,
-      identityVerified: !!lead.idNumber,
+      identityVerified: !!(lead.idNumber || lead.externalId),
       employmentVerified: false,
       incomeVerified:
         lead.incomeVerified || additionalData?.incomeVerified || false,
@@ -363,16 +380,18 @@ export async function callCDEAndStore(
       stateMetadata: (lead.stateMetadata as any) || {},
     });
 
+    const enrichedLead = await enrichLeadBorrowerProfile(lead);
+
     // Fetch Fineract loan details if available
-    const fineractLoan = await fetchFineractLoanForLead(lead);
+    const fineractLoan = await fetchFineractLoanForLead(enrichedLead);
 
     // Build CDE payload with Fineract loan data if available
-    const cdePayload = buildCDEPayload(lead, undefined, fineractLoan);
+    const cdePayload = buildCDEPayload(enrichedLead, undefined, fineractLoan);
     console.log("\n==========================================");
     console.log("=== CDE API CALL - PAYLOAD ===");
     console.log("==========================================");
     console.log("Lead ID:", leadId);
-    console.log("Lead External ID:", lead.externalId);
+    console.log("Lead External ID:", enrichedLead.externalId);
     console.log("\n--- FULL CDE PAYLOAD ---");
     console.log(JSON.stringify(cdePayload, null, 2));
     console.log("\n--- PAYLOAD SUMMARY ---");
@@ -437,7 +456,7 @@ export async function callCDEAndStore(
     console.log("Recommendation:", cdeResult.recommendation);
 
     // Get current stateMetadata
-    const currentMetadata = ((lead as any).stateMetadata as any) || {};
+    const currentMetadata = ((enrichedLead as any).stateMetadata as any) || {};
 
     // Store CDE result in stateMetadata
     await prisma.lead.update({
