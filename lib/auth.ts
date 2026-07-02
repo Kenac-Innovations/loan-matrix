@@ -171,10 +171,6 @@ export const authOptions: NextAuthOptions = {
               tenantId: user.tenantId,
               fineractUserId: user.userId,
               username: user.name,
-              email:
-                typeof user.email === "string" && user.email.includes("@")
-                  ? user.email
-                  : undefined,
             });
           }
         }
