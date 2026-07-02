@@ -7,6 +7,7 @@ import { getTenantFromHeaders } from '@/lib/tenant-service';
 import { getOrgRawCurrencyCode } from '@/lib/currency-utils';
 import { fetchLoanNotificationDetails, resolveLoanNotificationTarget } from '@/lib/loan-notification-target';
 import { sendLoanRepaymentSms } from '@/lib/notification-service';
+import { prisma } from '@/lib/prisma';
 
 /** Ensure date is yyyy-MM-dd for Fineract allocate */
 function formatDateForAllocate(isoDate: string): string {
@@ -20,9 +21,9 @@ function formatDateForAllocate(isoDate: string): string {
 /**
  * POST /api/fineract/loans/[id]/transactions
  * Proxies to Fineract's loan transactions endpoint.
- * For repayment command: reads tellerId and cashierId from body, strips them before
- * forwarding to Fineract. After successful repayment, if payment is cash, calls
- * Fineract allocate with tellerId/cashierId in the path.
+ * For cash repayments: resolves the selected teller/cashier back to the local
+ * operational records before the repayment is posted, then stores that linkage
+ * on the RepaymentCashLink row after Fineract succeeds.
  */
 export async function POST(
   request: Request,
@@ -43,6 +44,14 @@ export async function POST(
     }
 
     const body = await request.json();
+    const dbTellerId =
+      typeof body.dbTellerId === 'string' && body.dbTellerId.trim().length > 0
+        ? body.dbTellerId.trim()
+        : null;
+    const dbCashierId =
+      typeof body.dbCashierId === 'string' && body.dbCashierId.trim().length > 0
+        ? body.dbCashierId.trim()
+        : null;
 
     // Parse tellerId and cashierId from request body (support "fineract-123" format)
     let tellerId: number | null = null;
@@ -56,9 +65,32 @@ export async function POST(
     }
     let cashierId: number | null = null;
     if (body.cashierId != null) {
-      cashierId = Number(body.cashierId);
+      if (
+        typeof body.cashierId === 'string' &&
+        body.cashierId.startsWith('fineract-')
+      ) {
+        cashierId = parseInt(body.cashierId.replace('fineract-', ''), 10);
+      } else {
+        cashierId = Number(body.cashierId);
+      }
       if (isNaN(cashierId)) cashierId = null;
     }
+
+    let linkedTeller:
+      | {
+          id: string;
+          name: string;
+          fineractTellerId: number | null;
+        }
+      | null = null;
+    let linkedCashier:
+      | {
+          id: string;
+          tellerId: string;
+          staffName: string;
+          fineractCashierId: number | null;
+        }
+      | null = null;
 
     // Build repayment body for Fineract WITHOUT local teller/cashier metadata
     const repaymentBody = { ...body } as Record<string, unknown>;
@@ -66,6 +98,147 @@ export async function POST(
     delete repaymentBody.cashierId;
     delete repaymentBody.dbTellerId;
     delete repaymentBody.dbCashierId;
+
+    if (
+      command === 'repayment' &&
+      body.paymentTypeId != null &&
+      body.transactionAmount != null &&
+      Number(body.transactionAmount) > 0
+    ) {
+      const isCash = await isPaymentTypeCash(Number(body.paymentTypeId));
+
+      if (isCash) {
+        if (!tenant) {
+          return NextResponse.json(
+            { error: 'Tenant context is required for cash repayments' },
+            { status: 400 }
+          );
+        }
+
+        if (!dbTellerId && (tellerId == null || isNaN(tellerId))) {
+          return NextResponse.json(
+            {
+              error:
+                'Cash repayments require a selected teller with an active session.',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (!dbCashierId && (cashierId == null || isNaN(cashierId))) {
+          return NextResponse.json(
+            {
+              error:
+                'Cash repayments require a selected cashier with an active session.',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (dbTellerId) {
+          linkedTeller = await prisma.teller.findFirst({
+            where: {
+              id: dbTellerId,
+              tenantId: tenant.id,
+              isActive: true,
+            },
+            select: {
+              id: true,
+              name: true,
+              fineractTellerId: true,
+            },
+          });
+        } else if (tellerId != null && !isNaN(tellerId)) {
+          linkedTeller = await prisma.teller.findFirst({
+            where: {
+              tenantId: tenant.id,
+              fineractTellerId: tellerId,
+              isActive: true,
+            },
+            select: {
+              id: true,
+              name: true,
+              fineractTellerId: true,
+            },
+          });
+        }
+
+        if (!linkedTeller?.fineractTellerId) {
+          return NextResponse.json(
+            {
+              error:
+                'The selected teller is no longer linked to an active Fineract teller.',
+            },
+            { status: 400 }
+          );
+        }
+
+        if (dbCashierId) {
+          linkedCashier = await prisma.cashier.findFirst({
+            where: {
+              id: dbCashierId,
+              tenantId: tenant.id,
+              tellerId: linkedTeller.id,
+              isActive: true,
+            },
+            select: {
+              id: true,
+              tellerId: true,
+              staffName: true,
+              fineractCashierId: true,
+            },
+          });
+        } else if (cashierId != null && !isNaN(cashierId)) {
+          linkedCashier = await prisma.cashier.findFirst({
+            where: {
+              tenantId: tenant.id,
+              tellerId: linkedTeller.id,
+              fineractCashierId: cashierId,
+              isActive: true,
+            },
+            select: {
+              id: true,
+              tellerId: true,
+              staffName: true,
+              fineractCashierId: true,
+            },
+          });
+        }
+
+        if (!linkedCashier?.fineractCashierId) {
+          return NextResponse.json(
+            {
+              error:
+                'The selected cashier is no longer linked to an active Fineract cashier.',
+            },
+            { status: 400 }
+          );
+        }
+
+        const activeSession = await prisma.cashierSession.findFirst({
+          where: {
+            tenantId: tenant.id,
+            tellerId: linkedTeller.id,
+            cashierId: linkedCashier.id,
+            sessionStatus: 'ACTIVE',
+          },
+          select: { id: true },
+        });
+
+        if (!activeSession) {
+          return NextResponse.json(
+            {
+              error:
+                'The selected cashier does not have an active session for this teller.',
+            },
+            { status: 400 }
+          );
+        }
+
+        tellerId = linkedTeller.fineractTellerId;
+        cashierId = linkedCashier.fineractCashierId;
+      }
+    }
 
     const data = await fetchFineractAPI(`/loans/${id}/transactions?command=${command}`, {
       method: 'POST',
@@ -97,10 +270,8 @@ export async function POST(
           transactionType: command.toUpperCase(),
           amount: Number(body.transactionAmount),
           currency,
-          // These local foreign keys are enriched later by the allocate route after
-          // it resolves the selected teller/cashier to real Prisma records.
-          tellerId: null,
-          cashierId: null,
+          tellerId: isCash ? linkedTeller?.id ?? null : null,
+          cashierId: isCash ? linkedCashier?.id ?? null : null,
           isCash,
         });
       }
@@ -174,11 +345,13 @@ export async function POST(
             });
           }
         } else {
-          // No tellerId/cashierId in request - frontend will call allocate after 200
-          // (Repayment modal uses active till from allocate modal)
+          // The repayment has already been linked to the selected local teller/cashier.
+          // We skip the extra Fineract allocate call unless an older flow explicitly
+          // provided fineract teller/cashier ids, because that legacy call duplicates
+          // cashier rows in summary screens.
           cashierAllocateResult = {
             success: true,
-            error: 'Skipped - allocate handled by frontend with active till',
+            error: 'Skipped - no legacy Fineract allocate call was requested',
           };
         }
       } else {

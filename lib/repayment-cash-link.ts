@@ -16,6 +16,12 @@ type UpsertRepaymentCashLinkInput = {
 export async function upsertRepaymentCashLink(
   input: UpsertRepaymentCashLinkInput
 ) {
+  if (input.isCash && (!input.tellerId || !input.cashierId)) {
+    throw new Error(
+      "Cash repayment links must include both tellerId and cashierId"
+    );
+  }
+
   return prisma.repaymentCashLink.upsert({
     where: {
       tenantId_fineractTransactionId: {
