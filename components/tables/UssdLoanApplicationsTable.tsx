@@ -71,11 +71,12 @@ export default function UssdLoanApplicationsTable({
 
   // Filter applications by status if filterStatus is provided
   const allApplications = data?.applications || ussdLoanApplications;
-  const applications = filterStatus
+  const applications = (filterStatus
     ? allApplications.filter(
         (app: UssdLoanApplication) => app.status === filterStatus
       )
-    : allApplications;
+    : allApplications
+  ).filter((app: UssdLoanApplication) => !app.leadId);
 
   // Status update handlers
   const handleStatusUpdate = async (
@@ -390,6 +391,11 @@ export default function UssdLoanApplicationsTable({
                   <DropdownMenuItem
                     onClick={async () => {
                       try {
+                        if (app.leadId) {
+                          window.location.href = `/leads/${app.leadId}`;
+                          return;
+                        }
+
                         const res = await fetch(
                           `/api/ussd-leads/${app.loanApplicationUssdId}/to-lead`,
                           { method: "POST" }
@@ -407,7 +413,7 @@ export default function UssdLoanApplicationsTable({
                     }}
                   >
                     <Eye className="mr-2 h-4 w-4" />
-                    View Details
+                    {app.leadId ? "Open Lead" : "View Details"}
                   </DropdownMenuItem>
                   {app.status === "CREATED" && (
                     <>

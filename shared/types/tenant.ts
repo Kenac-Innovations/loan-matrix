@@ -52,6 +52,7 @@ export type FirstRepaymentDateStrategy =
 
 export type InterestRateDisplayMode = "annual" | "monthly";
 export type MfaChannel = "email" | "sms";
+export type AutoDisbursementDecision = "APPROVED" | "MANUAL_REVIEW" | "DECLINED";
 
 export interface FirstRepaymentDateConfig {
   strategy: FirstRepaymentDateStrategy;
@@ -73,6 +74,13 @@ export interface TenantMobileMoneySettings {
   payoutClearingGlAccountId?: number;
   payoutClearingGlAccountName?: string;
   payoutClearingGlAccountCode?: string;
+}
+
+export interface TenantAutoProgressToDisbursementRule {
+  enabled?: boolean;
+  loanProductId: number;
+  triggerStageId: string;
+  allowedCdeDecisions: AutoDisbursementDecision[];
 }
 
 export interface TenantUssdAutoLeadRule {
@@ -100,6 +108,8 @@ export interface TenantSettings {
   firstRepaymentDate?: FirstRepaymentDateConfig;
   /** Mobile money pool configuration */
   mobileMoney?: TenantMobileMoneySettings;
+  /** Product-specific rules for automatic CDE-gated progression through disbursement */
+  autoProgressToDisbursementRules?: TenantAutoProgressToDisbursementRule[];
   /** Product-specific rules for automatic USSD lead creation */
   ussdAutoLeadRules?: TenantUssdAutoLeadRule[];
 }

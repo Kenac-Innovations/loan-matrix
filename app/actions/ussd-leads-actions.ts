@@ -4,6 +4,7 @@ import { Prisma } from "@/app/generated/prisma";
 import { sendSms } from "@/lib/notification-service";
 import { getTenantBySlug } from "@/lib/tenant-service";
 import prisma from "@/lib/prisma";
+import { buildUssdLinkedLeadLookup } from "@/lib/ussd-linked-leads";
 import {
   UssdLoanApplication,
   UssdLeadsMetrics,
@@ -188,6 +189,58 @@ export async function getUssdLeadsData(
     );
     console.log("=== END DEBUG ===");
 
+    const linkedLeadClauses = applications.flatMap((application) => {
+      const clauses: Prisma.LeadWhereInput[] = [
+        {
+          stateMetadata: {
+            path: ["applicationId"],
+            equals: application.loanApplicationUssdId,
+          },
+        },
+      ];
+
+      if (application.referenceNumber) {
+        clauses.push({
+          stateMetadata: {
+            path: ["referenceNumber"],
+            equals: application.referenceNumber,
+          },
+        });
+      }
+
+      if (application.messageId) {
+        clauses.push({
+          stateMetadata: {
+            path: ["messageId"],
+            equals: application.messageId,
+          },
+        });
+      }
+
+      return clauses;
+    });
+
+    const linkedLeads =
+      linkedLeadClauses.length > 0
+        ? await prisma.lead.findMany({
+            where: {
+              tenantId: tenant.id,
+              OR: linkedLeadClauses,
+            },
+            select: {
+              id: true,
+              stateMetadata: true,
+              currentStage: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          })
+        : [];
+
+    const linkedLeadLookup = buildUssdLinkedLeadLookup(applications, linkedLeads);
+
     // Get total count for pagination
     const totalCount = await prisma.ussdLoanApplication.count({ where });
 
@@ -272,6 +325,7 @@ export async function getUssdLeadsData(
     // Convert database records to the expected interface format
     const formattedApplications: UssdLoanApplication[] = applications.map(
       (app) => ({
+        ...(linkedLeadLookup.get(app.loanApplicationUssdId) || {}),
         loanApplicationUssdId: app.loanApplicationUssdId,
         messageId: app.messageId,
         referenceNumber: app.referenceNumber ?? undefined,

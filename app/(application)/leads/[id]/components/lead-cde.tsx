@@ -20,6 +20,7 @@ interface LeadCDEProps {
 
 export function LeadCDE({ leadId }: LeadCDEProps) {
   const [cdeResult, setCdeResult] = useState<any>(null);
+  const [autoDisbursement, setAutoDisbursement] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [callingCDE, setCallingCDE] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +38,7 @@ export function LeadCDE({ leadId }: LeadCDEProps) {
 
       const data = await response.json();
       setCdeResult(data.cdeResult || null);
+      setAutoDisbursement(data.autoDisbursement || null);
     } catch (err) {
       console.error("Error fetching CDE data:", err);
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -221,6 +223,62 @@ export function LeadCDE({ leadId }: LeadCDEProps) {
           )}
         </CardContent>
       </Card>
+
+      {autoDisbursement && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Auto Disbursement</CardTitle>
+            <CardDescription>
+              Automatic progression status after CDE evaluation
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Status</p>
+                <Badge variant="outline" className="mt-2">
+                  {autoDisbursement.status || "Unknown"}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  CDE Decision Used
+                </p>
+                <p className="text-sm font-medium mt-2">
+                  {autoDisbursement.cdeDecision || "N/A"}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  Last Completed Stage
+                </p>
+                <p className="text-sm font-medium mt-2">
+                  {autoDisbursement.lastCompletedStageName ||
+                    autoDisbursement.lastCompletedStageId ||
+                    "N/A"}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Last Attempted</p>
+                <p className="text-sm font-medium mt-2">
+                  {autoDisbursement.lastAttemptedAt
+                    ? format(
+                        new Date(autoDisbursement.lastAttemptedAt),
+                        "PPp"
+                      )
+                    : "N/A"}
+                </p>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Stop Reason</p>
+              <p className="text-sm font-medium mt-1">
+                {autoDisbursement.stopReason || "None"}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Scoring Result */}
       {cdeResult.scoringResult && (

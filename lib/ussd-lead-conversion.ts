@@ -5,8 +5,11 @@ type UssdApplicationLike = {
   referenceNumber: string;
   userPhoneNumber?: string | null;
   loanMatrixClientId?: number | null;
+  loanMatrixLoanProductId?: number | null;
   userFullName?: string | null;
   userNationalId?: string | null;
+  loanProductName?: string | null;
+  loanProductDisplayName?: string | null;
   principalAmount?: number | null;
   loanTermMonths?: number | null;
   payoutMethod?: string | null;
@@ -250,6 +253,11 @@ function buildLeadClientSnapshot(
   const fineractClientId =
     toOptionalNumber(fineractClient?.id) ??
     toOptionalNumber(application.loanMatrixClientId);
+  const loanProductId = toOptionalNumber(application.loanMatrixLoanProductId);
+  const loanProductName =
+    toCleanString(application.loanProductName) ??
+    toCleanString(application.loanProductDisplayName) ??
+    undefined;
   const externalId =
     toCleanString(fineractClient?.externalId) ??
     toCleanString(application.userNationalId) ??
@@ -308,8 +316,10 @@ function buildLeadClientSnapshot(
             fineractClient?.activationDate ??
             fineractClient?.timeline?.submittedOnDate ??
             fineractClient?.submittedOnDate
-        ) ?? new Date()
+          ) ?? new Date()
       : undefined,
+    loanProductId,
+    loanProductName,
     stateMetadata: {
       source: "USSD",
       applicationId: application.loanApplicationUssdId,
@@ -317,6 +327,8 @@ function buildLeadClientSnapshot(
       referenceNumber: application.referenceNumber,
       payoutMethod: application.payoutMethod ?? null,
       loanMatrixClientId: application.loanMatrixClientId ?? null,
+      loanMatrixLoanProductId: application.loanMatrixLoanProductId ?? null,
+      loanProductName: loanProductName ?? null,
       userNationalId: application.userNationalId ?? null,
     },
   });
