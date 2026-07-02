@@ -19,6 +19,8 @@ test("ussd workspace uses applications and pipeline-style leads tabs", () => {
   assert.match(pageSource, /USSD Leads/);
   assert.match(pageSource, /PipelineView/);
   assert.match(pageSource, /source="USSD"/);
+  assert.match(pageSource, /Promise\.allSettled/);
+  assert.match(pageSource, /emptyPipelineData/);
   assert.match(pipelineSource, /source\?: string;/);
   assert.match(pipelineSource, /params\.append\("source", source\)/);
   assert.match(apiSource, /const source = searchParams\.get\("source"\) \|\| undefined;/);

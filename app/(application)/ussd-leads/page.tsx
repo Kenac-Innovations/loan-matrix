@@ -21,6 +21,7 @@ import { headers } from "next/headers";
 import { UssdLeadsMetrics } from "./components/ussd-leads-metrics";
 import UssdLoanApplicationsTable from "@/components/tables/UssdLoanApplicationsTable";
 import { PipelineView } from "../leads/components/pipeline-view";
+import type { LeadsData } from "@/app/actions/leads-actions";
 
 export const metadata: Metadata = {
   title: "USSD Leads | KENAC Loan Matrix",
@@ -32,11 +33,55 @@ export default async function UssdLeadsPage() {
   const headersList = await headers();
   const tenantSlug = headersList.get("x-tenant-slug") || "goodfellow";
 
-  // Fetch USSD applications and the linked pipeline leads in parallel
-  const [ussdLeadsData, ussdPipelineData] = await Promise.all([
+  const emptyPipelineData: LeadsData = {
+    leads: [],
+    pipelineStages: [],
+    metrics: {
+      activeLeads: 0,
+      conversionRate: 0,
+      avgProcessingTime: 0,
+      slaCompliance: 0,
+      onTimeCount: 0,
+      atRiskCount: 0,
+      overdueCount: 0,
+      monthlyTarget: 0,
+      conversionTarget: 0,
+      processingTimeTarget: 0,
+      conversionMetrics: { labels: [], conversionRates: [] },
+      stageTATMetrics: [],
+    },
+    pagination: {
+      total: 0,
+      limit: 10,
+      offset: 0,
+      hasMore: false,
+    },
+  };
+
+  // Fetch USSD applications and the linked pipeline leads in parallel.
+  // The leads load is allowed to fail softly so the workspace still opens.
+  const [ussdLeadsResult, ussdPipelineResult] = await Promise.allSettled([
     getUssdLeadsData(tenantSlug),
     getLeadsData(tenantSlug, { source: "USSD" }),
   ]);
+
+  const ussdLeadsData =
+    ussdLeadsResult.status === "fulfilled"
+      ? ussdLeadsResult.value
+      : null;
+
+  const ussdPipelineData =
+    ussdPipelineResult.status === "fulfilled"
+      ? ussdPipelineResult.value
+      : emptyPipelineData;
+
+  if (ussdLeadsResult.status === "rejected") {
+    console.error("Failed to load USSD applications:", ussdLeadsResult.reason);
+  }
+
+  if (ussdPipelineResult.status === "rejected") {
+    console.error("Failed to load USSD pipeline leads:", ussdPipelineResult.reason);
+  }
 
   return (
     <>
@@ -60,7 +105,23 @@ export default async function UssdLeadsPage() {
         </div>
       </div>
 
-      <UssdLeadsMetrics className="mt-6" metrics={ussdLeadsData.metrics} />
+      <UssdLeadsMetrics
+        className="mt-6"
+        metrics={ussdLeadsData?.metrics ?? {
+          totalApplications: 0,
+          pendingAction: 0,
+          approved: 0,
+          rejected: 0,
+          disbursed: 0,
+          underReview: 0,
+          cancelled: 0,
+          expired: 0,
+          approvalRate: 0,
+          averageProcessingTime: 0,
+          monthlyTarget: 0,
+          completionRate: 0,
+        }}
+      />
 
       <Tabs defaultValue="applications" className="mt-6">
         <TabsList className="w-full overflow-x-auto">
@@ -90,7 +151,7 @@ export default async function UssdLeadsPage() {
             </CardHeader>
             <CardContent>
               <UssdLoanApplicationsTable
-                ussdLoanApplications={ussdLeadsData.applications}
+                ussdLoanApplications={ussdLeadsData?.applications ?? []}
               />
             </CardContent>
           </Card>
