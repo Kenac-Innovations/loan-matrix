@@ -7,6 +7,7 @@ import { getFineractBaseUrl } from "@/lib/fineract-base-url";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { buildLeadClientBackfillData } from "@/lib/ussd-lead-conversion";
 import { resolveUssdApplicationFineractClient } from "@/lib/ussd-fineract-client";
+import { syncLinkedLeadOfficesForFineractClient } from "@/lib/lead-office-sync";
 
 const FINERACT_BASE_URL = getFineractBaseUrl();
 
@@ -376,6 +377,41 @@ export async function GET(
     // Enrich lead response from Fineract client data (Fineract is source of truth)
     if (response.fineractClient) {
       const clientData = response.fineractClient;
+      const fineractOfficeId =
+        typeof clientData.officeId === "number"
+          ? clientData.officeId
+          : Number(clientData.officeId) || null;
+      const fineractOfficeName =
+        typeof clientData.officeName === "string"
+          ? clientData.officeName.trim() || null
+          : null;
+
+      if (
+        lead.fineractClientId &&
+        fineractOfficeId &&
+        (lead.officeId !== fineractOfficeId || lead.officeName !== fineractOfficeName)
+      ) {
+        try {
+          await syncLinkedLeadOfficesForFineractClient({
+            tenantId: lead.tenantId,
+            fineractClientId: lead.fineractClientId,
+            officeId: fineractOfficeId,
+            officeName: fineractOfficeName,
+          });
+
+          lead = {
+            ...lead,
+            officeId: fineractOfficeId,
+            officeName: fineractOfficeName,
+          };
+        } catch (officeSyncError) {
+          console.error(
+            "Failed to self-heal stale lead office from Fineract client data:",
+            officeSyncError
+          );
+        }
+      }
+
       if (clientData.firstname) {
         response.lead.firstname = clientData.firstname;
       }
