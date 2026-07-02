@@ -3,15 +3,28 @@ import type {
   TenantUssdAutoLeadRule,
 } from "@/shared/types/tenant";
 
+function parsePositiveInteger(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }
+
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    return parsed > 0 ? parsed : null;
+  }
+
+  return null;
+}
+
 function sanitizeRule(rule: unknown): TenantUssdAutoLeadRule | null {
   if (!rule || typeof rule !== "object") {
     return null;
   }
 
   const candidate = rule as Record<string, unknown>;
-  const loanProductId = Number(candidate.loanProductId);
+  const loanProductId = parsePositiveInteger(candidate.loanProductId);
 
-  if (!Number.isFinite(loanProductId) || loanProductId <= 0) {
+  if (loanProductId === null) {
     return null;
   }
 
@@ -54,7 +67,7 @@ export function findMatchingUssdAutoLeadRule(
   rules: TenantUssdAutoLeadRule[],
   loanProductId: number | null | undefined
 ): TenantUssdAutoLeadRule | null {
-  if (!Number.isFinite(loanProductId) || loanProductId == null) {
+  if (loanProductId == null || !Number.isInteger(loanProductId) || loanProductId <= 0) {
     return null;
   }
 

@@ -9,6 +9,7 @@ test("normalizes persisted USSD auto-lead rules from tenant settings", async () 
       ussdAutoLeadRules: [
         { enabled: true, loanProductId: 12 },
         { enabled: false, loanProductId: "14" },
+        { enabled: true, loanProductId: true },
         { enabled: true, loanProductId: null },
       ],
     }),
