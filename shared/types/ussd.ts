@@ -42,6 +42,8 @@ export interface UssdLoanApplication {
   paymentStatus?: string | null;
   rejectionReason?: string;
   approvalNotes?: string;
+  leadId?: string;
+  leadCurrentStageName?: string | null;
   
   // Timestamps
   createdAt: Date;

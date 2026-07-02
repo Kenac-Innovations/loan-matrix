@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   getOriginatorAssignmentData,
+  getOriginatorDesignatedDisburserData,
   getTenantLeadPolicyFlags,
 } from "@/lib/lead-policy";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
@@ -308,19 +309,36 @@ async function handleLoanApproved(payload: FineractLoanWebhookPayload, tenantId:
   if (tenantLeadPolicy.autoAssignLeadOnApproval && loanRecord && leadId) {
     try {
       const assignment = getOriginatorAssignmentData(loanRecord);
+      const designatedDisburserAssignment = getOriginatorDesignatedDisburserData({
+        originatorUserId: loanRecord.userId,
+        originatorUserName: loanRecord.createdByUserName,
+        assignedByFineractUserId: createdBy,
+      });
 
-      if (assignment) {
+      if (assignment || designatedDisburserAssignment) {
+        const assignedToUserId =
+          assignment?.assignedToUserId ?? designatedDisburserAssignment?.designatedDisburserUserId;
         console.log(
-          `Assigning lead ${leadId} to originator (Mifos ID: ${assignment.assignedToUserId})`
+          `Assigning lead ${leadId} to originator (Mifos ID: ${assignedToUserId})`
         );
 
         await prisma.lead.update({
           where: { id: leadId },
-          data: assignment,
+          data: {
+            ...(assignment ?? {}),
+            designatedDisburserUserId:
+              designatedDisburserAssignment?.designatedDisburserUserId ?? null,
+            designatedDisburserUserName:
+              designatedDisburserAssignment?.designatedDisburserUserName ?? null,
+            designatedDisburserAssignedByUserId:
+              designatedDisburserAssignment?.designatedDisburserAssignedByUserId ?? null,
+            designatedDisburserAssignedAt:
+              designatedDisburserAssignment?.designatedDisburserAssignedAt ?? null,
+          },
         });
 
         console.log(
-          `Successfully assigned lead ${leadId} to originator (Mifos ID: ${assignment.assignedToUserId})`
+          `Successfully assigned lead ${leadId} to originator (Mifos ID: ${assignedToUserId})`
         );
       }
     } catch (assignError) {

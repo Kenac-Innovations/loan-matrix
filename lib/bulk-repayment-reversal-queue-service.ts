@@ -65,6 +65,9 @@ export class BulkRepaymentReversalQueueService {
   private channel: Channel | null = null;
   private isConnected = false;
   private isConsuming = false;
+  private shouldConsume = false;
+  private isShuttingDown = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000;
@@ -79,17 +82,16 @@ export class BulkRepaymentReversalQueueService {
 
       this.connection = await amqp.connect(amqpUrl);
       this.channel = await this.connection.createChannel();
+      this.isShuttingDown = false;
 
       this.connection.on("error", (err) => {
         console.error("[BulkRepaymentReversal] Connection error:", err.message);
-        this.isConnected = false;
-        this.handleReconnect();
+        this.handleDisconnect();
       });
 
       this.connection.on("close", () => {
         console.log("[BulkRepaymentReversal] Connection closed");
-        this.isConnected = false;
-        this.handleReconnect();
+        this.handleDisconnect();
       });
 
       this.channel.on("error", (err) => {
@@ -101,6 +103,15 @@ export class BulkRepaymentReversalQueueService {
       this.reconnectAttempts = 0;
 
       console.log("[BulkRepaymentReversal] Connected and queue setup complete");
+
+      if (this.shouldConsume && !this.isConsuming) {
+        void this.startConsuming().catch((error) => {
+          console.error(
+            "[BulkRepaymentReversal] Failed to resume consumer:",
+            error
+          );
+        });
+      }
     } catch (error) {
       console.error("[BulkRepaymentReversal] Failed to connect:", error);
       this.handleReconnect();
@@ -138,9 +149,28 @@ export class BulkRepaymentReversalQueueService {
     );
   }
 
+  private handleDisconnect(): void {
+    this.isConnected = false;
+    this.channel = null;
+    this.connection = null;
+
+    if (this.isConsuming) {
+      this.isConsuming = false;
+      global.__bulkRepaymentReversalConsumerActive = false;
+    }
+
+    if (!this.isShuttingDown) {
+      this.handleReconnect();
+    }
+  }
+
   private handleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error("[BulkRepaymentReversal] Max reconnection attempts reached");
+      return;
+    }
+
+    if (this.reconnectTimer) {
       return;
     }
 
@@ -148,7 +178,10 @@ export class BulkRepaymentReversalQueueService {
     console.log(
       `[BulkRepaymentReversal] Reconnecting (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${this.reconnectDelay}ms...`
     );
-    setTimeout(() => this.connect(), this.reconnectDelay);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect();
+    }, this.reconnectDelay);
   }
 
   public async publishReversal(message: BulkRepaymentReversalMessage): Promise<void> {
@@ -180,6 +213,7 @@ export class BulkRepaymentReversalQueueService {
 
   public async startConsuming(): Promise<void> {
     const { queueName } = getQueueConfig();
+    this.shouldConsume = true;
 
     if (global.__bulkRepaymentReversalConsumerActive) {
       console.log("[BulkRepaymentReversal] Consumer already active, skipping");
@@ -302,10 +336,19 @@ export class BulkRepaymentReversalQueueService {
 
   public async close(): Promise<void> {
     try {
-      if (this.channel) await this.channel.close();
-      if (this.connection) await this.connection.close();
+      this.shouldConsume = false;
+      this.isShuttingDown = true;
+      this.isConsuming = false;
       this.isConnected = false;
       global.__bulkRepaymentReversalConsumerActive = false;
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      if (this.channel) await this.channel.close();
+      if (this.connection) await this.connection.close();
+      this.channel = null;
+      this.connection = null;
       console.log("[BulkRepaymentReversal] Connection closed");
     } catch (error) {
       console.error("[BulkRepaymentReversal] Error closing connection:", error);
