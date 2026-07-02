@@ -46,6 +46,11 @@ import { useRouter } from "next/navigation";
 
 interface PipelineViewProps {
   initialData: LeadsData;
+  source?: string;
+  title?: string;
+  description?: string;
+  leadTitle?: string;
+  leadDescription?: string;
 }
 
 // Helper function to get status badge color based on Fineract loan status
@@ -78,7 +83,15 @@ function getStatusBadgeColor(status: string): string {
   return "bg-blue-500 hover:bg-blue-600";
 }
 
-export function PipelineView({ initialData }: PipelineViewProps) {
+export function PipelineView(props: PipelineViewProps) {
+  const {
+    initialData,
+    source,
+    title = "Sales Pipeline",
+    description = "Visualize your loan processing funnel",
+    leadTitle = "Pipeline Leads",
+    leadDescription = "View and manage leads in your pipeline",
+  } = props;
   const router = useRouter();
   const [filter, setFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -98,6 +111,10 @@ export function PipelineView({ initialData }: PipelineViewProps) {
         limit: pageSize.toString(),
         offset: offset.toString(),
       });
+
+      if (source) {
+        params.append("source", source);
+      }
 
       // Add filter parameters
       if (filterValue !== "all") {
@@ -129,7 +146,7 @@ export function PipelineView({ initialData }: PipelineViewProps) {
   // Handle filter changes - only fetch paginated data for the leads table
   useEffect(() => {
     fetchLeads(currentPage, filter);
-  }, [filter, currentPage, pageSize]);
+  }, [filter, currentPage, pageSize, source]);
 
   // Handle page changes
   const handlePageChange = (page: number) => {
@@ -184,10 +201,8 @@ export function PipelineView({ initialData }: PipelineViewProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Sales Pipeline</CardTitle>
-          <CardDescription>
-            Visualize your loan processing funnel
-          </CardDescription>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
@@ -244,10 +259,8 @@ export function PipelineView({ initialData }: PipelineViewProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Pipeline Leads</CardTitle>
-            <CardDescription>
-              View and manage leads in your pipeline
-            </CardDescription>
+            <CardTitle>{leadTitle}</CardTitle>
+            <CardDescription>{leadDescription}</CardDescription>
           </div>
           <Select value={filter} onValueChange={handleFilterChange}>
             <SelectTrigger className="w-[180px]">
