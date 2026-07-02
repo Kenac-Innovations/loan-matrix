@@ -2,12 +2,19 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fetchFineractAPI } from '@/lib/api';
 import { format } from 'date-fns';
+import { callCDEAndStore } from '@/lib/cde-utils';
+import { TeamAwareStateMachineService } from '@/lib/team-state-machine-service';
 import {
   buildLeadClientBackfillData,
   buildUssdLoanPayloadFromTemplate,
   resolveUssdLoanExternalId,
 } from '@/lib/ussd-lead-conversion';
 import { resolveUssdApplicationFineractClient } from '@/lib/ussd-fineract-client';
+import {
+  fetchLoansByExternalId,
+  isDuplicateLoanCreationError,
+  resolveReusableUssdLoanId,
+} from '@/lib/ussd-loan-submission';
 
 /**
  * POST /api/ussd-leads/[id]/submit
@@ -106,31 +113,97 @@ export async function POST(
         messageId: app.messageId,
       }) ?? undefined;
 
-    const productTemplate = await fetchFineractAPI(
-      `/loanproducts/${app.loanMatrixLoanProductId}?template=true`,
-      { authMode: 'service' }
-    );
+    const leadSnapshot = leadId
+      ? await prisma.lead.findUnique({
+          where: { id: leadId },
+          select: {
+            fineractLoanId: true,
+            loanSubmittedToFineract: true,
+            stateMetadata: true,
+          },
+        })
+      : null;
 
-    const payload = buildUssdLoanPayloadFromTemplate(
-      app,
-      productTemplate as Record<string, unknown>,
-      {
-        dateStr,
-        externalId: stableExternalId,
+    let reusableLoanId = null as number | null;
+    if (stableExternalId) {
+      try {
+        const loansByExternalId = await fetchLoansByExternalId(stableExternalId);
+        reusableLoanId = resolveReusableUssdLoanId({
+          lead: leadSnapshot,
+          externalId: stableExternalId,
+          loansByExternalId,
+        });
+      } catch (lookupError) {
+        console.warn(
+          "Failed to look up existing loan by external id before submit:",
+          lookupError
+        );
       }
-    );
+    } else {
+      reusableLoanId = resolveReusableUssdLoanId({
+        lead: leadSnapshot,
+      });
+    }
 
-    // POST to Fineract /loans
-    const result = await fetchFineractAPI('/loans', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let result: Record<string, unknown> | null = null;
+    let loanId = reusableLoanId;
 
-    if (result && result.resourceId) {
-      const loanId = result.resourceId;
-      
-      if (stableExternalId) {
+    if (!loanId) {
+      const productTemplate = await fetchFineractAPI(
+        `/loanproducts/${app.loanMatrixLoanProductId}?template=true`,
+        { authMode: 'service' }
+      );
+
+      const payload = buildUssdLoanPayloadFromTemplate(
+        app,
+        productTemplate as Record<string, unknown>,
+        {
+          dateStr,
+          externalId: stableExternalId,
+        }
+      );
+
+      // POST to Fineract /loans
+      try {
+        result = await fetchFineractAPI('/loans', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        loanId = (result as { resourceId?: number | null } | null)?.resourceId ?? null;
+      } catch (createError) {
+        if (!stableExternalId || !isDuplicateLoanCreationError(createError)) {
+          throw createError;
+        }
+
+        console.log(
+          `[USSD Submit] Loan already exists for external id ${stableExternalId}, reusing existing Fineract loan`
+        );
+
+        const loansByExternalId = await fetchLoansByExternalId(stableExternalId);
+        loanId = resolveReusableUssdLoanId({
+          lead: leadSnapshot,
+          externalId: stableExternalId,
+          loansByExternalId,
+        });
+
+        if (!loanId) {
+          throw createError;
+        }
+      }
+    }
+
+    if (!loanId) {
+      throw new Error("Failed to resolve or create Fineract loan for USSD application");
+    }
+
+    if (leadId) {
+      const existingLead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { stateMetadata: true },
+      });
+
+      if (reusableLoanId && stableExternalId) {
         try {
           await fetchFineractAPI(`/loans/${loanId}`, {
             method: 'PUT',
@@ -141,7 +214,7 @@ export async function POST(
               dateFormat: 'yyyy-MM-dd',
             }),
           });
-          
+
           console.log(`Updated loan ${loanId} with stable external ID ${stableExternalId}`);
         } catch (updateError) {
           console.error('Failed to update loan external ID:', updateError);
@@ -149,40 +222,55 @@ export async function POST(
         }
       }
 
-      if (leadId) {
-        const existingLead = await prisma.lead.findUnique({
-          where: { id: leadId },
-          select: { stateMetadata: true },
-        });
+      const resolvedClient =
+        fineractClient ?? (await resolveUssdApplicationFineractClient(app));
+      const backfill = buildLeadClientBackfillData(app, resolvedClient);
+      const {
+        stateMetadata: backfillStateMetadata,
+        ...backfillFields
+      } = backfill as Record<string, unknown>;
 
-        const resolvedClient =
-          fineractClient ?? (await resolveUssdApplicationFineractClient(app));
-        const backfill = buildLeadClientBackfillData(app, resolvedClient);
-        const {
-          stateMetadata: backfillStateMetadata,
-          ...backfillFields
-        } = backfill as Record<string, unknown>;
-
-        await prisma.lead.update({
-          where: { id: leadId },
-          data: {
-            ...backfillFields,
-            fineractLoanId: loanId,
-            loanSubmittedToFineract: true,
-            loanSubmissionDate: new Date(),
-            stateMetadata: {
-              ...((existingLead?.stateMetadata as Record<string, unknown>) || {}),
-              ...((backfillStateMetadata as Record<string, unknown>) || {}),
-              loanCreatedAt: new Date().toISOString(),
-              loanExternalId: stableExternalId ?? null,
-              loanId,
-            },
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          ...backfillFields,
+          fineractLoanId: loanId,
+          loanSubmittedToFineract: true,
+          loanSubmissionDate: new Date(),
+          stateMetadata: {
+            ...((existingLead?.stateMetadata as Record<string, unknown>) || {}),
+            ...((backfillStateMetadata as Record<string, unknown>) || {}),
+            loanCreatedAt: new Date().toISOString(),
+            loanExternalId: stableExternalId ?? null,
+            loanId,
           },
-        });
-      }
+        },
+      });
+
+      void (async () => {
+        try {
+          const cdeResult = await callCDEAndStore(leadId);
+          if (cdeResult?.decision) {
+            await TeamAwareStateMachineService.autoProgressToDisbursementFromCdeResult(
+              leadId,
+              "system",
+              cdeResult
+            );
+          }
+        } catch (cdeError) {
+          console.error(
+            "Error calling CDE after USSD loan submission:",
+            cdeError
+          );
+        }
+      })();
     }
 
-    return NextResponse.json({ success: true, coreResponse: result });
+    return NextResponse.json({
+      success: true,
+      coreResponse: result ?? (loanId ? { resourceId: loanId } : null),
+      cdeResult: null,
+    });
   } catch (error: unknown) {
     type LoanCreationError = {
       status?: number;

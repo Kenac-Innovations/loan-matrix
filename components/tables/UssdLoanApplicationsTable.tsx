@@ -400,18 +400,7 @@ export default function UssdLoanApplicationsTable({
                             data?.error || "Failed to create lead"
                           );
                         const leadId = data.leadId || app.referenceNumber;
-                        // After ensuring lead exists, also submit loan with externalId=leadId
-                        try {
-                          await fetch(
-                            `/api/ussd-leads/${app.loanApplicationUssdId}/submit`,
-                            {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ leadId }),
-                            }
-                          );
-                        } catch {}
-                        window.location.href = `/leads/${leadId}`;
+                        window.location.href = `/leads/${leadId}/preparing?applicationId=${app.loanApplicationUssdId}`;
                       } catch (e: any) {
                         alert(e.message || "Failed to open lead");
                       }
