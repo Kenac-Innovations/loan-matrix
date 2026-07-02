@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callCDEAndStore } from "@/lib/cde-utils";
+import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
 
 /**
  * POST /api/leads/[id]/call-cde
@@ -19,11 +20,22 @@ export async function POST(
 
     // Call CDE and store result (utility handles server-side call directly)
     const cdeResult = await callCDEAndStore(leadId);
+    let autoProgressMessage: string | null = null;
+
+    if (cdeResult?.decision) {
+      autoProgressMessage =
+        await TeamAwareStateMachineService.autoProgressToDisbursementFromCdeResult(
+          leadId,
+          "system",
+          cdeResult
+        );
+    }
 
     if (cdeResult) {
       return NextResponse.json({
         success: true,
         cdeResult,
+        autoProgressMessage,
         message: "CDE evaluation completed successfully",
       });
     } else {

@@ -5,6 +5,7 @@ import { resolveClientBranchTransferTarget } from "@/lib/client-branch-transfer-
 import { getSearchHeaders } from "@/lib/fineract-search-auth";
 import { buildClientTransferCommandBody } from "@/lib/fineract-client-transfer-service";
 import { parseFineractErrorResponse } from "@/lib/fineract-error";
+import { syncLinkedLeadOfficesForFineractClient } from "@/lib/lead-office-sync";
 
 const FINERACT_BASE_URL =
   process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
@@ -229,7 +230,42 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const data = await acceptResponse.json().catch(() => ({}));
-    return NextResponse.json(data);
+    let leadOfficeSync = {
+      attempted: false,
+      updatedCount: 0,
+      warning: null as string | null,
+    };
+
+    if (session.user.tenantId) {
+      try {
+        leadOfficeSync = {
+          attempted: true,
+          ...(await syncLinkedLeadOfficesForFineractClient({
+            tenantId: session.user.tenantId,
+            fineractClientId: clientId,
+            officeId: updatedClientOffice.officeId,
+            officeName: updatedClientOffice.officeName,
+          })),
+          warning: null,
+        };
+      } catch (syncError) {
+        console.error(
+          "Client office transfer succeeded but linked lead office sync failed:",
+          syncError
+        );
+        leadOfficeSync = {
+          attempted: true,
+          updatedCount: 0,
+          warning:
+            "Client branch was updated in Fineract, but linked Loan Matrix leads could not be synced automatically.",
+        };
+      }
+    }
+
+    return NextResponse.json({
+      ...data,
+      leadOfficeSync,
+    });
   } catch (error) {
     console.error(
       "POST /api/fineract/clients/[id]/transfer-office error:",

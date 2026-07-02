@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
     const skipFineractStatus = searchParams.get("skipFineractStatus") === "true";
     const search = searchParams.get("search") || undefined;
     const leadStatus = searchParams.get("leadStatus") || undefined;
+    const source = searchParams.get("source") || undefined;
 
     // Check if user is a Loan Officer (sees their created and assigned leads)
     const { isLoanOfficer, userId, userIdString } = await getUserRoleFilter();
@@ -85,6 +86,7 @@ export async function GET(request: NextRequest) {
       skipFineractStatus,
       search,
       leadStatus,
+      source: source === "USSD" ? "USSD" : undefined,
       // Loan officers see leads they created OR leads assigned to them
       ...(isLoanOfficer && userId && userIdString && !officeScope
         ? { loanOfficerFilter: { oderId: userId, userIdString } }

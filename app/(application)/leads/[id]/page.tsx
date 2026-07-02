@@ -21,6 +21,7 @@ import { LeadMoreActions } from "./components/lead-more-actions";
 import { LeadAdditionalInfo } from "./components/lead-additional-info";
 import {
   ArrowLeft,
+  ChevronRight,
   Landmark,
   UserCheck,
   UserX,
@@ -38,6 +39,8 @@ import { headers } from "next/headers";
 import { extractTenantSlug, getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { callCDEAndStore } from "@/lib/cde-utils";
+import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
 import {
   canEditPendingLoanApplication,
   isPendingLoanApplicationEditTenant,
@@ -49,6 +52,7 @@ import {
   canUserAccessLeadOffice,
   getLeadViewerAccessContext,
 } from "@/lib/lead-policy";
+import { buildAutoDisbursementTrail } from "@/lib/auto-disbursement-trail";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
@@ -58,6 +62,7 @@ interface FineractLoanInfo {
   principal: number | null;
   accountNo: string | null;
   currency: string | null;
+  productName: string | null;
 }
 
 /**
@@ -81,6 +86,7 @@ async function getFineractLoanInfo(
           loanData.principal || loanData.approvedPrincipal || null;
         const accountNo = loanData.accountNo || null;
         const currency = loanData.currency?.code || null;
+        const productName = loanData.loanProductName || null;
         if (status) {
           console.log("Fineract loan info fetched by ID:", {
             status,
@@ -88,8 +94,16 @@ async function getFineractLoanInfo(
             principal,
             accountNo,
             currency,
+            productName,
           });
-          return { status, loanId: Number(loanId), principal, accountNo, currency };
+          return {
+            status,
+            loanId: Number(loanId),
+            principal,
+            accountNo,
+            currency,
+            productName,
+          };
         }
       } catch (error) {
         console.warn(`Failed to fetch Fineract loan by ID ${loanId}:`, error);
@@ -108,6 +122,7 @@ async function getFineractLoanInfo(
           matchingLoan.principal || matchingLoan.approvedPrincipal || null;
         const accountNo = matchingLoan.accountNo || null;
         const currency = matchingLoan.currency?.code || null;
+        const productName = matchingLoan.loanProductName || null;
         if (status) {
           console.log("Fineract loan info fetched by external ID:", {
             status,
@@ -115,19 +130,48 @@ async function getFineractLoanInfo(
             principal,
             accountNo,
             currency,
+            productName,
           });
-          return { status, loanId: fineractLoanId, principal, accountNo, currency };
+          return {
+            status,
+            loanId: fineractLoanId,
+            principal,
+            accountNo,
+            currency,
+            productName,
+          };
         }
       }
     } catch (error) {
       console.warn(`Error fetching loan by external ID ${leadId}:`, error);
     }
 
-    return { status: null, loanId: null, principal: null, accountNo: null, currency: null };
+    return {
+      status: null,
+      loanId: null,
+      principal: null,
+      accountNo: null,
+      currency: null,
+      productName: null,
+    };
   } catch (error) {
     console.error("Error fetching Fineract loan info:", error);
-    return { status: null, loanId: null, principal: null, accountNo: null, currency: null };
+    return {
+      status: null,
+      loanId: null,
+      principal: null,
+      accountNo: null,
+      currency: null,
+      productName: null,
+    };
   }
+}
+
+function getFacilityTypeLabel(facilityType: string | null | undefined): string {
+  if (facilityType === "REVOLVING_CREDIT") return "RCF";
+  if (facilityType === "INVOICE_DISCOUNTING") return "Invoice";
+  if (facilityType === "TERM_LOAN") return "Term Loan";
+  return "Facility";
 }
 
 /**
@@ -336,6 +380,7 @@ async function getLeadData(leadId: string) {
     fineractLoanAccountNo: null,
     fineractLoanCurrency: null,
     cdeResult: null,
+    autoDisbursement: null,
     clientDatatables: [],
     datatableData: {},
     clientDocuments: [],
@@ -366,10 +411,14 @@ async function getLeadData(leadId: string) {
   let lead: Awaited<ReturnType<typeof prisma.lead.findFirst>>;
   let canManageLead = false;
   try {
+    const leadWhere = {
+      id: leadId,
+      tenantId: leadRecord.tenantId,
+    };
+
     lead = await prisma.lead.findFirst({
       where: {
-        id: leadId,
-        tenantId: leadRecord.tenantId,
+        ...leadWhere,
       },
       include: {
         currentStage: true,
@@ -423,6 +472,7 @@ async function getLeadData(leadId: string) {
     principal: null,
     accountNo: null,
     currency: null,
+    productName: null,
   };
   try {
     fineractLoanInfo = await getFineractLoanInfo(
@@ -434,7 +484,45 @@ async function getLeadData(leadId: string) {
   }
 
   const stateMetadata = ((lead as any).stateMetadata as any) || {};
-  const cdeResult = stateMetadata.cdeResult || null;
+  let currentStateMetadata = stateMetadata;
+  let cdeResult = stateMetadata.cdeResult || null;
+  let autoDisbursement = currentStateMetadata.autoDisbursement || null;
+
+  if (lead.loanSubmittedToFineract && lead.fineractLoanId && !cdeResult) {
+    try {
+      cdeResult = await callCDEAndStore(lead.id);
+
+      if (cdeResult?.decision) {
+        await TeamAwareStateMachineService.autoProgressToDisbursementFromCdeResult(
+          lead.id,
+          "system",
+          cdeResult
+        );
+      }
+
+      if (cdeResult) {
+        const refreshedLead = await prisma.lead.findFirst({
+          where: {
+            id: leadId,
+            tenantId: leadRecord.tenantId,
+          },
+          include: {
+            currentStage: true,
+          },
+        });
+
+        if (refreshedLead) {
+          lead = refreshedLead;
+          currentStateMetadata =
+            (lead.stateMetadata as Record<string, unknown> | null) || {};
+          cdeResult = currentStateMetadata.cdeResult || cdeResult;
+          autoDisbursement = currentStateMetadata.autoDisbursement || null;
+        }
+      }
+    } catch (error) {
+      console.error("Failed to auto-run CDE during lead page load:", error);
+    }
+  }
 
   let clientDatatables: any[] = [];
   let datatableData: Record<string, any> = {};
@@ -470,6 +558,7 @@ async function getLeadData(leadId: string) {
     fineractLoanPrincipal: fineractLoanInfo.principal,
     fineractLoanAccountNo: fineractLoanInfo.accountNo,
     fineractLoanCurrency: fineractLoanInfo.currency,
+    fineractLoanProductName: fineractLoanInfo.productName,
     cdeResult,
     clientDatatables,
     clientDocuments,
@@ -478,6 +567,7 @@ async function getLeadData(leadId: string) {
     tenantSlug,
     hasCreditFacility,
     canManageLead,
+    autoDisbursement,
   };
 }
 
@@ -494,6 +584,7 @@ export default async function LeadDetailPage({
     fineractLoanPrincipal,
     fineractLoanAccountNo,
     fineractLoanCurrency,
+    fineractLoanProductName,
     cdeResult,
     clientDatatables,
     datatableData,
@@ -502,6 +593,7 @@ export default async function LeadDetailPage({
     tenantSlug,
     hasCreditFacility,
     canManageLead,
+    autoDisbursement,
   } = await getLeadData(id);
 
   const session = await getSession();
@@ -558,6 +650,12 @@ export default async function LeadDetailPage({
   const pageHue = getStatusPageHue(fineractLoanStatus);
   const isRcfLead = lead.facilityType === "REVOLVING_CREDIT";
   const rcfApproved = isRcfLead && !!(lead as any).revolving;
+  const facilityTypeLabel = getFacilityTypeLabel(lead.facilityType);
+  const displayProductName =
+    lead.loanProductName || fineractLoanProductName || facilityTypeLabel;
+  const autoDisbursementTrail = buildAutoDisbursementTrail(
+    autoDisbursement as any
+  );
 
   return (
     <div className={`-m-6 p-6 min-h-screen ${pageHue}`}>
@@ -587,19 +685,24 @@ export default async function LeadDetailPage({
           </Link>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-                <h1 className="text-lg font-semibold truncate">
-                  {clientName || "Lead Details"}
-                </h1>
-                {lead.facilityType === "REVOLVING_CREDIT" && (
-                  <Badge className="bg-emerald-600 text-white border-0 text-xs shrink-0">RCF</Badge>
-                )}
-                {lead.facilityType === "INVOICE_DISCOUNTING" && (
-                  <Badge className="bg-blue-500 text-white border-0 text-xs shrink-0">Invoice</Badge>
-                )}
-                {lead.facilityType === "TERM_LOAN" && (
-                  <Badge className="bg-gray-500 text-white border-0 text-xs shrink-0">Term Loan</Badge>
-                )}
+              <div className="min-w-0 overflow-hidden">
+                <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                  <h1 className="text-lg font-semibold truncate">
+                    {clientName || "Lead Details"}
+                  </h1>
+                  <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-sky-500/12 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-500/20 dark:text-sky-300 shrink-0">
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-sky-500 text-white">
+                      <CheckCircle2 className="h-3 w-3" />
+                    </span>
+                    <span className="truncate max-w-[14rem] sm:max-w-[18rem]">
+                      {displayProductName}
+                    </span>
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="text-xs shrink-0">
+                    {facilityTypeLabel}
+                  </Badge>
                 {fineractLoanStatus && (
                   <Badge
                     className={`${getStatusBadgeColor(fineractLoanStatus)} text-white border-0 text-xs shrink-0`}
@@ -607,34 +710,43 @@ export default async function LeadDetailPage({
                     {fineractLoanStatus?.toLowerCase() === "active" ? "Disbursed" : fineractLoanStatus}
                   </Badge>
                 )}
+                {autoDisbursement && autoDisbursementTrail.statusLabel && (
+                  <Badge
+                    variant={autoDisbursementTrail.statusVariant}
+                    className="text-xs shrink-0"
+                  >
+                    Auto {autoDisbursementTrail.statusLabel}
+                  </Badge>
+                )}
                 {rcfApproved && (
                   <Badge className="bg-blue-600 text-white border-0 text-xs gap-1 shrink-0">
                     <CheckCircle2 className="h-3 w-3" />
                     Approved
                   </Badge>
-                )}
-                {lead.currentStage && !rcfApproved && (
-                  lead.currentStage.isFinalState ? (
-                    lead.currentStage.fineractAction === "reject" ? (
-                      <Badge className="bg-red-600 text-white border-0 text-xs gap-1 shrink-0">
-                        <XCircle className="h-3 w-3" />
-                        Rejected
-                      </Badge>
+                  )}
+                  {lead.currentStage && !rcfApproved && (
+                    lead.currentStage.isFinalState ? (
+                      lead.currentStage.fineractAction === "reject" ? (
+                        <Badge className="bg-red-600 text-white border-0 text-xs gap-1 shrink-0">
+                          <XCircle className="h-3 w-3" />
+                          Rejected
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-green-600 text-white border-0 text-xs gap-1 shrink-0">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Complete
+                        </Badge>
+                      )
                     ) : (
-                      <Badge className="bg-green-600 text-white border-0 text-xs gap-1 shrink-0">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Complete
+                      <Badge
+                        className="text-white border-0 text-xs shrink-0"
+                        style={{ backgroundColor: lead.currentStage.color || "#6b7280" }}
+                      >
+                        {currentStage}
                       </Badge>
                     )
-                  ) : (
-                    <Badge
-                      className="text-white border-0 text-xs shrink-0"
-                      style={{ backgroundColor: lead.currentStage.color || "#6b7280" }}
-                    >
-                      {currentStage}
-                    </Badge>
-                  )
-                )}
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 {!rcfApproved && (
@@ -728,6 +840,39 @@ export default async function LeadDetailPage({
                     {cdeResult.scoringResult?.creditScore && ` • ${cdeResult.scoringResult.creditScore}`}
                   </span>
                 </Link>
+              )}
+              {autoDisbursement && autoDisbursementTrail.stages.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Auto Flow
+                  </span>
+                  {autoDisbursementTrail.stages.map((stage, index) => {
+                    const isLast = index === autoDisbursementTrail.stages.length - 1;
+                    return (
+                      <span key={stage.key} className="inline-flex items-center gap-1.5">
+                        {index > 0 && (
+                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                        )}
+                        <Badge
+                          variant={isLast ? "default" : "outline"}
+                          className="text-[11px] font-medium capitalize"
+                        >
+                          {stage.label}
+                        </Badge>
+                      </span>
+                    );
+                  })}
+                  {autoDisbursement.cdeDecision && (
+                    <Badge variant="secondary" className="text-[11px] font-medium">
+                      CDE {String(autoDisbursement.cdeDecision)}
+                    </Badge>
+                  )}
+                  {autoDisbursement.stopReason && (
+                    <span className="text-[11px] text-muted-foreground">
+                      Stop: {autoDisbursement.stopReason}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>

@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/card";
 import { ColourPicker } from "./colour-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AutoDisbursementRulesConfig } from "./auto-disbursement-rules-config";
+import { UssdAutoLeadRulesConfig } from "./ussd-auto-lead-rules-config";
 import {
   Select,
   SelectContent,
@@ -252,6 +254,14 @@ export function PipelineConfig() {
               <ArrowRight className="mr-2 h-4 w-4" />
               Transitions
             </TabsTrigger>
+            <TabsTrigger value="auto-disbursement">
+              <Save className="mr-2 h-4 w-4" />
+              Auto Disbursement
+            </TabsTrigger>
+            <TabsTrigger value="ussd-auto-leads">
+              <Save className="mr-2 h-4 w-4" />
+              USSD Auto Leads
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="stages" className="space-y-6">
@@ -437,6 +447,14 @@ export function PipelineConfig() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="auto-disbursement" className="space-y-6">
+            <AutoDisbursementRulesConfig />
+          </TabsContent>
+
+          <TabsContent value="ussd-auto-leads" className="space-y-6">
+            <UssdAutoLeadRulesConfig />
           </TabsContent>
         </Tabs>
       </div>
