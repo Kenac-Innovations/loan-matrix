@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext } from "react";
 import { signIn, signOut, useSession, getSession } from "next-auth/react";
-import type { MfaChannel } from "@/shared/types/tenant";
 
 type LoginResult =
   | { success: true }
@@ -10,21 +9,12 @@ type LoginResult =
       success: false;
       error: string;
       requiresMfa?: false;
-      requiresChannelSelection?: false;
     }
   | {
       success: false;
       requiresMfa: true;
       challengeId: string;
-      channel: MfaChannel;
-      maskedDestination: string;
-    }
-  | {
-      success: false;
-      requiresMfa: true;
-      requiresChannelSelection: true;
-      availableChannels: MfaChannel[];
-      destinations: Partial<Record<MfaChannel, string | null>>;
+      deliveryDescription?: string;
     };
 
 type AuthContextType = {
@@ -35,11 +25,7 @@ type AuthContextType = {
     email?: string | null;
     image?: string | null;
   } | null;
-  login: (
-    username: string,
-    password: string,
-    channel?: MfaChannel
-  ) => Promise<LoginResult>;
+  login: (username: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
 };
 
@@ -95,14 +81,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (
     username: string,
-    password: string,
-    channel?: MfaChannel
+    password: string
   ): Promise<LoginResult> => {
     try {
       const mfaStartRes = await fetch("/api/auth/mfa/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, channel }),
+        body: JSON.stringify({ username, password }),
       });
       const mfaStartData = await mfaStartRes.json();
 
@@ -114,22 +99,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (mfaStartData.requiresMfa) {
-        if (mfaStartData.requiresChannelSelection) {
-          return {
-            success: false,
-            requiresMfa: true,
-            requiresChannelSelection: true,
-            availableChannels: mfaStartData.availableChannels || [],
-            destinations: mfaStartData.destinations || {},
-          };
-        }
-
         return {
           success: false,
           requiresMfa: true,
           challengeId: mfaStartData.challengeId,
-          channel: mfaStartData.channel,
-          maskedDestination: mfaStartData.maskedDestination,
+          deliveryDescription: mfaStartData.deliveryDescription,
         };
       }
 

@@ -29,6 +29,7 @@ type ChallengeSummary = {
   username: string;
   channel: MfaChannel;
   maskedDestination: string;
+  deliveryDescription?: string;
   expiresAt: string;
   resendAvailableAt: string;
   attemptsUsed: number;
@@ -497,7 +498,7 @@ function MfaPageContent() {
                 </p>
                 {challenge && (
                   <p className="text-sm text-muted-foreground">
-                    {challenge.channel.toUpperCase()} to {challenge.maskedDestination}
+                    Code sent via {challenge.deliveryDescription || challenge.maskedDestination}
                   </p>
                 )}
               </div>
