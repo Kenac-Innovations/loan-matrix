@@ -336,7 +336,7 @@ export default function UssdLoanApplicationsTable({
         },
         {
           id: "paymentStatus",
-          header: "Payment Status",
+          header: "Payout Status",
           accessorKey: "paymentStatus" as keyof UssdLoanApplication,
           cell: ({ getValue }) => {
             const status = getValue() as string | null | undefined;
