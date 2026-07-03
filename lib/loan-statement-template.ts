@@ -4,6 +4,7 @@ import { getLoanInterestRateDisplay } from "@/lib/interest-rate-display";
 import {
   getDisplayedTransactionType,
   type TransactionLike,
+  isTransactionReversed,
 } from "@/lib/format-transaction";
 
 export interface LoanStatementData {
@@ -52,9 +53,15 @@ export interface LoanTransaction {
   credit: number;
   cumulativeBalance: number;
   isHighlighted?: boolean; // For disbursements and certain transactions
+  isReversed?: boolean;
 }
 
 type StatementLoanLike = {
+  annualInterestRate?: number | null;
+  interestRatePerPeriod?: number | null;
+  interestRateFrequencyType?: {
+    value?: string | null;
+  } | null;
   currency?: {
     code?: string;
     displaySymbol?: string;
@@ -372,7 +379,7 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
   const transactionRows = data.transactions
     .map(
       (tx) => `
-      <tr class="${tx.isHighlighted ? "highlighted-row" : ""}">
+      <tr class="${tx.isReversed ? "reversed-row" : tx.isHighlighted ? "highlighted-row" : ""}">
         <td class="date-cell">${tx.date}</td>
         <td class="type-cell">${tx.type}</td>
         <td class="trxn-id-cell">${tx.trxnId}</td>
@@ -558,6 +565,13 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
     
     .transactions-table .highlighted-row td {
       color: #0e6655;
+    }
+
+    .transactions-table .reversed-row td {
+      color: #c62828;
+      text-decoration: line-through;
+      text-decoration-thickness: 1.5px;
+      text-decoration-color: #c62828;
     }
     
     /* Footer Section */
@@ -810,13 +824,62 @@ export interface ConsolidatedTransaction {
   credit: number;
   cumulativeBalance: number;
   isHighlighted?: boolean;
+  isReversed?: boolean;
+}
+
+export function getStatementTransactionType(
+  transaction: TransactionLike | undefined
+): string {
+  const label = getDisplayedTransactionType(transaction);
+  if (!label) return "";
+  return isTransactionReversed(transaction) ? `${label} (Reversed)` : label;
+}
+
+export function getStatementTransactionAmounts(tx: TransactionLike) {
+  const isDisbursement = tx.type?.disbursement;
+  const isRepayment = tx.type?.repayment;
+  const isRepaymentAtDisbursement = tx.type?.repaymentAtDisbursement;
+  const isAccrual = tx.type?.accrual;
+  const isChargePayment = tx.type?.code?.includes("chargePayment");
+  const isWaiver =
+    tx.type?.code?.includes("waive") ||
+    tx.type?.value?.toLowerCase().includes("waiv");
+  const isWriteOff =
+    tx.type?.code?.includes("writeOff") ||
+    tx.type?.value?.toLowerCase().includes("write-off");
+  const isReversed = isTransactionReversed(tx);
+
+  let debit = 0;
+  let credit = 0;
+  let isHighlighted = false;
+
+  if (isDisbursement) {
+    debit = tx.amount || 0;
+    isHighlighted = true;
+  } else if (isAccrual) {
+    debit = tx.amount || 0;
+  } else if (isRepaymentAtDisbursement || isRepayment || isChargePayment) {
+    credit = tx.amount || 0;
+    isHighlighted = true;
+  } else if (isWaiver || isWriteOff) {
+    credit = tx.amount || 0;
+  }
+
+  return {
+    debit,
+    credit,
+    isHighlighted,
+    isReversed,
+    effectiveDebit: isReversed ? 0 : debit,
+    effectiveCredit: isReversed ? 0 : credit,
+  };
 }
 
 export function generateConsolidatedStatementHTML(data: ConsolidatedStatementData): string {
   const transactionRows = data.transactions
     .map(
       (tx) => `
-      <tr class="${tx.isHighlighted ? "highlighted-row" : ""}">
+      <tr class="${tx.isReversed ? "reversed-row" : tx.isHighlighted ? "highlighted-row" : ""}">
         <td class="date-cell">${tx.date}</td>
         <td class="loan-cell">${tx.loanAccount}</td>
         <td class="type-cell">${tx.type}</td>
@@ -878,6 +941,12 @@ export function generateConsolidatedStatementHTML(data: ConsolidatedStatementDat
     .transactions-table .amount-cell { width: 100px; text-align: right; font-family: 'Courier New', monospace; }
     .transactions-table .balance-cell { font-weight: bold; }
     .transactions-table .highlighted-row td { color: #0e6655; }
+    .transactions-table .reversed-row td {
+      color: #c62828;
+      text-decoration: line-through;
+      text-decoration-thickness: 1.5px;
+      text-decoration-color: #c62828;
+    }
     .footer { display: table; width: 100%; border: 1px solid #000; margin-top: 30px; }
     .footer-left { display: table-cell; width: 55%; vertical-align: top; padding: 15px; border-right: 1px solid #000; }
     .footer-right { display: table-cell; width: 45%; vertical-align: top; padding: 0; }
@@ -1041,49 +1110,30 @@ export function transformFineractLoanToStatement(
   const sortedTransactions = [...transactions].sort((a, b) => {
     const dateA = Array.isArray(a.date)
       ? new Date(a.date[0], a.date[1] - 1, a.date[2]).getTime()
-      : new Date(a.date).getTime();
+      : a.date
+        ? new Date(a.date).getTime()
+        : 0;
     const dateB = Array.isArray(b.date)
       ? new Date(b.date[0], b.date[1] - 1, b.date[2]).getTime()
-      : new Date(b.date).getTime();
+      : b.date
+        ? new Date(b.date).getTime()
+        : 0;
     return dateA - dateB;
   });
 
   sortedTransactions.forEach((tx) => {
-    const isDisbursement = tx.type?.disbursement;
-    const isRepayment = tx.type?.repayment;
-    const isRepaymentAtDisbursement = tx.type?.repaymentAtDisbursement;
-    const isAccrual = tx.type?.accrual;
-    const isChargePayment = tx.type?.code?.includes("chargePayment");
-    const isWaiver =
-      tx.type?.code?.includes("waive") ||
-      tx.type?.value?.toLowerCase().includes("waiv");
-    const isWriteOff =
-      tx.type?.code?.includes("writeOff") ||
-      tx.type?.value?.toLowerCase().includes("write-off");
+    const {
+      debit,
+      credit,
+      isHighlighted,
+      isReversed,
+      effectiveDebit,
+      effectiveCredit,
+    } = getStatementTransactionAmounts(tx);
 
-    let debit = 0;
-    let credit = 0;
-    let isHighlighted = false;
-
-    if (isDisbursement) {
-      debit = tx.amount || 0;
-      totalDebits += debit;
-      runningBalance += debit;
-      isHighlighted = true;
-    } else if (isAccrual) {
-      debit = tx.amount || 0;
-      totalDebits += debit;
-      runningBalance += debit;
-    } else if (isRepaymentAtDisbursement || isRepayment || isChargePayment) {
-      credit = tx.amount || 0;
-      totalCredits += credit;
-      runningBalance -= credit;
-      isHighlighted = true;
-    } else if (isWaiver || isWriteOff) {
-      credit = tx.amount || 0;
-      totalCredits += credit;
-      runningBalance -= credit;
-    }
+    totalDebits += effectiveDebit;
+    totalCredits += effectiveCredit;
+    runningBalance += effectiveDebit - effectiveCredit;
 
     const cumulativeBalance =
       typeof tx.outstandingLoanBalance === "number"
@@ -1091,14 +1141,15 @@ export function transformFineractLoanToStatement(
         : Math.max(0, runningBalance);
 
     processedTransactions.push({
-      id: tx.id,
+      id: tx.id ?? 0,
       date: parseFineractDate(tx.date),
-      type: getDisplayedTransactionType(tx),
+      type: getStatementTransactionType(tx),
       trxnId: tx.id?.toString() || "",
       debit,
       credit,
       cumulativeBalance,
       isHighlighted,
+      isReversed,
     });
   });
 
