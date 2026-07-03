@@ -3,16 +3,15 @@ import { format } from "date-fns";
 import { buildFineractRequest } from "@/lib/api";
 import {
   generateConsolidatedStatementHTML,
+  getStatementTransactionAmounts,
+  getStatementTransactionType,
   parseFineractDate,
   type ConsolidatedStatementData,
   type ConsolidatedTransaction,
 } from "@/lib/loan-statement-template";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
-import {
-  getDisplayedTransactionType,
-  type TransactionLike,
-} from "@/lib/format-transaction";
+import { type TransactionLike } from "@/lib/format-transaction";
 
 type RefinanceLoanLike = {
   id?: string | number;
@@ -21,7 +20,12 @@ type RefinanceLoanLike = {
   clientName?: string;
   accountNo?: string;
   loanProductName?: string;
+  productName?: string;
   loanProductDescription?: string;
+  currency?: {
+    code?: string;
+    displaySymbol?: string;
+  };
   transactions?: TransactionLike[];
   topupDetails?: {
     loanIdToClose?: string | number;
@@ -33,10 +37,6 @@ type RefinanceLoanLike = {
   topupAmount?: number | null;
 };
 
-function getConsolidatedTransactionType(tx: TransactionLike): string {
-  return getDisplayedTransactionType(tx);
-}
-
 function getTransactionSortDate(dateValue: string | number[] | undefined): number {
   if (!dateValue) return 0;
 
@@ -46,38 +46,6 @@ function getTransactionSortDate(dateValue: string | number[] | undefined): numbe
   }
 
   return new Date(dateValue).getTime();
-}
-
-function getTransactionAmounts(tx: TransactionLike) {
-  const isDisbursement = tx.type?.disbursement;
-  const isRepayment = tx.type?.repayment;
-  const isRepaymentAtDisbursement = tx.type?.repaymentAtDisbursement;
-  const isAccrual = tx.type?.accrual;
-  const isChargePayment = tx.type?.code?.includes("chargePayment");
-  const isWaiver =
-    tx.type?.code?.includes("waive") ||
-    tx.type?.value?.toLowerCase().includes("waiv");
-  const isWriteOff =
-    tx.type?.code?.includes("writeOff") ||
-    tx.type?.value?.toLowerCase().includes("write-off");
-
-  let debit = 0;
-  let credit = 0;
-  let isHighlighted = false;
-
-  if (isDisbursement) {
-    debit = tx.amount || 0;
-    isHighlighted = true;
-  } else if (isAccrual) {
-    debit = tx.amount || 0;
-  } else if (isRepaymentAtDisbursement || isRepayment || isChargePayment) {
-    credit = tx.amount || 0;
-    isHighlighted = true;
-  } else if (isWaiver || isWriteOff) {
-    credit = tx.amount || 0;
-  }
-
-  return { debit, credit, isHighlighted };
 }
 
 function resolveRefinancedLoanLink(loan: RefinanceLoanLike) {
@@ -231,27 +199,36 @@ export async function GET(
     let runningBalance = 0;
 
     for (const rawTransaction of rawTransactions) {
-      const { debit, credit, isHighlighted } = getTransactionAmounts(rawTransaction.tx);
-      totalDebits += debit;
-      totalCredits += credit;
-      runningBalance += debit - credit;
+      const {
+        debit,
+        credit,
+        effectiveDebit,
+        effectiveCredit,
+        isHighlighted,
+        isReversed,
+      } = getStatementTransactionAmounts(rawTransaction.tx);
+
+      totalDebits += effectiveDebit;
+      totalCredits += effectiveCredit;
+      runningBalance += effectiveDebit - effectiveCredit;
 
       const loanTotals = perLoanTotals.get(rawTransaction.loanAccount);
       if (loanTotals) {
-        loanTotals.totalDebits += debit;
-        loanTotals.totalCredits += credit;
-        loanTotals.closingBalance += debit - credit;
+        loanTotals.totalDebits += effectiveDebit;
+        loanTotals.totalCredits += effectiveCredit;
+        loanTotals.closingBalance += effectiveDebit - effectiveCredit;
       }
 
       transactions.push({
         date: parseFineractDate(rawTransaction.tx.date),
         loanAccount: rawTransaction.loanAccount,
-        type: getConsolidatedTransactionType(rawTransaction.tx),
+        type: getStatementTransactionType(rawTransaction.tx),
         trxnId: rawTransaction.tx.id?.toString() || "",
         debit,
         credit,
         cumulativeBalance: Math.max(0, runningBalance),
         isHighlighted,
+        isReversed,
       });
     }
 
