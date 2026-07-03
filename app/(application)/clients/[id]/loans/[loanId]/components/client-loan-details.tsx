@@ -4139,7 +4139,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Fee/Penalty</TableHead>
+                      <TableHead>Fee/Arrears</TableHead>
                       <TableHead>Payment due at</TableHead>
                       <TableHead>Due As Of</TableHead>
                       <TableHead>Calculation Type</TableHead>
@@ -4157,7 +4157,9 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableCell className="font-medium">{charge.name}</TableCell>
                           <TableCell>
                             <Badge variant={charge.chargeType?.value === "Penalty" ? "destructive" : "default"}>
-                              {charge.chargeType?.value || "Fee"}
+                              {charge.chargeType?.value === "Penalty"
+                                ? "Arrears"
+                                : charge.chargeType?.value || "Fee"}
                             </Badge>
                           </TableCell>
                           <TableCell>{charge.chargeTimeType?.value || "N/A"}</TableCell>
@@ -5918,7 +5920,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   </div>
                   
                   <div className="flex justify-between items-center">
-                    <Label className="text-sm font-medium text-gray-700">Penalties</Label>
+                    <Label className="text-sm font-medium text-gray-700">Arrears</Label>
                     <div className="text-lg font-semibold text-gray-900">
                       {prepayLoanForm.penalties ? parseFloat(prepayLoanForm.penalties).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
                     </div>

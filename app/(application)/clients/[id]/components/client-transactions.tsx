@@ -726,7 +726,7 @@ export function ClientTransactions({ clientId, loanId }: ClientTransactionsProps
     },
     {
       id: "penaltyChargesPortion",
-      header: "Penalties",
+      header: "Arrears",
       accessorKey: "penaltyChargesPortion",
       cell: ({ row }) =>
         formatCurrency(

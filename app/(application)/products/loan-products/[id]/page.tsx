@@ -492,12 +492,12 @@ export default function LoanProductViewPage({ params }: { params: Promise<{ id: 
           </div>
         </AccordionSection>
 
-        {/* Charges & Penalties */}
+        {/* Charges & Arrears */}
         {(charges.length > 0 || penalties.length > 0) && (
           <AccordionSection
             value="charges"
             icon={<Tag className="h-4 w-4" />}
-            title="Charges & Penalties"
+            title="Charges & Arrears"
             badge={<Badge variant="secondary" className="text-xs">{charges.length + penalties.length}</Badge>}
           >
             <div className="space-y-4">
@@ -520,7 +520,7 @@ export default function LoanProductViewPage({ params }: { params: Promise<{ id: 
               )}
               {penalties.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Penalties</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Arrears</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {penalties.map((c) => (
                       <div key={c.id} className="flex items-start gap-3 rounded-lg border bg-orange-50/50 p-3 dark:bg-orange-950/20">
@@ -571,7 +571,7 @@ export default function LoanProductViewPage({ params }: { params: Promise<{ id: 
                           <>
                             <GLRow label="Interest Receivable" account={am.receivableInterestAccount} />
                             <GLRow label="Fees Receivable" account={am.receivableFeeAccount} />
-                            <GLRow label="Penalties Receivable" account={am.receivablePenaltyAccount} />
+                            <GLRow label="Arrears Receivable" account={am.receivablePenaltyAccount} />
                           </>
                         )}
                       </GLSection>
@@ -579,14 +579,14 @@ export default function LoanProductViewPage({ params }: { params: Promise<{ id: 
                       <GLSection title="Income">
                         <GLRow label="Income from Interest" account={am.interestOnLoanAccount} />
                         <GLRow label="Income from fees" account={am.incomeFromFeeAccount} />
-                        <GLRow label="Income from penalties" account={am.incomeFromPenaltyAccount} />
+                        <GLRow label="Income from arrears" account={am.incomeFromPenaltyAccount} />
                         <GLRow label="Income from Recovery Repayments" account={am.incomeFromRecoveryAccount} />
                         <GLRow label="Income from ChargeOff Interest" account={am.incomeFromChargeOffInterestAccount} />
                         <GLRow label="Income from ChargeOff Fees" account={am.incomeFromChargeOffFeesAccount} />
-                        <GLRow label="Income from ChargeOff Penalty" account={am.incomeFromChargeOffPenaltyAccount} />
+                        <GLRow label="Income from ChargeOff Arrears" account={am.incomeFromChargeOffPenaltyAccount} />
                         <GLRow label="Income from Goodwill Credit Interest" account={am.incomeFromGoodwillCreditInterestAccount} />
                         <GLRow label="Income from Goodwill Credit Fees" account={am.incomeFromGoodwillCreditFeesAccount} />
-                        <GLRow label="Income from Goodwill Credit Penalties" account={am.incomeFromGoodwillCreditPenaltyAccount} />
+                        <GLRow label="Income from Goodwill Credit Arrears" account={am.incomeFromGoodwillCreditPenaltyAccount} />
                       </GLSection>
 
                       <GLSection title="Expenses">
@@ -633,9 +633,9 @@ export default function LoanProductViewPage({ params }: { params: Promise<{ id: 
                         />
                       </div>
                       <div>
-                        <p className="mb-2 text-xs text-muted-foreground">Penalty → Income Account</p>
+                        <p className="mb-2 text-xs text-muted-foreground">Arrears → Income Account</p>
                         <MappingTable
-                          headers={["Penalty", "Income Account"]}
+                          headers={["Arrears", "Income Account"]}
                           rows={(product.penaltyToIncomeAccountMappings ?? []).map((m) => [
                             m.charge.name,
                             `${m.incomeAccount.glCode} · ${m.incomeAccount.name}`,
