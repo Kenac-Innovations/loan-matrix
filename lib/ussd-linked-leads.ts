@@ -1,3 +1,5 @@
+import { UssdLoanApplicationStatus } from "@/shared/types/ussd";
+
 type UssdApplicationIdentity = {
   loanApplicationUssdId: number;
   referenceNumber?: string | null;
@@ -6,15 +8,21 @@ type UssdApplicationIdentity = {
 
 type LinkedLeadRecord = {
   id: string;
+  fineractLoanId?: number | null;
+  updatedAt?: Date;
   stateMetadata?: unknown;
   currentStage?: {
     name: string;
+    isFinalState?: boolean | null;
+    fineractAction?: string | null;
   } | null;
 };
 
 export type UssdLinkedLeadSummary = {
   leadId: string;
-  currentStageName?: string | null;
+  leadCurrentStageName?: string | null;
+  effectiveStatus?: UssdLoanApplicationStatus | null;
+  leadUpdatedAt?: Date;
 };
 
 function toCleanString(value: unknown): string | null {
@@ -44,6 +52,48 @@ function readStateMetadata(metadata: unknown): Record<string, unknown> {
   }
 
   return metadata as Record<string, unknown>;
+}
+
+export function resolveUssdLinkedLeadEffectiveStatus(
+  lead: LinkedLeadRecord
+): UssdLoanApplicationStatus | null {
+  const metadata = readStateMetadata(lead.stateMetadata);
+  const cdeResult = readStateMetadata(metadata.cdeResult);
+  const decision = toCleanString(cdeResult.decision)?.toUpperCase();
+  const stageName = toCleanString(lead.currentStage?.name)?.toLowerCase();
+  const fineractAction = toCleanString(lead.currentStage?.fineractAction)?.toLowerCase();
+  const isFinalState = Boolean(lead.currentStage?.isFinalState);
+
+  if (
+    lead.fineractLoanId ||
+    (isFinalState &&
+      (fineractAction === "disburse" || stageName?.includes("disburs")))
+  ) {
+    return UssdLoanApplicationStatus.DISBURSED;
+  }
+
+  if (
+    decision === "DECLINED" ||
+    decision === "REJECTED" ||
+    (isFinalState &&
+      (fineractAction === "reject" || stageName?.includes("reject")))
+  ) {
+    return UssdLoanApplicationStatus.REJECTED;
+  }
+
+  if (
+    fineractAction === "approve" ||
+    decision === "APPROVED" ||
+    stageName?.includes("approv")
+  ) {
+    return UssdLoanApplicationStatus.APPROVED;
+  }
+
+  if (decision === "MANUAL_REVIEW" || stageName?.includes("review")) {
+    return UssdLoanApplicationStatus.UNDER_REVIEW;
+  }
+
+  return null;
 }
 
 export function buildUssdLinkedLeadLookup(
@@ -85,7 +135,9 @@ export function buildUssdLinkedLeadLookup(
 
     summaries.set(applicationId, {
       leadId: lead.id,
-      currentStageName: lead.currentStage?.name ?? null,
+      leadCurrentStageName: lead.currentStage?.name ?? null,
+      effectiveStatus: resolveUssdLinkedLeadEffectiveStatus(lead),
+      leadUpdatedAt: lead.updatedAt,
     });
   }
 

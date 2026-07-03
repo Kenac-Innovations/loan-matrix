@@ -12,6 +12,7 @@ export interface Lead {
   assigneeColor: string;
   createdAt: Date;
   updatedAt: Date;
+  loanProductName?: string | null;
   firstname?: string;
   lastname?: string;
   emailAddress?: string;

@@ -8,6 +8,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = parseInt(searchParams.get("offset") || "0");
 
@@ -15,6 +17,8 @@ export async function GET(request: NextRequest) {
       status: status || undefined,
       limit,
       offset,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
     });
 
     return NextResponse.json(ussdLeadsData);
