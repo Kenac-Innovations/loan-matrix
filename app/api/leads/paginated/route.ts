@@ -65,6 +65,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || undefined;
     const leadStatus = searchParams.get("leadStatus") || undefined;
     const source = searchParams.get("source") || undefined;
+    const startDate = searchParams.get("startDate") || undefined;
+    const endDate = searchParams.get("endDate") || undefined;
 
     // Check if user is a Loan Officer (sees their created and assigned leads)
     const { isLoanOfficer, userId, userIdString } = await getUserRoleFilter();
@@ -87,6 +89,8 @@ export async function GET(request: NextRequest) {
       search,
       leadStatus,
       source: source === "USSD" ? "USSD" : undefined,
+      startDate,
+      endDate,
       // Loan officers see leads they created OR leads assigned to them
       ...(isLoanOfficer && userId && userIdString && !officeScope
         ? { loanOfficerFilter: { oderId: userId, userIdString } }

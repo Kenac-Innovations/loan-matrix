@@ -26,17 +26,24 @@ test("linked lead lookup matches applications by application id and message meta
       {
         id: "lead-2",
         stateMetadata: { messageId: "MSG-202" },
-        currentStage: { name: "Approved" },
+        currentStage: {
+          name: "Approved",
+          fineractAction: "approve",
+        },
       },
     ]
   );
 
   assert.deepEqual(lookup.get(101), {
     leadId: "lead-1",
-    currentStageName: "Initiation",
+    leadCurrentStageName: "Initiation",
+    effectiveStatus: null,
+    leadUpdatedAt: undefined,
   });
   assert.deepEqual(lookup.get(202), {
     leadId: "lead-2",
-    currentStageName: "Approved",
+    leadCurrentStageName: "Approved",
+    effectiveStatus: "APPROVED",
+    leadUpdatedAt: undefined,
   });
 });
