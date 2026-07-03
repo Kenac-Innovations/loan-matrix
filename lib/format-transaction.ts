@@ -21,6 +21,8 @@ export type TransactionLike = {
   date?: string | number[];
   amount?: number;
   outstandingLoanBalance?: number;
+  manuallyReversed?: boolean;
+  reversed?: boolean;
   type?: TransactionTypeLike;
   loanChargePaidByList?: ChargeLike[];
 };
@@ -93,4 +95,10 @@ export function getDisplayedTransactionType(
     }
   }
   return baseLabel;
+}
+
+export function isTransactionReversed(
+  transaction: TransactionLike | undefined
+): boolean {
+  return Boolean(transaction?.manuallyReversed || transaction?.reversed);
 }

@@ -556,7 +556,7 @@ export function StepAccounting({ form, template, onChange }: StepAccountingProps
                   />
                   <GLAccountSelect
                     id="receivablePenaltyAccountId"
-                    label="Penalties Receivable"
+                    label="Arrears Receivable"
                     required
                     value={form.receivablePenaltyAccountId}
                     accounts={assetAccounts}
@@ -593,7 +593,7 @@ export function StepAccounting({ form, template, onChange }: StepAccountingProps
               />
               <GLAccountSelect
                 id="incomeFromPenaltyAccountId"
-                label="Income from Penalties"
+                label="Income from Arrears"
                 required
                 value={form.incomeFromPenaltyAccountId}
                 accounts={incomeAccounts}
@@ -625,7 +625,7 @@ export function StepAccounting({ form, template, onChange }: StepAccountingProps
               />
               <GLAccountSelect
                 id="incomeFromChargeOffPenaltyAccountId"
-                label="Income from ChargeOff Penalties"
+                label="Income from ChargeOff Arrears"
                 required
                 value={form.incomeFromChargeOffPenaltyAccountId}
                 accounts={incomeAccounts}
@@ -649,7 +649,7 @@ export function StepAccounting({ form, template, onChange }: StepAccountingProps
               />
               <GLAccountSelect
                 id="incomeFromGoodwillCreditPenaltyAccountId"
-                label="Income from Goodwill Credit Penalties"
+                label="Income from Goodwill Credit Arrears"
                 required
                 value={form.incomeFromGoodwillCreditPenaltyAccountId}
                 accounts={incomeAccounts}
@@ -735,7 +735,7 @@ export function StepAccounting({ form, template, onChange }: StepAccountingProps
                   Advanced Accounting Rules
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Configure payment channel → fund source, fee/penalty → income account,
+                  Configure payment channel → fund source, fee/arrears → income account,
                   and charge-off reason → expense account overrides.
                 </p>
               </div>
@@ -785,10 +785,10 @@ export function StepAccounting({ form, template, onChange }: StepAccountingProps
 
                 <Separator />
 
-                {/* 3. Penalty → Income Account */}
+                {/* 3. Arrears → Income Account */}
                 <MappingTable<FeeIncomeMapping>
-                  title="Penalty to Income Account"
-                  col1Label="Penalty"
+                  title="Arrears to Income Account"
+                  col1Label="Arrears"
                   col2Label="Income Account"
                   col1Options={penaltyCharges.map((c) => ({ id: c.id, label: c.name }))}
                   col2Options={incomeOptions}

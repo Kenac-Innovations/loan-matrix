@@ -4,14 +4,13 @@ import { getSearchAuthToken } from "@/lib/fineract-search-auth";
 import { format } from "date-fns";
 import {
   generateConsolidatedStatementHTML,
+  getStatementTransactionAmounts,
+  getStatementTransactionType,
   parseFineractDate,
   type ConsolidatedStatementData,
   type ConsolidatedTransaction,
 } from "@/lib/loan-statement-template";
-import {
-  getDisplayedTransactionType,
-  type TransactionLike,
-} from "@/lib/format-transaction";
+import { type TransactionLike } from "@/lib/format-transaction";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
 
@@ -25,10 +24,6 @@ type LoanWithTransactions = {
   loanProductDescription?: string;
   transactions?: TransactionLike[];
 };
-
-function getConsolidatedTransactionType(tx: TransactionLike): string {
-  return getDisplayedTransactionType(tx);
-}
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -135,7 +130,7 @@ export async function GET(
         if (Array.isArray(tx.date)) {
           sortDate = new Date(tx.date[0], tx.date[1] - 1, tx.date[2]).getTime();
         } else {
-          sortDate = new Date(tx.date).getTime();
+          sortDate = tx.date ? new Date(tx.date).getTime() : 0;
         }
 
         if (fromDate && sortDate < new Date(fromDate).getTime()) continue;
@@ -155,52 +150,34 @@ export async function GET(
     const consolidatedTxs: ConsolidatedTransaction[] = [];
 
     for (const { accountNo, tx } of rawTxs) {
-      const isDisbursement = tx.type?.disbursement;
-      const isRepayment = tx.type?.repayment;
-      const isRepaymentAtDisbursement = tx.type?.repaymentAtDisbursement;
-      const isAccrual = tx.type?.accrual;
-      const isChargePayment = tx.type?.code?.includes("chargePayment");
-      const isWaiver =
-        tx.type?.code?.includes("waive") ||
-        tx.type?.value?.toLowerCase().includes("waiv");
-      const isWriteOff =
-        tx.type?.code?.includes("writeOff") ||
-        tx.type?.value?.toLowerCase().includes("write-off");
+      const {
+        debit,
+        credit,
+        effectiveDebit,
+        effectiveCredit,
+        isHighlighted,
+        isReversed,
+      } = getStatementTransactionAmounts(tx);
 
-      let debit = 0;
-      let credit = 0;
-      let isHighlighted = false;
-
-      if (isDisbursement) {
-        debit = tx.amount || 0;
-        isHighlighted = true;
-      } else if (isAccrual) {
-        debit = tx.amount || 0;
-      } else if (isRepaymentAtDisbursement || isRepayment || isChargePayment) {
-        credit = tx.amount || 0;
-        isHighlighted = true;
-      } else if (isWaiver || isWriteOff) {
-        credit = tx.amount || 0;
-      }
-
-      grandDebits += debit;
-      grandCredits += credit;
-      runningBalance += debit - credit;
+      grandDebits += effectiveDebit;
+      grandCredits += effectiveCredit;
+      runningBalance += effectiveDebit - effectiveCredit;
 
       const loanTotals = perLoanTotals.get(accountNo)!;
-      loanTotals.totalDebits += debit;
-      loanTotals.totalCredits += credit;
-      loanTotals.closingBalance += debit - credit;
+      loanTotals.totalDebits += effectiveDebit;
+      loanTotals.totalCredits += effectiveCredit;
+      loanTotals.closingBalance += effectiveDebit - effectiveCredit;
 
       consolidatedTxs.push({
         date: parseFineractDate(tx.date),
         loanAccount: accountNo,
-        type: getConsolidatedTransactionType(tx),
+        type: getStatementTransactionType(tx),
         trxnId: tx.id?.toString() || "",
         debit,
         credit,
         cumulativeBalance: Math.max(0, runningBalance),
         isHighlighted,
+        isReversed,
       });
     }
 
