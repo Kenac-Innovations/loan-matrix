@@ -126,18 +126,49 @@ test("resolveUssdLoanExternalId prefers the lead id over USSD-only identifiers",
   );
 });
 
-test("USSD submit route keeps the lead-linked external id stable", () => {
-  const source = readRepoFile("app/api/ussd-leads/[id]/submit/route.ts");
+test("USSD processing service keeps the lead-linked external id stable", () => {
+  const source = readRepoFile("lib/ussd-loan-processing-service.ts");
 
   assert.match(source, /resolveUssdLoanExternalId/);
   assert.doesNotMatch(source, /externalId:\s*String\(loanId\)/);
 });
 
-test("USSD submit route triggers auto progression after CDE approval", () => {
-  const source = readRepoFile("app/api/ussd-leads/[id]/submit/route.ts");
+test("USSD processing service triggers auto progression after CDE approval", () => {
+  const source = readRepoFile("lib/ussd-loan-processing-service.ts");
 
   assert.match(source, /autoProgressToDisbursementFromCdeResult/);
   assert.match(source, /TeamAwareStateMachineService/);
+});
+
+test("USSD processing service uses a numeric automation user for consumer disbursement", () => {
+  const source = readRepoFile("lib/ussd-loan-processing-service.ts");
+
+  assert.match(source, /resolveUssdAutomationUserId/);
+  assert.match(source, /USSD_AUTO_PROCESSING_USER_ID/);
+  assert.match(source, /FINERACT_SERVICE_USER_ID/);
+  assert.match(source, /buildAutomationOriginatorPatch/);
+  assert.match(source, /createdByUserName/);
+  assert.doesNotMatch(
+    source,
+    /autoProgressToDisbursementFromCdeResult\(\s*leadId,\s*input\.triggeredBy \|\| "system"/
+  );
+});
+
+test("USSD submit route delegates loan processing to the shared service", () => {
+  const routeSource = readRepoFile(
+    "app/api/ussd-leads/[id]/submit/route.ts"
+  );
+  const serviceSource = readRepoFile(
+    "lib/ussd-loan-processing-service.ts"
+  );
+
+  assert.match(routeSource, /processUssdApplicationToDisbursement/);
+  assert.doesNotMatch(routeSource, /fetchFineractAPI\('\/loans'/);
+  assert.match(serviceSource, /shouldAutoProgressFromCde/);
+  assert.match(
+    serviceSource,
+    /autoProgressToDisbursementFromCdeResult/
+  );
 });
 
 test("lead CDE route triggers auto progression after CDE approval", () => {

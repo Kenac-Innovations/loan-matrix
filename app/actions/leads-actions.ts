@@ -196,6 +196,8 @@ export async function getLeadsData(
     leadStatus?: string; // Filter by Fineract loan status
     officeId?: number; // Restrict to a specific office
     source?: "USSD"; // Filter leads by origin source
+    startDate?: string; // YYYY-MM-DD
+    endDate?: string; // YYYY-MM-DD
   } = {}
 ): Promise<LeadsData> {
   try {
@@ -211,6 +213,8 @@ export async function getLeadsData(
       leadStatus,
       officeId,
       source,
+      startDate,
+      endDate,
     } = options;
 
     // Get tenant - prefer headers for consistency with API routes
@@ -254,6 +258,21 @@ export async function getLeadsData(
 
     if (status) {
       where.status = status;
+    }
+
+    if (startDate && endDate) {
+      const createdAtStart = new Date(`${startDate}T00:00:00`);
+      const createdAtEnd = new Date(`${endDate}T23:59:59.999`);
+
+      if (
+        !Number.isNaN(createdAtStart.getTime()) &&
+        !Number.isNaN(createdAtEnd.getTime())
+      ) {
+        where.createdAt = {
+          gte: createdAtStart,
+          lte: createdAtEnd,
+        };
+      }
     }
 
     // Filter by assigned user ID if provided (legacy single filter)
@@ -452,6 +471,7 @@ export async function getLeadsData(
         assigneeColor: assignee.color,
         createdAt: lead.createdAt,
         updatedAt: lead.updatedAt,
+        loanProductName: lead.loanProductName,
         userId: lead.userId, // Include created by user ID
         createdByUserName: lead.createdByUserName, // Full name of user who created the lead
         // Fineract tracking fields

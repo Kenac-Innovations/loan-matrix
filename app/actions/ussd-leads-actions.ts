@@ -19,6 +19,52 @@ export interface UssdLeadsData {
   totalCount: number;
 }
 
+function parseDateOnly(value?: string): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function buildCreatedAtFilter(
+  startDate?: string,
+  endDate?: string
+): Prisma.DateTimeFilter | undefined {
+  const start = parseDateOnly(startDate);
+  const end = parseDateOnly(endDate);
+
+  if (!start || !end) {
+    return undefined;
+  }
+
+  const endOfDay = new Date(end);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  return {
+    gte: start,
+    lte: endOfDay,
+  };
+}
+
+function getEffectiveApplicationStatus(
+  application: Pick<UssdLoanApplication, "loanApplicationUssdId" | "status">,
+  linkedLeadLookup: Map<
+    number,
+    {
+      effectiveStatus?: UssdLoanApplicationStatus | null;
+    }
+  >
+): UssdLoanApplicationStatus {
+  const linkedLead = linkedLeadLookup.get(application.loanApplicationUssdId);
+
+  return (
+    linkedLead?.effectiveStatus ??
+    (application.status as UssdLoanApplicationStatus)
+  );
+}
+
 // Dummy data for USSD applications
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const generateDummyUssdApplications = (): UssdLoanApplication[] => {
@@ -149,10 +195,18 @@ export async function getUssdLeadsData(
     status?: string;
     limit?: number;
     offset?: number;
+    startDate?: string;
+    endDate?: string;
   } = {}
 ): Promise<UssdLeadsData> {
   try {
-    const { status, limit = 50, offset = 0 } = options;
+    const {
+      status,
+      limit = 50,
+      offset = 0,
+      startDate,
+      endDate,
+    } = options;
 
     // Get tenant
     const tenant = await getTenantBySlug(tenantSlug);
@@ -164,9 +218,14 @@ export async function getUssdLeadsData(
     const where: Prisma.UssdLoanApplicationWhereInput = {
       tenantId: tenant.id,
     };
+    const createdAtFilter = buildCreatedAtFilter(startDate, endDate);
 
     if (status) {
       where.status = status;
+    }
+
+    if (createdAtFilter) {
+      where.createdAt = createdAtFilter;
     }
 
     // Get applications with pagination
@@ -189,58 +248,6 @@ export async function getUssdLeadsData(
     );
     console.log("=== END DEBUG ===");
 
-    const linkedLeadClauses = applications.flatMap((application) => {
-      const clauses: Prisma.LeadWhereInput[] = [
-        {
-          stateMetadata: {
-            path: ["applicationId"],
-            equals: application.loanApplicationUssdId,
-          },
-        },
-      ];
-
-      if (application.referenceNumber) {
-        clauses.push({
-          stateMetadata: {
-            path: ["referenceNumber"],
-            equals: application.referenceNumber,
-          },
-        });
-      }
-
-      if (application.messageId) {
-        clauses.push({
-          stateMetadata: {
-            path: ["messageId"],
-            equals: application.messageId,
-          },
-        });
-      }
-
-      return clauses;
-    });
-
-    const linkedLeads =
-      linkedLeadClauses.length > 0
-        ? await prisma.lead.findMany({
-            where: {
-              tenantId: tenant.id,
-              OR: linkedLeadClauses,
-            },
-            select: {
-              id: true,
-              stateMetadata: true,
-              currentStage: {
-                select: {
-                  name: true,
-                },
-              },
-            },
-          })
-        : [];
-
-    const linkedLeadLookup = buildUssdLinkedLeadLookup(applications, linkedLeads);
-
     // Get total count for pagination
     const totalCount = await prisma.ussdLoanApplication.count({ where });
 
@@ -249,53 +256,120 @@ export async function getUssdLeadsData(
     console.log("Stats query tenant ID:", tenant.id);
 
     const allApplications = await prisma.ussdLoanApplication.findMany({
-      where: { tenantId: tenant.id },
-      select: { status: true, createdAt: true, processedAt: true },
+      where,
+      select: {
+        loanApplicationUssdId: true,
+        referenceNumber: true,
+        messageId: true,
+        status: true,
+        createdAt: true,
+        processedAt: true,
+      },
     });
 
     console.log("Stats applications count:", allApplications.length);
     console.log("=== END DEBUG ===");
 
+    const allLinkedLeads = await prisma.lead.findMany({
+      where: {
+        tenantId: tenant.id,
+        ...(createdAtFilter ? { createdAt: createdAtFilter } : {}),
+        stateMetadata: {
+          path: ["source"],
+          equals: "USSD",
+        },
+      },
+      select: {
+        id: true,
+        fineractLoanId: true,
+        updatedAt: true,
+        stateMetadata: true,
+        currentStage: {
+          select: {
+            name: true,
+            isFinalState: true,
+            fineractAction: true,
+          },
+        },
+      },
+    });
+
+    const linkedLeadLookup = buildUssdLinkedLeadLookup(applications, allLinkedLeads);
+    const allLinkedLeadLookup = buildUssdLinkedLeadLookup(
+      allApplications,
+      allLinkedLeads
+    );
+
     // Calculate metrics
     const totalApplications = allApplications.length;
     const pendingAction = allApplications.filter((app) =>
-      ["CREATED", "SUBMITTED"].includes(app.status)
+      [UssdLoanApplicationStatus.CREATED, UssdLoanApplicationStatus.SUBMITTED].includes(
+        getEffectiveApplicationStatus(app, allLinkedLeadLookup)
+      )
     ).length;
     const approved = allApplications.filter(
-      (app) => app.status === "APPROVED"
+      (app) =>
+        getEffectiveApplicationStatus(app, allLinkedLeadLookup) ===
+        UssdLoanApplicationStatus.APPROVED
     ).length;
     const rejected = allApplications.filter(
-      (app) => app.status === "REJECTED"
+      (app) =>
+        getEffectiveApplicationStatus(app, allLinkedLeadLookup) ===
+        UssdLoanApplicationStatus.REJECTED
     ).length;
     const disbursed = allApplications.filter(
-      (app) => app.status === "DISBURSED"
+      (app) =>
+        getEffectiveApplicationStatus(app, allLinkedLeadLookup) ===
+        UssdLoanApplicationStatus.DISBURSED
     ).length;
     const underReview = allApplications.filter(
-      (app) => app.status === "UNDER_REVIEW"
+      (app) =>
+        getEffectiveApplicationStatus(app, allLinkedLeadLookup) ===
+        UssdLoanApplicationStatus.UNDER_REVIEW
     ).length;
     const cancelled = allApplications.filter(
-      (app) => app.status === "CANCELLED"
+      (app) =>
+        getEffectiveApplicationStatus(app, allLinkedLeadLookup) ===
+        UssdLoanApplicationStatus.CANCELLED
     ).length;
     const expired = allApplications.filter(
-      (app) => app.status === "EXPIRED"
+      (app) =>
+        getEffectiveApplicationStatus(app, allLinkedLeadLookup) ===
+        UssdLoanApplicationStatus.EXPIRED
     ).length;
 
     // Calculate average processing time
     const processedApps = allApplications.filter(
-      (app) =>
-        app.processedAt &&
-        ["APPROVED", "REJECTED", "DISBURSED"].includes(app.status)
+      (app) => {
+        const effectiveStatus = getEffectiveApplicationStatus(
+          app,
+          allLinkedLeadLookup
+        );
+        const linkedLead = allLinkedLeadLookup.get(app.loanApplicationUssdId);
+
+        return (
+          (app.processedAt || linkedLead?.leadUpdatedAt) &&
+          [
+            UssdLoanApplicationStatus.APPROVED,
+            UssdLoanApplicationStatus.REJECTED,
+            UssdLoanApplicationStatus.DISBURSED,
+          ].includes(effectiveStatus)
+        );
+      }
     );
 
     let averageProcessingTime = 0;
     if (processedApps.length > 0) {
       const totalProcessingTime = processedApps.reduce((sum, app) => {
-        if (app.processedAt) {
-          const processingTime =
-            app.processedAt.getTime() - app.createdAt.getTime();
-          return sum + processingTime;
+        const linkedLead = allLinkedLeadLookup.get(app.loanApplicationUssdId);
+        const completedAt = app.processedAt ?? linkedLead?.leadUpdatedAt;
+
+        if (!completedAt) {
+          return sum;
         }
-        return sum;
+
+        const processingTime = completedAt.getTime() - app.createdAt.getTime();
+        return sum + processingTime;
       }, 0);
       averageProcessingTime = Math.round(
         totalProcessingTime / processedApps.length / (1000 * 60 * 60)
@@ -303,9 +377,10 @@ export async function getUssdLeadsData(
     }
 
     const monthlyTarget = 100;
+    const resolvedApplications = approved + rejected + disbursed;
     const approvalRate =
-      totalApplications > 0
-        ? Math.round((approved / totalApplications) * 100)
+      resolvedApplications > 0
+        ? Math.round(((approved + disbursed) / resolvedApplications) * 100)
         : 0;
 
     const metrics: UssdLeadsMetrics = {
@@ -346,7 +421,7 @@ export async function getUssdLeadsData(
         bankAccountNumber: app.bankAccountNumber ?? undefined,
         bankName: app.bankName ?? undefined,
         bankBranch: app.bankBranch ?? undefined,
-        status: app.status as UssdLoanApplication["status"],
+        status: getEffectiveApplicationStatus(app, linkedLeadLookup),
         paymentStatus: app.paymentStatus,
         createdAt: app.createdAt,
         updatedAt: app.updatedAt,

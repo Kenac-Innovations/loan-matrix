@@ -1,87 +1,60 @@
 import type { Metadata } from "next";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
   Phone,
-  FileText,
   RefreshCw,
-  Clock,
 } from "lucide-react";
 import Link from "next/link";
-import { getLeadsData } from "@/app/actions/leads-actions";
 import { getUssdLeadsData } from "@/app/actions/ussd-leads-actions";
 import { headers } from "next/headers";
 import { UssdLeadsMetrics } from "./components/ussd-leads-metrics";
-import UssdLoanApplicationsTable from "@/components/tables/UssdLoanApplicationsTable";
-import { PipelineView } from "../leads/components/pipeline-view";
-import type { LeadsData } from "@/app/actions/leads-actions";
+import { UssdDateRangeFilter } from "./components/ussd-date-range-filter";
+import { UssdWorkspaceTabs } from "./components/ussd-workspace-tabs";
 
 export const metadata: Metadata = {
   title: "USSD Leads | KENAC Loan Matrix",
   description: "Manage USSD applications and pipeline leads from mobile users",
 };
 
-export default async function UssdLeadsPage() {
+type UssdLeadsPageSearchParams = Promise<{
+  startDate?: string;
+  endDate?: string;
+  range?: string;
+}>;
+
+function isDateParam(value?: string): value is string {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+export default async function UssdLeadsPage({
+  searchParams,
+}: {
+  searchParams?: UssdLeadsPageSearchParams;
+}) {
   // Get tenant slug from headers (set by middleware)
   const headersList = await headers();
   const tenantSlug = headersList.get("x-tenant-slug") || "goodfellow";
-
-  const emptyPipelineData: LeadsData = {
-    leads: [],
-    pipelineStages: [],
-    metrics: {
-      activeLeads: 0,
-      conversionRate: 0,
-      avgProcessingTime: 0,
-      slaCompliance: 0,
-      onTimeCount: 0,
-      atRiskCount: 0,
-      overdueCount: 0,
-      monthlyTarget: 0,
-      conversionTarget: 0,
-      processingTimeTarget: 0,
-      conversionMetrics: { labels: [], conversionRates: [] },
-      stageTATMetrics: [],
-    },
-    pagination: {
-      total: 0,
-      limit: 10,
-      offset: 0,
-      hasMore: false,
-    },
-  };
-
-  // Fetch USSD applications and the linked pipeline leads in parallel.
-  // The leads load is allowed to fail softly so the workspace still opens.
-  const [ussdLeadsResult, ussdPipelineResult] = await Promise.allSettled([
-    getUssdLeadsData(tenantSlug),
-    getLeadsData(tenantSlug, { source: "USSD" }),
-  ]);
-
-  const ussdLeadsData =
-    ussdLeadsResult.status === "fulfilled"
-      ? ussdLeadsResult.value
-      : null;
-
-  const ussdPipelineData =
-    ussdPipelineResult.status === "fulfilled"
-      ? ussdPipelineResult.value
-      : emptyPipelineData;
-
-  if (ussdLeadsResult.status === "rejected") {
-    console.error("Failed to load USSD applications:", ussdLeadsResult.reason);
-  }
-
-  if (ussdPipelineResult.status === "rejected") {
-    console.error("Failed to load USSD pipeline leads:", ussdPipelineResult.reason);
-  }
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const today = format(new Date(), "yyyy-MM-dd");
+  const isAllDates = resolvedSearchParams.range === "all";
+  const startDate = isAllDates
+    ? undefined
+    : isDateParam(resolvedSearchParams.startDate)
+    ? resolvedSearchParams.startDate
+    : today;
+  const endDate = isAllDates
+    ? undefined
+    : isDateParam(resolvedSearchParams.endDate)
+    ? resolvedSearchParams.endDate
+    : startDate;
+  const refreshHref = isAllDates
+    ? "/ussd-leads?range=all"
+    : `/ussd-leads?startDate=${startDate}&endDate=${endDate}`;
+  const ussdLeadsData = await getUssdLeadsData(tenantSlug, {
+    startDate,
+    endDate,
+  });
 
   return (
     <>
@@ -96,8 +69,13 @@ export default async function UssdLeadsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <UssdDateRangeFilter
+            startDate={startDate}
+            endDate={endDate}
+            isAllDates={isAllDates}
+          />
           <Button variant="outline" size="sm" asChild>
-            <Link href="/ussd-leads">
+            <Link href={refreshHref}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Link>
@@ -123,51 +101,11 @@ export default async function UssdLeadsPage() {
         }}
       />
 
-      <Tabs defaultValue="applications" className="mt-6">
-        <TabsList className="w-full overflow-x-auto">
-          <TabsTrigger
-            value="applications"
-            className="w-full data-[state=active]:bg-blue-500"
-          >
-            <Clock className="mr-2 h-4 w-4" />
-            <span className="whitespace-nowrap">USSD Applications</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="leads"
-            className="w-full data-[state=active]:bg-blue-500"
-          >
-            <FileText className="mr-2 h-4 w-4" />
-            <span className="whitespace-nowrap">USSD Leads</span>
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="applications" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>USSD Applications</CardTitle>
-              <CardDescription>
-                Review incoming USSD applications before they are converted into leads
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <UssdLoanApplicationsTable
-                ussdLoanApplications={ussdLeadsData?.applications ?? []}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="leads" className="mt-4">
-          <PipelineView
-            initialData={ussdPipelineData}
-            source="USSD"
-            title="USSD Leads"
-            description="Pipeline-style view of leads created from USSD applications"
-            leadTitle="USSD Pipeline Leads"
-            leadDescription="View and manage the lead records created from USSD applications"
-          />
-        </TabsContent>
-      </Tabs>
+      <UssdWorkspaceTabs
+        applications={ussdLeadsData?.applications ?? []}
+        startDate={startDate}
+        endDate={endDate}
+      />
     </>
   );
 }
