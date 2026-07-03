@@ -37,6 +37,8 @@ import { formatCurrency } from "@/lib/format-currency";
 interface UssdLoanApplicationsTableProps {
   ussdLoanApplications: UssdLoanApplication[];
   filterStatus?: UssdLoanApplicationStatus;
+  startDate?: string;
+  endDate?: string;
 }
 
 // Fetcher function for SWR
@@ -50,6 +52,8 @@ const fetcher = (url: string) =>
 export default function UssdLoanApplicationsTable({
   ussdLoanApplications,
   filterStatus,
+  startDate,
+  endDate,
 }: UssdLoanApplicationsTableProps) {
   const [customFilters, setCustomFilters] = useState<DataTableFilter[]>([
     { columnId: "status", value: "", type: "select" },
@@ -62,8 +66,16 @@ export default function UssdLoanApplicationsTable({
   const [rejectionReason, setRejectionReason] = useState("");
   const MAX_REASON_LENGTH = 20;
 
+  const queryString = new URLSearchParams({
+    ...(startDate ? { startDate } : {}),
+    ...(endDate ? { endDate } : {}),
+  }).toString();
+  const dataUrl = queryString
+    ? `/api/ussd-leads?${queryString}`
+    : "/api/ussd-leads";
+
   // Use SWR for real-time updates
-  const { data, error, mutate } = useSWR("/api/ussd-leads", fetcher, {
+  const { data, error, mutate } = useSWR(dataUrl, fetcher, {
     initialData: { applications: ussdLoanApplications },
     refreshInterval: 5000, // Refresh every 5 seconds
     revalidateOnFocus: true,
@@ -71,12 +83,11 @@ export default function UssdLoanApplicationsTable({
 
   // Filter applications by status if filterStatus is provided
   const allApplications = data?.applications || ussdLoanApplications;
-  const applications = (filterStatus
+  const applications = filterStatus
     ? allApplications.filter(
         (app: UssdLoanApplication) => app.status === filterStatus
       )
-    : allApplications
-  ).filter((app: UssdLoanApplication) => !app.leadId);
+    : allApplications;
 
   // Status update handlers
   const handleStatusUpdate = async (

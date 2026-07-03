@@ -1,11 +1,18 @@
-import amqp, { Connection, Channel, ConsumeMessage } from "amqplib";
+import amqp, { Channel, ChannelModel, ConsumeMessage } from "amqplib";
 import prisma from "./prisma";
 import { getTenantBySlug } from "./tenant-service";
 import {
   findMatchingUssdAutoLeadRule,
   getTenantUssdAutoLeadRules,
 } from "./tenant-ussd-auto-lead-rules";
-import { createOrReuseLeadFromUssdApplication } from "./ussd-lead-creation-service";
+import {
+  runWithBoundedRetries,
+  type UssdAutoProcessingStatus,
+} from "./ussd-auto-processing-policy";
+import {
+  processUssdApplicationToDisbursement,
+  type UssdLoanProcessingResult,
+} from "./ussd-loan-processing-service";
 
 export interface UssdLoanApplicationMessage {
   loanApplicationUssdId: number;
@@ -35,13 +42,42 @@ export interface UssdLoanApplicationMessage {
   loanMatrixPaymentMethodId?: number;
 }
 
+const APPLICATION_STATUS_BY_OUTCOME: Record<
+  UssdAutoProcessingStatus,
+  string
+> = {
+  completed: "AUTO_DISBURSED",
+  manual_review: "MANUAL_REVIEW",
+  stopped: "AUTO_PROCESSING_STOPPED",
+  failed: "AUTO_PROCESSING_FAILED",
+};
+
+function isRetryableUssdProcessingError(error: unknown): boolean {
+  const status =
+    typeof error === "object" && error !== null
+      ? Number((error as { status?: unknown }).status)
+      : Number.NaN;
+
+  return !Number.isFinite(status) || status === 429 || status >= 500;
+}
+
+function buildProcessingNotes(result: UssdLoanProcessingResult): string {
+  const reason =
+    result.autoProgressMessage ||
+    (result.cdeDecision
+      ? `CDE returned ${result.cdeDecision}`
+      : "CDE evaluation failed");
+
+  return `Lead ${result.leadId}: ${reason}`;
+}
+
 // Global flag to prevent multiple consumers
 declare global {
   var __amqpConsumerActive: boolean | undefined;
 }
 
 export class AmqpQueueService {
-  private connection: Connection | null = null;
+  private connection: ChannelModel | null = null;
   private channel: Channel | null = null;
   private isConnected = false;
   private isConsuming = false;
@@ -303,51 +339,51 @@ export class AmqpQueueService {
 
       if (existingApp) {
         console.log(
-          `USSD application already exists: ${messageContent.messageId}`
+          `USSD application already exists; resuming processing: ${messageContent.messageId}`
         );
-        return;
       }
 
-      // Create new USSD loan application
-      const ussdApplication = await prisma.ussdLoanApplication.create({
-        data: {
-          tenantId: tenant.id,
-          loanApplicationUssdId: messageContent.loanApplicationUssdId,
-          messageId: messageContent.messageId,
-          referenceNumber: messageContent.referenceNumber,
-          userPhoneNumber: messageContent.userPhoneNumber,
-          loanMatrixClientId: messageContent.loanMatrixClientId,
-          userFullName: messageContent.userFullName,
-          userNationalId: messageContent.userNationalId,
-          loanMatrixLoanProductId: messageContent.loanMatrixLoanProductId,
-          loanProductName: messageContent.loanProductName,
-          loanProductDisplayName: messageContent.loanProductDisplayName,
-          principalAmount: messageContent.principalAmount,
-          loanTermMonths: messageContent.loanTermMonths,
-          payoutMethod: messageContent.payoutMethod,
-          mobileMoneyNumber: messageContent.mobileMoneyNumber,
-          mobileMoneyProvider: messageContent.mobileMoneyProvider,
-          branchName: messageContent.branchName,
-          officeLocationId: messageContent.officeLocationId,
-          bankAccountNumber: messageContent.bankAccountNumber,
-          bankName: messageContent.bankName,
-          bankBranch: messageContent.bankBranch,
-          status: messageContent.status || "CREATED",
-          source: messageContent.source || "USSD",
-          channel: messageContent.channel || "USSD_LOAN_APPLICATION",
-          queuedAt: new Date(messageContent.queuedAt),
-          processedAt: new Date(),
-
-          loanMatrixPaymentMethodId: messageContent.loanMatrixPaymentMethodId,
-        },
-      });
+      const ussdApplication =
+        existingApp ??
+        (await prisma.ussdLoanApplication.create({
+          data: {
+            tenantId: tenant.id,
+            loanApplicationUssdId: messageContent.loanApplicationUssdId,
+            messageId: messageContent.messageId,
+            referenceNumber: messageContent.referenceNumber,
+            userPhoneNumber: messageContent.userPhoneNumber,
+            loanMatrixClientId: messageContent.loanMatrixClientId,
+            userFullName: messageContent.userFullName,
+            userNationalId: messageContent.userNationalId,
+            loanMatrixLoanProductId: messageContent.loanMatrixLoanProductId,
+            loanProductName: messageContent.loanProductName,
+            loanProductDisplayName: messageContent.loanProductDisplayName,
+            principalAmount: messageContent.principalAmount,
+            loanTermMonths: messageContent.loanTermMonths,
+            payoutMethod: messageContent.payoutMethod,
+            mobileMoneyNumber: messageContent.mobileMoneyNumber,
+            mobileMoneyProvider: messageContent.mobileMoneyProvider,
+            branchName: messageContent.branchName,
+            officeLocationId: messageContent.officeLocationId,
+            bankAccountNumber: messageContent.bankAccountNumber,
+            bankName: messageContent.bankName,
+            bankBranch: messageContent.bankBranch,
+            status: messageContent.status || "CREATED",
+            source: messageContent.source || "USSD",
+            channel: messageContent.channel || "USSD_LOAN_APPLICATION",
+            queuedAt: new Date(messageContent.queuedAt),
+            processedAt: new Date(),
+            loanMatrixPaymentMethodId:
+              messageContent.loanMatrixPaymentMethodId,
+          },
+        }));
 
       console.log(
         `Successfully processed USSD application: ${ussdApplication.id} (${ussdApplication.messageId})`
       );
 
       const autoLeadRules = getTenantUssdAutoLeadRules(
-        (tenant.settings as Record<string, unknown> | null) || null
+        (tenant.settings as unknown as Record<string, unknown> | null) || null
       );
       const matchingRule = findMatchingUssdAutoLeadRule(
         autoLeadRules,
@@ -355,13 +391,60 @@ export class AmqpQueueService {
       );
 
       if (matchingRule) {
-        const leadResult = await createOrReuseLeadFromUssdApplication(
-          ussdApplication,
-          { currentUserId: "system" }
-        );
-        console.log(
-          `Auto-created or reopened lead ${leadResult.leadId} for USSD application ${ussdApplication.loanApplicationUssdId}`
-        );
+        try {
+          const result = await runWithBoundedRetries(
+            async () => {
+              const processingResult =
+                await processUssdApplicationToDisbursement({
+                  application: ussdApplication,
+                  triggeredBy: "system",
+                });
+
+              if (processingResult.status === "failed") {
+                throw new Error(
+                  processingResult.autoProgressMessage ||
+                    "USSD automatic processing failed before a CDE decision"
+                );
+              }
+
+              return processingResult;
+            },
+            {
+              maxAttempts: 3,
+              shouldRetry: isRetryableUssdProcessingError,
+            }
+          );
+
+          await prisma.ussdLoanApplication.update({
+            where: { id: ussdApplication.id },
+            data: {
+              status: APPLICATION_STATUS_BY_OUTCOME[result.status],
+              processedAt: new Date(),
+              processingNotes: buildProcessingNotes(result),
+            },
+          });
+
+          console.log(
+            `USSD automatic processing ${result.status} for lead ${result.leadId}`
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+
+          await prisma.ussdLoanApplication.update({
+            where: { id: ussdApplication.id },
+            data: {
+              status: "AUTO_PROCESSING_FAILED",
+              processedAt: new Date(),
+              processingNotes: `Automatic processing failed after 3 attempts: ${message}`,
+            },
+          });
+
+          console.error(
+            `USSD automatic processing failed for application ${ussdApplication.loanApplicationUssdId}:`,
+            error
+          );
+        }
       }
     } catch (error) {
       console.error("Error processing USSD loan application message:", error);

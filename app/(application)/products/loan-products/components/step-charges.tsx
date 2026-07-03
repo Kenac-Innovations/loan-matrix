@@ -73,7 +73,7 @@ function ChargeCard({
               variant="secondary"
               className="mt-0.5 border-orange-200 bg-orange-100 text-[10px] text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300"
             >
-              Penalty
+              Arrears
             </Badge>
           )}
         </div>
@@ -241,7 +241,7 @@ export function StepCharges({ form, template, onChange }: StepChargesProps) {
           onToggle={handleToggle}
         />
         <ChargeSection
-          title="Penalties"
+          title="Arrears"
           charges={penalties}
           selectedIds={selectedIds}
           onToggle={handleToggle}

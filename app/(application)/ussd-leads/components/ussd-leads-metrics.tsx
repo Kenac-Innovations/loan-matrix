@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { UssdLeadsMetrics as UssdLeadsMetricsType } from "@/app/actions/ussd-leads-actions";
+import type { UssdLeadsMetrics as UssdLeadsMetricsType } from "@/shared/types/ussd";
 import { 
   Phone, 
   CheckCircle, 
@@ -24,7 +24,7 @@ export function UssdLeadsMetrics({ metrics, className }: UssdLeadsMetricsProps) 
     {
       title: "Total Applications",
       value: metrics.totalApplications,
-      description: "All time applications",
+      description: "Selected period",
       icon: Phone,
       color: "text-blue-600",
       bgColor: "bg-blue-50",
@@ -115,5 +115,3 @@ export function UssdLeadsMetrics({ metrics, className }: UssdLeadsMetricsProps) 
     </div>
   );
 }
-
-

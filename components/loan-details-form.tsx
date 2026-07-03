@@ -1753,7 +1753,7 @@ export function LoanDetailsForm({
                         Fees
                       </TableHead>
                       <TableHead className="text-right whitespace-nowrap">
-                        Penalties
+                        Arrears
                       </TableHead>
                       <TableHead className="text-right whitespace-nowrap">
                         Total Due
