@@ -1294,7 +1294,7 @@ export function ComprehensiveLeadDetails({
                                 <>
                                   <div>
                                     <p className="text-xs text-muted-foreground">
-                                      Penalty Charges
+                                      Arrears Charges
                                     </p>
                                     <p className="text-lg font-semibold text-red-600">
                                       {fineractLoan.currency?.displaySymbol ||
@@ -1309,7 +1309,7 @@ export function ComprehensiveLeadDetails({
                                     0 && (
                                     <div>
                                       <p className="text-xs text-muted-foreground">
-                                        Penalty Paid
+                                        Arrears Paid
                                       </p>
                                       <p className="text-lg font-semibold text-blue-600">
                                         {fineractLoan.currency?.displaySymbol ||
