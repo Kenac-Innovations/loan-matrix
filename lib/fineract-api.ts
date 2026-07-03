@@ -1497,7 +1497,7 @@ export class FineractAPIService {
     }
   }
 
-  async disburseLoan(loanId: number, disbursementDate?: string, paymentDetails?: { paymentTypeId?: number; accountNumber?: string; checkNumber?: string; routingCode?: string; receiptNumber?: string; bankNumber?: string; note?: string }): Promise<any> {
+  async disburseLoan(loanId: number, disbursementDate?: string, paymentDetails?: { paymentTypeId?: number; accountNumber?: string; checkNumber?: string; routingCode?: string; receiptNumber?: string; bankNumber?: string; note?: string; externalId?: string; transactionAmount?: number }): Promise<any> {
     try {
       const today = new Date();
       const formattedDate = disbursementDate ||
@@ -1508,6 +1508,8 @@ export class FineractAPIService {
           actualDisbursementDate: formattedDate,
           dateFormat: "dd MMMM yyyy",
           locale: "en",
+          ...(paymentDetails?.externalId && { externalId: paymentDetails.externalId }),
+          ...(paymentDetails?.transactionAmount && { transactionAmount: paymentDetails.transactionAmount }),
           ...(paymentDetails?.paymentTypeId && { paymentTypeId: paymentDetails.paymentTypeId }),
           ...(paymentDetails?.accountNumber && { accountNumber: paymentDetails.accountNumber }),
           ...(paymentDetails?.checkNumber && { checkNumber: paymentDetails.checkNumber }),

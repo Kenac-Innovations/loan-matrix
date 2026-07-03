@@ -9,6 +9,14 @@ import {
 } from '@/lib/lead-policy';
 import { applyTopupDisbursementCharges } from '@/lib/topup-disbursement-charge-service';
 import { extractTenantSlugFromRequest, getTenantBySlug } from '@/lib/tenant-service';
+import { resolveYangoUssdDisbursementDetailsForLead } from '@/lib/yango-ussd-disbursement';
+
+function coercePositiveNumber(value: unknown): number | undefined {
+  const numericValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numericValue) && numericValue > 0
+    ? numericValue
+    : undefined;
+}
 
 /**
  * POST /api/fineract/loans/[id]/disburse
@@ -42,6 +50,13 @@ export async function POST(
         },
         select: {
           id: true,
+          tenantId: true,
+          stateMetadata: true,
+          loanProductId: true,
+          loanProductName: true,
+          mobileNo: true,
+          accountNumber: true,
+          preferredPaymentMethod: true,
           assignedToUserId: true,
           assignedToUserName: true,
           designatedDisburserUserId: true,
@@ -60,6 +75,13 @@ export async function POST(
             ),
             select: {
               id: true,
+              tenantId: true,
+              stateMetadata: true,
+              loanProductId: true,
+              loanProductName: true,
+              mobileNo: true,
+              accountNumber: true,
+              preferredPaymentMethod: true,
               assignedToUserId: true,
               assignedToUserName: true,
               designatedDisburserUserId: true,
@@ -95,23 +117,6 @@ export async function POST(
       }
     }
 
-    // Try to enrich payload using USSD application linked via loan externalId
-    let ussdPhone: string | undefined;
-    let isUssdLinked = false;
-    try {
-      const loan = await fetchFineractAPI(`/loans/${id}`, {
-        authMode: "service",
-      });
-      const externalId = loan?.externalId;
-      if (externalId) {
-        const ussd = await prisma.ussdLoanApplication.findFirst({
-          where: { id: String(externalId) },
-          select: { userPhoneNumber: true },
-        });
-        isUssdLinked = Boolean(ussd);
-        ussdPhone = ussd?.userPhoneNumber || undefined;
-      }
-    } catch {}
     // Build callback URL to be used by payment gateway
     //const callbackUrl = `https://webhook.site/45f26e26-5c80-4290-9a1a-87b60be151a4`;
     // Use specific callback URL for payment gateway
@@ -121,18 +126,63 @@ export async function POST(
       ...payload,
     };
 
-    // Only USSD-linked loans need the gateway callback details.
-    if (isUssdLinked) {
-      if (ussdPhone) {
-        augmentedPayload.accountNumber = ussdPhone;
+    const numericPaymentTypeId =
+      typeof payload?.paymentTypeId === "number"
+        ? payload.paymentTypeId
+        : Number.isFinite(Number(payload?.paymentTypeId))
+          ? Number(payload.paymentTypeId)
+          : null;
+    const yangoUssdDetails =
+      tenant
+        ? await prisma.lead
+            .findFirst({
+              where: {
+                tenantId: tenant.id,
+                fineractLoanId: Number(id),
+              },
+              select: {
+                id: true,
+                tenantId: true,
+                stateMetadata: true,
+                loanProductId: true,
+                loanProductName: true,
+                mobileNo: true,
+                accountNumber: true,
+                preferredPaymentMethod: true,
+              },
+            })
+            .then((lead) =>
+              lead
+                ? resolveYangoUssdDisbursementDetailsForLead(
+                    lead,
+                    numericPaymentTypeId
+                  )
+                : null
+            )
+        : null;
+
+    if (yangoUssdDetails) {
+      augmentedPayload.externalId = yangoUssdDetails.externalId;
+      augmentedPayload.accountNumber = yangoUssdDetails.accountNumber;
+      if (yangoUssdDetails.paymentTypeId) {
+        augmentedPayload.paymentTypeId = yangoUssdDetails.paymentTypeId;
       }
-      augmentedPayload.note = callbackUrl;
+      if (!coercePositiveNumber(augmentedPayload.transactionAmount)) {
+        const fineractLoan = await fetchFineractAPI(`/loans/${id}`, {
+          authMode: 'service',
+        });
+        augmentedPayload.transactionAmount =
+          coercePositiveNumber(fineractLoan?.netDisbursalAmount) ??
+          coercePositiveNumber(fineractLoan?.approvedPrincipal) ??
+          coercePositiveNumber(fineractLoan?.principal);
+      }
+      augmentedPayload.note = payload?.note || callbackUrl;
     }
 
     // Log the payload being sent to Fineract
     console.log('=== DISBURSEMENT PAYLOAD ===');
     console.log('Loan ID:', id);
-    console.log('USSD linked:', isUssdLinked);
+    console.log('Yango USSD disbursement:', Boolean(yangoUssdDetails));
     console.log('Payload sent to Fineract:', JSON.stringify(augmentedPayload, null, 2));
     console.log('=== END DISBURSEMENT PAYLOAD ===');
 

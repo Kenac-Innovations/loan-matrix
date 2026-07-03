@@ -53,6 +53,54 @@ function getLoanStatusClasses(status?: string | null): string {
   return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
+function getPayoutStatusClasses(status?: string | null): string {
+  const normalizedStatus = (status || "").toUpperCase();
+
+  if (normalizedStatus === "COMPLETED" || normalizedStatus === "PAID") {
+    return "border-transparent bg-emerald-500 text-white";
+  }
+
+  if (normalizedStatus === "PENDING") {
+    return "border-transparent bg-amber-500 text-white";
+  }
+
+  if (
+    normalizedStatus === "FAILED" ||
+    normalizedStatus === "CANCELLED" ||
+    normalizedStatus === "VOIDED"
+  ) {
+    return "border-transparent bg-rose-500 text-white";
+  }
+
+  return "border-slate-300 bg-slate-50 text-slate-700";
+}
+
+function getPayoutStatusLabel(status?: string | null): string {
+  const normalizedStatus = (status || "").toUpperCase();
+
+  if (normalizedStatus === "COMPLETED" || normalizedStatus === "PAID") {
+    return "Paid";
+  }
+
+  if (normalizedStatus === "PENDING") {
+    return "Pending";
+  }
+
+  if (normalizedStatus === "FAILED") {
+    return "Failed";
+  }
+
+  if (normalizedStatus === "CANCELLED") {
+    return "Cancelled";
+  }
+
+  if (normalizedStatus === "VOIDED") {
+    return "Voided";
+  }
+
+  return "Not found";
+}
+
 export function UssdLinkedLeadsTable({
   leads,
   pipelineStages,
@@ -136,6 +184,24 @@ export function UssdLinkedLeadsTable({
         );
       },
       getExportValue: (lead) => getDisplayLoanStatus(lead),
+    },
+    {
+      id: "payoutStatus",
+      header: "Payout",
+      accessorKey: "payoutStatus",
+      meta: { width: 140 },
+      enableSorting: true,
+      cell: ({ row }) => (
+        <Badge
+          className={cn(
+            "border",
+            getPayoutStatusClasses(row.original.payoutStatus)
+          )}
+        >
+          {getPayoutStatusLabel(row.original.payoutStatus)}
+        </Badge>
+      ),
+      getExportValue: (lead) => getPayoutStatusLabel(lead.payoutStatus),
     },
     {
       id: "assignedToUserName",
