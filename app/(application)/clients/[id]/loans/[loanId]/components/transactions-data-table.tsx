@@ -300,7 +300,7 @@ export function TransactionsDataTable({
     },
     {
       id: "penaltyChargesPortion",
-      header: "Penalties",
+      header: "Arrears",
       accessorKey: "penaltyChargesPortion",
       cell: ({ row, getValue }) => {
         const tx = row.original;

@@ -1170,7 +1170,7 @@ export default function ChargeProductsPage() {
                   className="flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors hover:bg-muted/40"
                 >
                   <Label htmlFor="penalty" className="text-sm font-medium">
-                    Is Penalty
+                    Is Arrears
                   </Label>
                   <Switch
                     id="penalty"
