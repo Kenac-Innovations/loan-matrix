@@ -4,6 +4,7 @@ import { Prisma } from "@/app/generated/prisma";
 import { sendSms } from "@/lib/notification-service";
 import { getTenantBySlug } from "@/lib/tenant-service";
 import prisma from "@/lib/prisma";
+import { buildYangoPaymentStatusMap } from "@/lib/payment-reference-status";
 import { buildUssdLinkedLeadLookup } from "@/lib/ussd-linked-leads";
 import {
   UssdLoanApplication,
@@ -299,6 +300,14 @@ export async function getUssdLeadsData(
       allApplications,
       allLinkedLeads
     );
+    const paymentStatusByReference = await buildYangoPaymentStatusMap(
+      applications.map((app) => ({
+        referenceNumber: app.referenceNumber,
+        loanMatrixLoanProductId: app.loanMatrixLoanProductId,
+        loanProductName: app.loanProductName,
+        loanProductDisplayName: app.loanProductDisplayName,
+      }))
+    );
 
     // Calculate metrics
     const totalApplications = allApplications.length;
@@ -422,7 +431,9 @@ export async function getUssdLeadsData(
         bankName: app.bankName ?? undefined,
         bankBranch: app.bankBranch ?? undefined,
         status: getEffectiveApplicationStatus(app, linkedLeadLookup),
-        paymentStatus: app.paymentStatus,
+        paymentStatus:
+          paymentStatusByReference.get(app.referenceNumber)?.status ??
+          app.paymentStatus,
         createdAt: app.createdAt,
         updatedAt: app.updatedAt,
         source: app.source,

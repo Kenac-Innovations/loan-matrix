@@ -42,6 +42,7 @@ import {
 } from "./lead-auto-disbursement-policy";
 import { getTenantAutoDisbursementRules } from "./tenant-auto-disbursement-rules";
 import { resolvePaymentTypeForPreferredMethod } from "./payment-method-resolution";
+import { resolveYangoUssdDisbursementDetailsForLead } from "./yango-ussd-disbursement";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -56,6 +57,8 @@ export interface FineractOverrides {
   routingCode?: string;
   receiptNumber?: string;
   bankNumber?: string;
+  externalId?: string;
+  transactionAmount?: number;
   rejectionDate?: string;
   // Payout fields
   payoutDate?: string;
@@ -1705,13 +1708,36 @@ export class TeamAwareStateMachineService {
             formatFineractDateArr(loanDetails?.timeline?.expectedDisbursementDate) ||
             formatFineractDateArr(loanDetails?.timeline?.approvedOnDate);
         }
+        const yangoUssdDetails =
+          lead
+            ? await resolveYangoUssdDisbursementDetailsForLead(
+                lead,
+                overrides?.paymentTypeId
+              )
+            : null;
+        const disbursementPaymentTypeId =
+          yangoUssdDetails?.paymentTypeId ?? overrides?.paymentTypeId;
+        const loanDisbursementAmount = Number(
+          loanDetails?.netDisbursalAmount ??
+            loanDetails?.approvedPrincipal ??
+            loanDetails?.principal
+        );
+        const transactionAmount =
+          overrides?.transactionAmount ??
+          (Number.isFinite(loanDisbursementAmount) && loanDisbursementAmount > 0
+            ? loanDisbursementAmount
+            : undefined);
+
         await fineract.disburseLoan(fineractLoanId, disburseDate, {
-          paymentTypeId: overrides?.paymentTypeId,
-          accountNumber: overrides?.accountNumber,
+          paymentTypeId: disbursementPaymentTypeId,
+          accountNumber:
+            yangoUssdDetails?.accountNumber ?? overrides?.accountNumber,
           checkNumber: overrides?.checkNumber,
           routingCode: overrides?.routingCode,
           receiptNumber: overrides?.receiptNumber,
           bankNumber: overrides?.bankNumber,
+          externalId: yangoUssdDetails?.externalId ?? overrides?.externalId,
+          transactionAmount: yangoUssdDetails ? transactionAmount : overrides?.transactionAmount,
           note: overrides?.note,
         });
 

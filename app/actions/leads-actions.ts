@@ -7,6 +7,7 @@ import {
   getTenantFromHeaders,
 } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { buildYangoPaymentStatusMap } from "@/lib/payment-reference-status";
 import { UssdLeadsMetrics, UssdLoanApplication } from "./ussd-leads-actions";
 import { Lead, PipelineStage } from "@/shared/types/lead";
 import { getSession } from "@/lib/auth";
@@ -17,6 +18,18 @@ import {
 } from "@/lib/lead-policy";
 
 const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
+
+function readMetadataString(
+  metadata: unknown,
+  key: string
+): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
 export interface ConversionMetrics {
   labels: string[];
@@ -622,6 +635,45 @@ export async function getLeadsData(
         });
       } catch (error) {
         console.error("Error fetching payout statuses:", error);
+      }
+    }
+
+    if (source === "USSD") {
+      try {
+        const ussdPaymentCandidates = leads.map((lead) => ({
+          leadId: lead.id,
+          referenceNumber: readMetadataString(
+            lead.stateMetadata,
+            "referenceNumber"
+          ),
+          loanMatrixLoanProductId: lead.loanProductId,
+          loanProductName: lead.loanProductName,
+        }));
+        const paymentStatusByReference = await buildYangoPaymentStatusMap(
+          ussdPaymentCandidates
+        );
+
+        for (const candidate of ussdPaymentCandidates) {
+          if (!candidate.referenceNumber) {
+            continue;
+          }
+
+          const paymentStatus = paymentStatusByReference.get(
+            candidate.referenceNumber
+          );
+          if (!paymentStatus) {
+            continue;
+          }
+
+          const transformedLead = transformedLeads.find(
+            (lead) => lead.id === candidate.leadId
+          );
+          if (transformedLead) {
+            transformedLead.payoutStatus = paymentStatus.status;
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching USSD payout statuses:", error);
       }
     }
 
