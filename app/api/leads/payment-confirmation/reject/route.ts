@@ -8,11 +8,15 @@ import { getPipelineStageNameForLoanAction } from "@/lib/fineract-stage-sync";
 
 type RejectItemInput = {
   paymentReference?: string | null;
+  loanExternalId?: string | null;
   fineractLoanId?: number | string | null;
   fineractClientId?: number | string | null;
   loanAccountNo?: string | null;
   clientName?: string | null;
 };
+
+const PAYMENT_CONFIRMATION_LOAN_LOOKUP_REPORT =
+  "LM_PAYMENT_CONFIRMATION_LOAN_BY_EXTERNAL_ID";
 
 type CommandResult = {
   command: string;
@@ -29,6 +33,109 @@ function parseOptionalInt(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number.parseInt(String(value).trim(), 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function normalizeReportKey(value: string): string {
+  return value.replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+function getReportHeaderName(header: unknown): string {
+  if (typeof header === "string") return header;
+  const record = asRecord(header);
+  if (!record) return "";
+  return String(
+    record.columnName ||
+      record.columnDisplayName ||
+      record.displayName ||
+      record.name ||
+      ""
+  );
+}
+
+function normalizeReportRows(payload: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(payload)) {
+    return payload
+      .map((item) => asRecord(item))
+      .filter((item): item is Record<string, unknown> => Boolean(item));
+  }
+
+  const root = asRecord(payload);
+  const headers = Array.isArray(root?.columnHeaders)
+    ? root.columnHeaders.map(getReportHeaderName)
+    : [];
+  const data = Array.isArray(root?.data) ? root.data : [];
+
+  return data
+    .map((item) => {
+      const record = asRecord(item);
+      const row = Array.isArray(record?.row)
+        ? record.row
+        : Array.isArray(item)
+          ? item
+          : null;
+
+      if (!row) return record;
+
+      return headers.reduce<Record<string, unknown>>((acc, header, index) => {
+        if (header) acc[header] = row[index];
+        return acc;
+      }, {});
+    })
+    .filter((item): item is Record<string, unknown> => Boolean(item));
+}
+
+function getReportField(
+  row: Record<string, unknown>,
+  aliases: string[]
+): unknown {
+  const normalizedAliases = new Set(aliases.map(normalizeReportKey));
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizedAliases.has(normalizeReportKey(key))) {
+      return value;
+    }
+  }
+  return null;
+}
+
+async function lookupLoanByExternalId(loanExternalId: string) {
+  if (!loanExternalId) return null;
+
+  const reportPayload = await fetchFineractAPI(
+    `/runreports/${PAYMENT_CONFIRMATION_LOAN_LOOKUP_REPORT}?genericResultSet=false&R_loanExternalId=${encodeURIComponent(
+      loanExternalId
+    )}`,
+    {
+      authMode: "service",
+      cache: "no-store",
+    }
+  );
+  const row = normalizeReportRows(reportPayload)[0];
+  if (!row) return null;
+
+  return {
+    fineractLoanId: parseOptionalInt(
+      getReportField(row, ["loan_id", "loanId", "id"])
+    ),
+    fineractClientId: parseOptionalInt(
+      getReportField(row, ["client_id", "clientId"])
+    ),
+    loanAccountNo:
+      normalizeReference(getReportField(row, ["account_no", "accountNo"])) ||
+      null,
+    clientName:
+      normalizeReference(getReportField(row, ["client_name", "clientName"])) ||
+      null,
+    externalId:
+      normalizeReference(getReportField(row, ["external_id", "externalId"])) ||
+      loanExternalId,
+    raw: reportPayload,
+  };
 }
 
 function getErrorMessage(error: unknown): string {
@@ -194,19 +301,34 @@ export async function POST(request: NextRequest) {
       if (!paymentReference) continue;
 
       const lookupLog = lookupByReference.get(paymentReference);
+      const loanExternalId =
+        normalizeReference(item.loanExternalId) ||
+        lookupLog?.paymentUserReference ||
+        paymentReference;
+      const loanLookup = await lookupLoanByExternalId(loanExternalId);
       const fineractLoanId =
-        parseOptionalInt(item.fineractLoanId) ?? lookupLog?.fineractLoanId ?? null;
+        loanLookup?.fineractLoanId ??
+        parseOptionalInt(item.fineractLoanId) ??
+        lookupLog?.fineractLoanId ??
+        null;
       const fineractClientId =
+        loanLookup?.fineractClientId ??
         parseOptionalInt(item.fineractClientId) ??
         lookupLog?.fineractClientId ??
         null;
       const loanAccountNo =
-        normalizeReference(item.loanAccountNo) || lookupLog?.loanAccountNo || null;
+        loanLookup?.loanAccountNo ||
+        normalizeReference(item.loanAccountNo) ||
+        lookupLog?.loanAccountNo ||
+        null;
       const clientName =
-        normalizeReference(item.clientName) || lookupLog?.clientName || null;
+        loanLookup?.clientName ||
+        normalizeReference(item.clientName) ||
+        lookupLog?.clientName ||
+        null;
 
       if (!fineractLoanId) {
-        const errorMessage = "No Fineract loan ID was available for this reference";
+        const errorMessage = `No Fineract loan was found for loan externalId ${loanExternalId}`;
         await prisma.paymentConfirmationActionLog.create({
           data: {
             tenantId: access.tenant.id,
@@ -222,7 +344,13 @@ export async function POST(request: NextRequest) {
             actedById: access.actorId,
             actedByName: access.actorName,
             errorMessage,
-            requestPayload: item as Prisma.InputJsonValue,
+            requestPayload: {
+              ...item,
+              loanExternalId,
+            } as Prisma.InputJsonValue,
+            responsePayload: {
+              loanLookup,
+            } as Prisma.InputJsonValue,
           },
         });
         results.push({ paymentReference, status: "FAILED", error: errorMessage });
@@ -292,14 +420,21 @@ export async function POST(request: NextRequest) {
           actedById: access.actorId,
           actedByName: access.actorName,
           errorMessage,
-          requestPayload: item as Prisma.InputJsonValue,
-          responsePayload: { commands: commandResults } as Prisma.InputJsonValue,
+          requestPayload: {
+            ...item,
+            loanExternalId,
+          } as Prisma.InputJsonValue,
+          responsePayload: {
+            loanLookup,
+            commands: commandResults,
+          } as Prisma.InputJsonValue,
         },
       });
 
       results.push({
         paymentReference,
         fineractLoanId,
+        loanExternalId,
         status: succeeded ? "SUCCESS" : "FAILED",
         commands: commandResults,
         error: errorMessage,

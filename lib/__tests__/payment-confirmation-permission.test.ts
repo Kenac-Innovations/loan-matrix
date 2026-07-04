@@ -98,3 +98,73 @@ test("payment confirmation lookup is launched from reference column modal", () =
   assert.doesNotMatch(clientSource, /Object\.keys\(FIELD_LABELS\)/);
   assert.doesNotMatch(clientSource, /fineractLoanId: mapping\.loanIdColumn/);
 });
+
+test("payment confirmation CSV upload card collapses after lookup", () => {
+  const clientSource = readRepoFile(
+    "app/(application)/leads/payment-confirmation/components/payment-confirmation-client.tsx"
+  );
+
+  assert.match(clientSource, /csvUploadAccordionValue/);
+  assert.match(
+    clientSource,
+    /useState<[\s\S]{0,40}string\[\][\s\S]{0,40}>\(\["csv-upload"\]\)/
+  );
+  assert.match(clientSource, /setCsvUploadAccordionValue\(\["csv-upload"\]\)/);
+  assert.match(clientSource, /setCsvUploadAccordionValue\(\[\]\)/);
+  assert.match(clientSource, /value="csv-upload"/);
+  assert.match(clientSource, /AccordionContent/);
+  assert.doesNotMatch(clientSource, /csvPreviewAccordionValue/);
+  assert.doesNotMatch(
+    clientSource,
+    /compact=\{Boolean\(lookup\)\}/
+  );
+});
+
+test("payment confirmation tables use payment service display fields and action modals", () => {
+  const clientSource = readRepoFile(
+    "app/(application)/leads/payment-confirmation/components/payment-confirmation-client.tsx"
+  );
+  const confirmedRouteSource = readRepoFile(
+    "app/api/leads/payment-confirmation/confirmed/route.ts"
+  );
+  const unconfirmedRouteSource = readRepoFile(
+    "app/api/leads/payment-confirmation/unconfirmed/route.ts"
+  );
+
+  for (const label of [
+    "Phone",
+    "Amount",
+    "Payment Ref Number",
+    "Loan Ref",
+    "Status",
+  ]) {
+    assert.match(clientSource, new RegExp(label));
+  }
+
+  assert.match(clientSource, /formatPaymentAmount/);
+  assert.match(clientSource, /confirmDialogOpen/);
+  assert.match(clientSource, /rejectDialogOpen/);
+  assert.match(clientSource, /Progress/);
+  assert.match(clientSource, /not reversible from this page/i);
+  assert.match(confirmedRouteSource, /phoneNumber/);
+  assert.match(confirmedRouteSource, /paymentInternalReference/);
+  assert.match(confirmedRouteSource, /paymentUserReference/);
+  assert.match(unconfirmedRouteSource, /phoneNumber/);
+  assert.match(unconfirmedRouteSource, /paymentInternalReference/);
+  assert.match(unconfirmedRouteSource, /paymentUserReference/);
+});
+
+test("payment confirmation reject resolves loans by Fineract externalId report", () => {
+  const rejectRouteSource = readRepoFile(
+    "app/api/leads/payment-confirmation/reject/route.ts"
+  );
+  const clientSource = readRepoFile(
+    "app/(application)/leads/payment-confirmation/components/payment-confirmation-client.tsx"
+  );
+
+  assert.match(rejectRouteSource, /PAYMENT_CONFIRMATION_LOAN_LOOKUP_REPORT/);
+  assert.match(rejectRouteSource, /runreports/);
+  assert.match(rejectRouteSource, /R_loanExternalId/);
+  assert.match(rejectRouteSource, /paymentUserReference/);
+  assert.match(clientSource, /loanExternalId/);
+});

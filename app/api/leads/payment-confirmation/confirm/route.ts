@@ -101,7 +101,10 @@ export async function POST(request: NextRequest) {
             ? null
             : "Payment service did not confirm this reference",
           requestPayload: { paymentReferences },
-          responsePayload: confirmationResult.raw as Prisma.InputJsonValue,
+          responsePayload: {
+            confirmation: confirmationResult.raw,
+            payment: lookupLog?.responsePayload ?? null,
+          } as Prisma.InputJsonValue,
         };
       }),
     });
