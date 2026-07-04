@@ -20,6 +20,12 @@ import {
   Upload,
   XCircle,
 } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,11 +33,19 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -57,13 +71,12 @@ type CsvRow = Record<string, string>;
 
 type ColumnMapping = {
   referenceColumn: string;
-  loanIdColumn: string;
-  loanAccountNoColumn: string;
-  fineractClientIdColumn: string;
-  clientNameColumn: string;
 };
 
 type LookupPayment = {
+  amount?: number | string | null;
+  currency?: string | null;
+  phoneNumber?: string | null;
   internalReferenceNumber?: string | null;
   userReferenceNumber?: string | null;
   providerReferenceNumber?: string | null;
@@ -86,6 +99,7 @@ type LookupItem = {
   loanAccountNo?: string | null;
   clientName?: string | null;
   createdAt?: string;
+  rawRow?: CsvRow | null;
   payment?: LookupPayment | null;
 };
 
@@ -112,6 +126,11 @@ type AuditItem = {
   fineractClientId?: number | null;
   loanAccountNo?: string | null;
   clientName?: string | null;
+  phoneNumber?: string | null;
+  amount?: number | string | null;
+  currency?: string | null;
+  paymentInternalReference?: string | null;
+  paymentUserReference?: string | null;
   paymentProviderReference?: string | null;
   paymentStatus?: string | null;
   paymentConfirmedAt?: string | null;
@@ -134,29 +153,11 @@ type AuditPage = {
 
 const EMPTY_MAPPING: ColumnMapping = {
   referenceColumn: "",
-  loanIdColumn: "",
-  loanAccountNoColumn: "",
-  fineractClientIdColumn: "",
-  clientNameColumn: "",
-};
-
-const FIELD_LABELS: Record<keyof ColumnMapping, string> = {
-  referenceColumn: "Reference column *",
-  loanIdColumn: "Loan ID column",
-  loanAccountNoColumn: "Loan account column",
-  fineractClientIdColumn: "Client ID column",
-  clientNameColumn: "Client name column",
 };
 
 const AUTO_DETECT_PATTERNS: Record<keyof ColumnMapping, RegExp> = {
   referenceColumn:
     /^(payment[_\s-]?ref|payment[_\s-]?reference|internal[_\s-]?reference[_\s-]?number|internalreference|reference|ref)$/i,
-  loanIdColumn: /^(loan[_\s-]?id|loanid|fineract[_\s-]?loan[_\s-]?id)$/i,
-  loanAccountNoColumn:
-    /^(loan[_\s-]?account[_\s-]?no|loan[_\s-]?account|account[_\s-]?no)$/i,
-  fineractClientIdColumn:
-    /^(client[_\s-]?id|fineract[_\s-]?client[_\s-]?id)$/i,
-  clientNameColumn: /^(client[_\s-]?name|customer[_\s-]?name|name)$/i,
 };
 
 function formatDate(value?: string | null): string {
@@ -176,6 +177,24 @@ function formatDate(value?: string | null): string {
 function formatFileSize(bytes: number): string {
   const megabytes = bytes / (1024 * 1024);
   return `${megabytes.toFixed(megabytes >= 10 ? 0 : 1)} MB`;
+}
+
+function formatPaymentAmount(
+  currency?: string | null,
+  amount?: number | string | null
+): string {
+  if (amount === null || amount === undefined || amount === "") return "-";
+
+  const numericAmount =
+    typeof amount === "number" ? amount : Number.parseFloat(String(amount));
+  const amountText = Number.isFinite(numericAmount)
+    ? new Intl.NumberFormat(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(numericAmount)
+    : String(amount);
+
+  return [currency, amountText].filter(Boolean).join(" ") || "-";
 }
 
 function normalizeCell(value: unknown): string {
@@ -238,56 +257,43 @@ function PaymentConfirmationTableSkeleton({
 }
 
 function LookupResultsSkeleton() {
-  const tables = [
-    {
-      titleWidth: "w-40",
-      badgeWidth: "w-10",
-      columns: ["", "Reference", "Provider Ref", "Status", "Loan ID", "Client"],
-    },
-    {
-      titleWidth: "w-44",
-      badgeWidth: "w-10",
-      columns: ["", "Reference", "Loan ID", "Client", "Status"],
-    },
-  ];
-
   return (
-    <div className="grid gap-4 xl:grid-cols-2" aria-busy="true">
-      {tables.map((table, index) => (
-        <Card key={`lookup-results-skeleton-${index}`}>
-          <CardHeader>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <Skeleton className="h-4 w-4 rounded-full" />
-                <Skeleton className={`h-5 ${table.titleWidth}`} />
-                <Skeleton className={`h-5 ${table.badgeWidth}`} />
-              </div>
-              <Skeleton className="h-9 w-28" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border overflow-auto max-h-[420px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {table.columns.map((column, columnIndex) => (
-                      <TableHead key={`${column}-${columnIndex}`}>
-                        {column || <span className="sr-only">Select</span>}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <PaymentConfirmationTableSkeleton
-                    columns={table.columns.length}
-                  />
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+    <Card aria-busy="true">
+      <CardHeader>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="grid w-full max-w-md grid-cols-2 gap-2 rounded-lg bg-muted p-1">
+            <Skeleton className="h-7 rounded-md" />
+            <Skeleton className="h-7 rounded-md" />
+          </div>
+          <Skeleton className="h-9 w-28" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-md border overflow-auto max-h-[420px]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {[
+                  "",
+                  "Phone",
+                  "Amount",
+                  "Payment Ref Number",
+                  "Loan Ref",
+                  "Status",
+                ].map((column, columnIndex) => (
+                  <TableHead key={`${column}-${columnIndex}`}>
+                    {column || <span className="sr-only">Select</span>}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <PaymentConfirmationTableSkeleton columns={6} />
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -308,6 +314,10 @@ function CsvUploadDropzone({
   onDragOver: (event: DragEvent<HTMLLabelElement>) => void;
   onDrop: (event: DragEvent<HTMLLabelElement>) => void;
 }) {
+  const idleClasses = isDragging
+    ? "border-primary bg-primary/5"
+    : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30";
+
   return (
     <div className="space-y-2">
       <Input
@@ -323,11 +333,7 @@ function CsvUploadDropzone({
         onDragLeave={onDragLeave}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        className={`flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-8 text-center transition-colors ${
-          isDragging
-            ? "border-primary bg-primary/5"
-            : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
-        }`}
+        className={`flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-8 text-center transition-colors ${idleClasses}`}
       >
         <span className="relative mb-5 inline-flex h-14 w-14 items-center justify-center rounded-md bg-muted text-muted-foreground">
           <FileSpreadsheet className="h-8 w-8" />
@@ -379,11 +385,11 @@ function AuditTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Reference</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Payment Ref Number</TableHead>
+                <TableHead>Loan Ref</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Loan ID</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>File</TableHead>
                 <TableHead>Actor</TableHead>
                 <TableHead>Date</TableHead>
               </TableRow>
@@ -400,15 +406,21 @@ function AuditTable({
               ) : (
                 page.items.map((item) => (
                   <TableRow key={item.id}>
+                    <TableCell className="whitespace-nowrap">
+                      {item.phoneNumber || "-"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {formatPaymentAmount(item.currency, item.amount)}
+                    </TableCell>
                     <TableCell className="font-medium whitespace-nowrap">
-                      {item.paymentReference}
+                      {item.paymentInternalReference || item.paymentReference}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {item.paymentUserReference || "-"}
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={item.actionStatus} />
+                      <StatusBadge status={item.paymentStatus || item.actionStatus} />
                     </TableCell>
-                    <TableCell>{item.fineractLoanId || "-"}</TableCell>
-                    <TableCell className="min-w-40">{item.clientName || "-"}</TableCell>
-                    <TableCell className="min-w-44">{item.upload?.fileName || "-"}</TableCell>
                     <TableCell>{item.actedByName || "-"}</TableCell>
                     <TableCell className="whitespace-nowrap">{formatDate(item.createdAt)}</TableCell>
                   </TableRow>
@@ -452,12 +464,18 @@ function AuditTable({
 
 export function PaymentConfirmationClient() {
   const [activeTab, setActiveTab] = useState("upload");
+  const [lookupResultsTab, setLookupResultsTab] = useState("matched");
   const [file, setFile] = useState<File | null>(null);
   const [isDraggingUpload, setIsDraggingUpload] = useState(false);
   const [headers, setHeaders] = useState<string[]>([]);
   const [previewRows, setPreviewRows] = useState<CsvRow[]>([]);
   const [allRows, setAllRows] = useState<CsvRow[]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>(EMPTY_MAPPING);
+  const [csvUploadAccordionValue, setCsvUploadAccordionValue] = useState<
+    string[]
+  >(["csv-upload"]);
+  const [referenceColumnDialogOpen, setReferenceColumnDialogOpen] =
+    useState(false);
   const [lookup, setLookup] = useState<LookupResponse | null>(null);
   const [selectedConfirmRefs, setSelectedConfirmRefs] = useState<Set<string>>(new Set());
   const [selectedRejectRefs, setSelectedRejectRefs] = useState<Set<string>>(new Set());
@@ -466,6 +484,9 @@ export function PaymentConfirmationClient() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [rejectLoading, setRejectLoading] = useState(false);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectProgress, setRejectProgress] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [confirmedPageNumber, setConfirmedPageNumber] = useState(1);
@@ -495,8 +516,15 @@ export function PaymentConfirmationClient() {
     [lookup]
   );
   const rejectableUnmatched = useMemo(
-    () => lookup?.unmatched.filter((item) => Boolean(item.fineractLoanId)) || [],
+    () => lookup?.unmatched || [],
     [lookup]
+  );
+  const unmatchedCsvHeaders = useMemo(
+    () =>
+      headers.length > 0
+        ? headers
+        : [mapping.referenceColumn || "Payment reference"],
+    [headers, mapping.referenceColumn]
   );
 
   const loadConfirmed = useCallback(async () => {
@@ -554,9 +582,15 @@ export function PaymentConfirmationClient() {
     setPreviewRows([]);
     setAllRows([]);
     setMapping(EMPTY_MAPPING);
+    setCsvUploadAccordionValue(["csv-upload"]);
+    setReferenceColumnDialogOpen(false);
     setLookup(null);
+    setLookupResultsTab("matched");
     setSelectedConfirmRefs(new Set());
     setSelectedRejectRefs(new Set());
+    setConfirmDialogOpen(false);
+    setRejectDialogOpen(false);
+    setRejectProgress(0);
     setError(null);
     setNotice(null);
   }, []);
@@ -628,6 +662,8 @@ export function PaymentConfirmationClient() {
           setPreviewRows(parsedRows.slice(0, 5));
           setAllRows(parsedRows);
           setMapping(autoMapping);
+          setCsvUploadAccordionValue(["csv-upload"]);
+          setReferenceColumnDialogOpen(true);
         },
         error: () => {
           setError("Failed to read CSV file");
@@ -681,17 +717,24 @@ export function PaymentConfirmationClient() {
     [processCsvFile]
   );
 
-  const updateMapping = (field: keyof ColumnMapping, value: string) => {
-    setMapping((current) => ({
-      ...current,
-      [field]: value === NONE_VALUE ? "" : value,
-    }));
+  const updateReferenceColumn = (value: string) => {
+    setMapping({
+      referenceColumn: value === NONE_VALUE ? "" : value,
+    });
   };
 
   const getMappedLabel = (header: string) => {
-    const mapped = Object.entries(mapping).find(([, value]) => value === header);
-    if (!mapped) return null;
-    return FIELD_LABELS[mapped[0] as keyof ColumnMapping].replace(" *", "");
+    return mapping.referenceColumn === header ? "Payment reference" : null;
+  };
+
+  const handleOpenReferenceColumnDialog = () => {
+    if (!file || allRows.length === 0) {
+      setError("Choose a CSV file");
+      return;
+    }
+
+    setError(null);
+    setReferenceColumnDialogOpen(true);
   };
 
   const handleLookup = async () => {
@@ -711,14 +754,6 @@ export function PaymentConfirmationClient() {
     const rows = allRows.map((row, index) => ({
       rowNumber: index + 1,
       paymentReference: row[mapping.referenceColumn] || "",
-      fineractLoanId: mapping.loanIdColumn ? row[mapping.loanIdColumn] || null : null,
-      loanAccountNo: mapping.loanAccountNoColumn
-        ? row[mapping.loanAccountNoColumn] || null
-        : null,
-      fineractClientId: mapping.fineractClientIdColumn
-        ? row[mapping.fineractClientIdColumn] || null
-        : null,
-      clientName: mapping.clientNameColumn ? row[mapping.clientNameColumn] || null : null,
       rawRow: row,
     }));
 
@@ -729,12 +764,13 @@ export function PaymentConfirmationClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fileName: file.name,
-          columnMapping: mapping,
+          columnMapping: { referenceColumn: mapping.referenceColumn },
           rows,
         }),
       });
       const data = await readJsonResponse<LookupResponse>(response);
       setLookup(data);
+      setLookupResultsTab(data.matched.length > 0 ? "matched" : "unmatched");
       setSelectedConfirmRefs(
         new Set(
           data.matched
@@ -752,6 +788,8 @@ export function PaymentConfirmationClient() {
       setNotice(
         `${data.upload.matchedCount} matched, ${data.upload.unmatchedCount} unmatched`
       );
+      setCsvUploadAccordionValue([]);
+      setReferenceColumnDialogOpen(false);
       setRefreshKey((key) => key + 1);
     } catch (err) {
       setLookup(null);
@@ -849,6 +887,7 @@ export function PaymentConfirmationClient() {
           : current
       );
       setSelectedConfirmRefs(new Set());
+      setConfirmDialogOpen(false);
       setNotice(`${data.confirmedPaymentReferences.length} payments confirmed`);
       setRefreshKey((key) => key + 1);
     } catch (err) {
@@ -862,6 +901,7 @@ export function PaymentConfirmationClient() {
     if (!lookup || selectedRejectRefs.size === 0) return;
 
     setRejectLoading(true);
+    setRejectProgress(5);
     setError(null);
     setNotice(null);
 
@@ -869,11 +909,28 @@ export function PaymentConfirmationClient() {
       .filter((item) => selectedRejectRefs.has(item.paymentReference))
       .map((item) => ({
         paymentReference: item.paymentReference,
+        loanExternalId:
+          item.payment?.userReferenceNumber || item.paymentReference,
         fineractLoanId: item.fineractLoanId,
         fineractClientId: item.fineractClientId,
         loanAccountNo: item.loanAccountNo,
         clientName: item.clientName,
       }));
+
+    const totalSyntheticSteps = Math.max(items.length * 4, 1);
+    let completedSyntheticSteps = 0;
+    const progressTimer = window.setInterval(() => {
+      completedSyntheticSteps = Math.min(
+        completedSyntheticSteps + 1,
+        totalSyntheticSteps - 1
+      );
+      setRejectProgress(
+        Math.max(
+          5,
+          Math.round((completedSyntheticSteps / totalSyntheticSteps) * 100)
+        )
+      );
+    }, 700);
 
     try {
       const response = await fetch("/api/leads/payment-confirmation/reject", {
@@ -906,11 +963,15 @@ export function PaymentConfirmationClient() {
           : current
       );
       setSelectedRejectRefs(new Set());
+      setRejectProgress(100);
       setNotice(`${data.rejectedReferences.length} loans rejected`);
       setRefreshKey((key) => key + 1);
+      window.setTimeout(() => setRejectDialogOpen(false), 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Reject failed");
+      setRejectProgress(0);
     } finally {
+      window.clearInterval(progressTimer);
       setRejectLoading(false);
     }
   };
@@ -950,276 +1011,503 @@ export function PaymentConfirmationClient() {
           </Alert>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FileSpreadsheet className="h-4 w-4" />
-              CSV Upload
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-              <CsvUploadDropzone
-                file={file}
-                isDragging={isDraggingUpload}
-                onFileInputChange={handleFileChange}
-                onDragEnter={handleUploadDragEnter}
-                onDragLeave={handleUploadDragLeave}
-                onDragOver={handleUploadDragOver}
-                onDrop={handleUploadDrop}
-              />
+        <Accordion
+          type="multiple"
+          value={csvUploadAccordionValue}
+          onValueChange={setCsvUploadAccordionValue}
+        >
+          <AccordionItem
+            value="csv-upload"
+            className="rounded-md border bg-card text-card-foreground shadow-sm"
+          >
+            <AccordionTrigger className="px-6 py-4 hover:no-underline">
+              <div className="flex min-w-0 flex-col gap-1 text-left">
+                <span className="flex items-center gap-2 text-base font-semibold">
+                  <FileSpreadsheet className="h-4 w-4" />
+                  CSV Upload
+                </span>
+                <span className="truncate text-xs font-normal text-muted-foreground">
+                  {file
+                    ? `${file.name} - ${allRows.length} rows - ${
+                        mapping.referenceColumn || "No reference column"
+                      }`
+                    : "Upload a CSV and select the reference column"}
+                </span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <div className="space-y-5">
+                <CsvUploadDropzone
+                  file={file}
+                  isDragging={isDraggingUpload}
+                  onFileInputChange={handleFileChange}
+                  onDragEnter={handleUploadDragEnter}
+                  onDragLeave={handleUploadDragLeave}
+                  onDragOver={handleUploadDragOver}
+                  onDrop={handleUploadDrop}
+                />
+
+                {allRows.length > 0 && (
+                  <>
+                    <div className="flex flex-col gap-3 rounded-md border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium">
+                          Payment reference column
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {mapping.referenceColumn
+                            ? mapping.referenceColumn
+                            : "No column selected yet"}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleOpenReferenceColumnDialog}
+                        disabled={lookupLoading}
+                      >
+                        <Search className="h-4 w-4" />
+                        {mapping.referenceColumn ? "Change column" : "Select column"}
+                      </Button>
+                    </div>
+
+                    <div className="overflow-auto rounded-md border max-h-[320px]">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-12">#</TableHead>
+                            {headers.map((header) => {
+                              const mappedLabel = getMappedLabel(header);
+                              return (
+                                <TableHead
+                                  key={header}
+                                  className="whitespace-nowrap"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span>{header}</span>
+                                    {mappedLabel && (
+                                      <Badge variant="secondary">
+                                        {mappedLabel}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TableHead>
+                              );
+                            })}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {previewRows.map((row, index) => (
+                            <TableRow key={index}>
+                              <TableCell className="text-muted-foreground">
+                                {index + 1}
+                              </TableCell>
+                              {headers.map((header) => (
+                                <TableCell
+                                  key={header}
+                                  className="max-w-52 truncate whitespace-nowrap"
+                                >
+                                  {row[header] || "-"}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+
+        <Dialog
+          open={referenceColumnDialogOpen}
+          onOpenChange={(open) => {
+            if (!lookupLoading) setReferenceColumnDialogOpen(open);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Select payment reference column</DialogTitle>
+              <DialogDescription>
+                Choose the CSV column that contains the payment references to
+                lookup.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="payment-reference-column">
+                  Payment reference column
+                </Label>
+                <Select
+                  value={mapping.referenceColumn || NONE_VALUE}
+                  onValueChange={updateReferenceColumn}
+                >
+                  <SelectTrigger id="payment-reference-column">
+                    <SelectValue placeholder="Select column" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE_VALUE}>Select column</SelectItem>
+                    {headers.map((header) => (
+                      <SelectItem key={header} value={header}>
+                        {header}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {mapping.referenceColumn && (
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Sample values
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {previewRows.slice(0, 3).map((row, index) => (
+                      <p
+                        key={`${mapping.referenceColumn}-sample-${index}`}
+                        className="truncate text-sm"
+                      >
+                        {row[mapping.referenceColumn] || "-"}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setReferenceColumnDialogOpen(false)}
+                disabled={lookupLoading}
+              >
+                Cancel
+              </Button>
               <Button
                 type="button"
                 onClick={handleLookup}
-                disabled={lookupLoading || !file || !mapping.referenceColumn}
+                disabled={lookupLoading || !mapping.referenceColumn}
               >
                 <Search className="h-4 w-4" />
                 {lookupLoading ? "Looking up..." : "Lookup"}
               </Button>
-            </div>
-
-            {allRows.length > 0 && (
-              <>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-5">
-                  {(Object.keys(FIELD_LABELS) as (keyof ColumnMapping)[]).map(
-                    (field) => (
-                      <div key={field} className="space-y-2">
-                        <Label>{FIELD_LABELS[field]}</Label>
-                        <Select
-                          value={mapping[field] || NONE_VALUE}
-                          onValueChange={(value) => updateMapping(field, value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select column" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NONE_VALUE}>Not mapped</SelectItem>
-                            {headers.map((header) => (
-                              <SelectItem key={header} value={header}>
-                                {header}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )
-                  )}
-                </div>
-
-                <div className="rounded-md border overflow-auto max-h-[320px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">#</TableHead>
-                        {headers.map((header) => {
-                          const mappedLabel = getMappedLabel(header);
-                          return (
-                            <TableHead key={header} className="whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <span>{header}</span>
-                                {mappedLabel && (
-                                  <Badge variant="secondary">{mappedLabel}</Badge>
-                                )}
-                              </div>
-                            </TableHead>
-                          );
-                        })}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {previewRows.map((row, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="text-muted-foreground">
-                            {index + 1}
-                          </TableCell>
-                          {headers.map((header) => (
-                            <TableCell
-                              key={header}
-                              className="max-w-52 truncate whitespace-nowrap"
-                            >
-                              {row[header] || "-"}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {lookupLoading ? (
           <LookupResultsSkeleton />
         ) : lookup && (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <Tabs
+            value={lookupResultsTab}
+            onValueChange={setLookupResultsTab}
+            className="space-y-3"
+          >
             <Card>
               <CardHeader>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <CheckCircle2 className="h-4 w-4" />
-                    Matched Payments
-                    <Badge variant="secondary">{lookup.matched.length}</Badge>
-                  </CardTitle>
-                  <Button
-                    type="button"
-                    onClick={handleConfirm}
-                    disabled={confirmLoading || selectedConfirmRefs.size === 0}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    {confirmLoading ? "Confirming..." : "Confirm"}
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-md border overflow-auto max-h-[420px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10">
-                          <Checkbox
-                            checked={allConfirmableSelected}
-                            onCheckedChange={(checked) =>
-                              toggleAllConfirmable(Boolean(checked))
-                            }
-                            aria-label="Select all confirmable payments"
-                          />
-                        </TableHead>
-                        <TableHead>Reference</TableHead>
-                        <TableHead>Provider Ref</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Loan ID</TableHead>
-                        <TableHead>Client</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {lookup.matched.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                            No matched payments
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        lookup.matched.map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell>
-                              <Checkbox
-                                checked={selectedConfirmRefs.has(item.paymentReference)}
-                                disabled={!item.payment?.canConfirm}
-                                onCheckedChange={(checked) =>
-                                  toggleConfirmRef(
-                                    item.paymentReference,
-                                    Boolean(checked)
-                                  )
-                                }
-                                aria-label={`Select ${item.paymentReference}`}
-                              />
-                            </TableCell>
-                            <TableCell className="font-medium whitespace-nowrap">
-                              {item.paymentReference}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap">
-                              {item.payment?.providerReferenceNumber || "-"}
-                            </TableCell>
-                            <TableCell>
-                              <StatusBadge status={item.actionStatus} />
-                            </TableCell>
-                            <TableCell>{item.fineractLoanId || "-"}</TableCell>
-                            <TableCell className="min-w-40">{item.clientName || "-"}</TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <TabsList className="grid w-full max-w-md grid-cols-2">
+                    <TabsTrigger value="matched" className="gap-2">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Matched
+                      <Badge variant="secondary">{lookup.matched.length}</Badge>
+                    </TabsTrigger>
+                    <TabsTrigger value="unmatched" className="gap-2">
+                      <Ban className="h-4 w-4" />
+                      Unmatched
+                      <Badge variant="outline">{lookup.unmatched.length}</Badge>
+                    </TabsTrigger>
+                  </TabsList>
 
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Ban className="h-4 w-4" />
-                    Unmatched References
-                    <Badge variant="outline">{lookup.unmatched.length}</Badge>
-                  </CardTitle>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={handleReject}
-                    disabled={rejectLoading || selectedRejectRefs.size === 0}
-                  >
-                    <XCircle className="h-4 w-4" />
-                    {rejectLoading ? "Rejecting..." : "Reject Loans"}
-                  </Button>
+                  {lookupResultsTab === "matched" ? (
+                    <Button
+                      type="button"
+                      onClick={() => setConfirmDialogOpen(true)}
+                      disabled={
+                        confirmLoading || selectedConfirmRefs.size === 0
+                      }
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {confirmLoading ? "Confirming..." : "Confirm"}
+                    </Button>
+                  ) : null}
+                  {/*
+                    Keep this action available for a future reject-loans flow.
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => setRejectDialogOpen(true)}
+                      disabled={rejectLoading || selectedRejectRefs.size === 0}
+                    >
+                      <XCircle className="h-4 w-4" />
+                      {rejectLoading ? "Rejecting..." : "Reject Loans"}
+                    </Button>
+                  */}
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border overflow-auto max-h-[420px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10">
-                          <Checkbox
-                            checked={allRejectableSelected}
-                            onCheckedChange={(checked) =>
-                              toggleAllRejectable(Boolean(checked))
-                            }
-                            aria-label="Select all rejectable loans"
-                          />
-                        </TableHead>
-                        <TableHead>Reference</TableHead>
-                        <TableHead>Loan ID</TableHead>
-                        <TableHead>Client</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {lookup.unmatched.length === 0 ? (
+                <TabsContent value="matched" className="m-0">
+                  <div className="rounded-md border overflow-auto max-h-[420px]">
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                            No unmatched references
-                          </TableCell>
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={allConfirmableSelected}
+                              onCheckedChange={(checked) =>
+                                toggleAllConfirmable(Boolean(checked))
+                              }
+                              aria-label="Select all confirmable payments"
+                            />
+                          </TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Payment Ref Number</TableHead>
+                          <TableHead>Loan Ref</TableHead>
+                          <TableHead>Status</TableHead>
                         </TableRow>
-                      ) : (
-                        lookup.unmatched.map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell>
-                              <Checkbox
-                                checked={selectedRejectRefs.has(item.paymentReference)}
-                                disabled={!item.fineractLoanId}
-                                onCheckedChange={(checked) =>
-                                  toggleRejectRef(
-                                    item.paymentReference,
-                                    Boolean(checked)
-                                  )
-                                }
-                                aria-label={`Select ${item.paymentReference}`}
-                              />
-                            </TableCell>
-                            <TableCell className="font-medium whitespace-nowrap">
-                              {item.paymentReference}
-                            </TableCell>
-                            <TableCell>
-                              {item.fineractLoanId || (
-                                <Badge variant="outline">Missing loan ID</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="min-w-40">{item.clientName || "-"}</TableCell>
-                            <TableCell>
-                              <StatusBadge status={item.actionStatus} />
+                      </TableHeader>
+                      <TableBody>
+                        {lookup.matched.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={6}
+                              className="h-24 text-center text-muted-foreground"
+                            >
+                              No matched payments
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                        ) : (
+                          lookup.matched.map((item) => (
+                            <TableRow key={item.id}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedConfirmRefs.has(
+                                    item.paymentReference
+                                  )}
+                                  disabled={!item.payment?.canConfirm}
+                                  onCheckedChange={(checked) =>
+                                    toggleConfirmRef(
+                                      item.paymentReference,
+                                      Boolean(checked)
+                                    )
+                                  }
+                                  aria-label={`Select ${item.paymentReference}`}
+                                />
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">
+                                {item.payment?.phoneNumber || "-"}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">
+                                {formatPaymentAmount(
+                                  item.payment?.currency,
+                                  item.payment?.amount
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium whitespace-nowrap">
+                                {item.payment?.internalReferenceNumber ||
+                                  item.paymentReference}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">
+                                {item.payment?.userReferenceNumber || "-"}
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge
+                                  status={
+                                    item.payment?.status || item.actionStatus
+                                  }
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="unmatched" className="m-0">
+                  <div className="rounded-md border overflow-auto max-h-[420px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={allRejectableSelected}
+                              onCheckedChange={(checked) =>
+                                toggleAllRejectable(Boolean(checked))
+                              }
+                              aria-label="Select all rejectable loans"
+                            />
+                          </TableHead>
+                          {unmatchedCsvHeaders.map((header, index) => (
+                            <TableHead
+                              key={`unmatched-csv-header-${header}-${index}`}
+                              className="whitespace-nowrap"
+                            >
+                              {header}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {lookup.unmatched.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={unmatchedCsvHeaders.length + 1}
+                              className="h-24 text-center text-muted-foreground"
+                            >
+                              No unmatched references
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          lookup.unmatched.map((item) => (
+                            <TableRow key={item.id}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedRejectRefs.has(
+                                    item.paymentReference
+                                  )}
+                                  onCheckedChange={(checked) =>
+                                    toggleRejectRef(
+                                      item.paymentReference,
+                                      Boolean(checked)
+                                    )
+                                  }
+                                  aria-label={`Select ${item.paymentReference}`}
+                                />
+                              </TableCell>
+                              {unmatchedCsvHeaders.map((header, index) => {
+                                const value =
+                                  item.rawRow?.[header] ||
+                                  (header === mapping.referenceColumn
+                                    ? item.paymentReference
+                                    : "");
+
+                                return (
+                                  <TableCell
+                                    key={`${item.id}-${header}-${index}`}
+                                    className="max-w-52 truncate whitespace-nowrap"
+                                  >
+                                    {value || "-"}
+                                  </TableCell>
+                                );
+                              })}
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
               </CardContent>
             </Card>
-          </div>
+          </Tabs>
         )}
+
+        <Dialog
+          open={confirmDialogOpen}
+          onOpenChange={(open) => {
+            if (!confirmLoading) setConfirmDialogOpen(open);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm selected payments</DialogTitle>
+              <DialogDescription>
+                You are about to confirm {selectedConfirmRefs.size} payment
+                {selectedConfirmRefs.size === 1 ? "" : "s"}. This action is
+                not reversible from this page.
+              </DialogDescription>
+            </DialogHeader>
+            <Alert>
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertTitle>Review before continuing</AlertTitle>
+              <AlertDescription>
+                Only proceed after verifying the payment reference, loan ref,
+                amount, phone, and status are correct.
+              </AlertDescription>
+            </Alert>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmDialogOpen(false)}
+                disabled={confirmLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirm}
+                disabled={confirmLoading || selectedConfirmRefs.size === 0}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {confirmLoading ? "Confirming..." : "Confirm Payments"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={rejectDialogOpen}
+          onOpenChange={(open) => {
+            if (!rejectLoading) setRejectDialogOpen(open);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reject selected loans</DialogTitle>
+              <DialogDescription>
+                Review selected loans before continuing.
+              </DialogDescription>
+            </DialogHeader>
+            <Alert variant="destructive">
+              <XCircle className="h-4 w-4" />
+              <AlertTitle>Reject loans in Fineract</AlertTitle>
+              <AlertDescription>
+                You are about to reject {selectedRejectRefs.size} loan
+                {selectedRejectRefs.size === 1 ? "" : "s"}. This action is
+                not reversible from this page.
+              </AlertDescription>
+            </Alert>
+            {rejectLoading && (
+              <div className="space-y-2" aria-busy="true">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Rejecting selected loans
+                  </span>
+                  <span className="font-medium">{rejectProgress}%</span>
+                </div>
+                <Progress value={rejectProgress} className="h-2" />
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRejectDialogOpen(false)}
+                disabled={rejectLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleReject}
+                disabled={rejectLoading || selectedRejectRefs.size === 0}
+              >
+                <XCircle className="h-4 w-4" />
+                {rejectLoading ? "Rejecting..." : "Reject Loans"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </TabsContent>
 
       <TabsContent value="confirmed">

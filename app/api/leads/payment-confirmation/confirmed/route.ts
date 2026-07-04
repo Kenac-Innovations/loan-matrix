@@ -13,12 +13,15 @@ type AuditLogWithUpload = {
   fineractClientId: number | null;
   loanAccountNo: string | null;
   clientName: string | null;
+  paymentInternalReference: string | null;
+  paymentUserReference: string | null;
   paymentProviderReference: string | null;
   paymentStatus: string | null;
   paymentConfirmedAt: Date | null;
   actedByName: string | null;
   errorMessage: string | null;
   createdAt: Date;
+  responsePayload: unknown;
   upload: {
     id: string;
     fileName: string;
@@ -31,7 +34,35 @@ function parsePageParam(value: string | null, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getPaymentSnapshot(payload: unknown): Record<string, unknown> | null {
+  const root = asRecord(payload);
+  if (!root) return null;
+  return asRecord(root.payment) || root;
+}
+
+function getStringField(
+  record: Record<string, unknown> | null,
+  keys: string[]
+): string | null {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== null && value !== undefined && value !== "") {
+      return String(value);
+    }
+  }
+  return null;
+}
+
 function toAuditItem(log: AuditLogWithUpload) {
+  const paymentSnapshot = getPaymentSnapshot(log.responsePayload);
+
   return {
     id: log.id,
     uploadId: log.uploadId,
@@ -43,8 +74,19 @@ function toAuditItem(log: AuditLogWithUpload) {
     fineractClientId: log.fineractClientId,
     loanAccountNo: log.loanAccountNo,
     clientName: log.clientName,
+    phoneNumber: getStringField(paymentSnapshot, ["phoneNumber"]),
+    amount: paymentSnapshot?.amount ?? null,
+    currency: getStringField(paymentSnapshot, ["currency"]),
+    paymentInternalReference:
+      log.paymentInternalReference ||
+      getStringField(paymentSnapshot, ["internalReferenceNumber"]) ||
+      log.paymentReference,
+    paymentUserReference:
+      log.paymentUserReference ||
+      getStringField(paymentSnapshot, ["userReferenceNumber"]),
     paymentProviderReference: log.paymentProviderReference,
-    paymentStatus: log.paymentStatus,
+    paymentStatus:
+      log.paymentStatus || getStringField(paymentSnapshot, ["status"]),
     paymentConfirmedAt: log.paymentConfirmedAt,
     actedByName: log.actedByName,
     errorMessage: log.errorMessage,
