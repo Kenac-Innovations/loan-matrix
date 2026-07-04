@@ -32,7 +32,11 @@ interface SidebarNavProps {
  * Handles role-based and feature-based visibility of menu items
  */
 export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
-  const { hasAnyRole, isLoading: rolesLoading } = useUserRoles();
+  const {
+    canConfirmPayments,
+    hasAnyRole,
+    isLoading: rolesLoading,
+  } = useUserRoles();
   const { isEnabled } = useFeatureFlags();
 
   // Define submenu items with role and feature restrictions
@@ -53,6 +57,9 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
     isEnabled("leadConfig")
   ) {
     leadsSubMenuItems.push({ label: "Configuration", href: "/leads/config" });
+  }
+
+  if (!rolesLoading && canConfirmPayments) {
     leadsSubMenuItems.push({
       label: "Payment Confirmation",
       href: "/leads/payment-confirmation",

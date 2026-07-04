@@ -73,6 +73,7 @@ const createUserSchema = z
     sendPasswordToEmail: z.boolean().default(true),
     passwordNeverExpires: z.boolean().default(false),
     canOverrideInitiatorDisbursement: z.boolean().default(false),
+    canConfirmPayments: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
       .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
@@ -174,6 +175,7 @@ const updateUserSchema = z
       ),
     passwordNeverExpires: z.boolean().default(false),
     canOverrideInitiatorDisbursement: z.boolean().default(false),
+    canConfirmPayments: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
       .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
@@ -394,6 +396,7 @@ function mapUserSummary(user: unknown): UserSummary {
     countryCode: undefined,
     isBlocked: false,
     blockedAt: null,
+    canConfirmPayments: false,
     officeId: asNumber(userRecord.officeId),
     officeName: asString(userRecord.officeName) || asString(officeRecord.name),
     roles: selectedRoles
@@ -445,6 +448,7 @@ function mapUserDetail(user: unknown): UserDetail {
     passwordNeverExpires: Boolean(userRecord.passwordNeverExpires),
     isSelfServiceUser: Boolean(userRecord.isSelfServiceUser),
     canOverrideInitiatorDisbursement: false,
+    canConfirmPayments: false,
     visibleLeadOffices: [],
     blockedSource: null,
     blockedNote: null,
@@ -599,6 +603,7 @@ export async function listUsersAction(): Promise<UserSummary[]> {
         countryCode: true,
         isBlocked: true,
         blockedAt: true,
+        canConfirmPayments: true,
       },
     }),
   ]);
@@ -618,6 +623,7 @@ export async function listUsersAction(): Promise<UserSummary[]> {
         countryCode: localLogin?.countryCode || undefined,
         isBlocked: localLogin?.isBlocked ?? false,
         blockedAt: localLogin?.blockedAt?.toISOString() ?? null,
+        canConfirmPayments: localLogin?.canConfirmPayments ?? false,
       };
     })
     .sort((left, right) => left.displayName.localeCompare(right.displayName));
@@ -648,6 +654,7 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
       blockedNote: true,
       blockedByActorName: true,
       canOverrideInitiatorDisbursement: true,
+      canConfirmPayments: true,
       leadBranchAccesses: {
         orderBy: {
           officeId: "asc",
@@ -678,6 +685,7 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
     countryCode: localLogin?.countryCode || undefined,
     canOverrideInitiatorDisbursement:
       localLogin?.canOverrideInitiatorDisbursement ?? false,
+    canConfirmPayments: localLogin?.canConfirmPayments ?? false,
     visibleLeadOffices: collapsedVisibleLeadOfficeIds.map((officeId) =>
       mapVisibleLeadOffice(
         officeId,
@@ -869,6 +877,7 @@ export async function createUserAction(
         countryCode,
         canOverrideInitiatorDisbursement:
           parsed.data.canOverrideInitiatorDisbursement,
+        canConfirmPayments: parsed.data.canConfirmPayments,
       });
 
       if (tenant.restrictLeadVisibilityToBranches) {
@@ -944,6 +953,7 @@ export async function updateUserAction(
         : null,
       canOverrideInitiatorDisbursement:
         parsed.data.canOverrideInitiatorDisbursement,
+      canConfirmPayments: parsed.data.canConfirmPayments,
     });
 
     if (tenant.restrictLeadVisibilityToBranches) {

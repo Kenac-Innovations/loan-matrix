@@ -39,9 +39,14 @@ export function MobileSidebar({
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const { isEnabled } = useFeatureFlags();
-  const { hasAnyRole, isLoading: rolesLoading } = useUserRoles();
+  const {
+    canConfirmPayments,
+    hasAnyRole,
+    isLoading: rolesLoading,
+  } = useUserRoles();
   const canSeeLeadConfiguration =
     !rolesLoading && hasAnyRole(["SUPER_ADMIN"]) && isEnabled("leadConfig");
+  const canSeePaymentConfirmation = !rolesLoading && canConfirmPayments;
 
   // Avoid hydration mismatch
   useEffect(() => {
@@ -207,28 +212,28 @@ export function MobileSidebar({
                     </Link>
                   )}
                   {canSeeLeadConfiguration && (
-                    <>
-                      <Link
-                        href="/leads/config"
-                        className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
-                          pathname === "/leads/config"
-                            ? iconColorActive
-                            : `${iconColor} hover:${textColor}`
-                        }`}
-                      >
-                        Configuration
-                      </Link>
-                      <Link
-                        href="/leads/payment-confirmation"
-                        className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
-                          pathname === "/leads/payment-confirmation"
-                            ? iconColorActive
-                            : `${iconColor} hover:${textColor}`
-                        }`}
-                      >
-                        Payment Confirmation
-                      </Link>
-                    </>
+                    <Link
+                      href="/leads/config"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/leads/config"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Configuration
+                    </Link>
+                  )}
+                  {canSeePaymentConfirmation && (
+                    <Link
+                      href="/leads/payment-confirmation"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/leads/payment-confirmation"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      Payment Confirmation
+                    </Link>
                   )}
                 </div>
               )}
