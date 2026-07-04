@@ -84,3 +84,17 @@ test("payment confirmation loading states use skeletons instead of spinner-only 
   assert.match(clientSource, /Upload/);
   assert.doesNotMatch(clientSource, /Loader2 className="mx-auto h-5 w-5 animate-spin/);
 });
+
+test("payment confirmation lookup is launched from reference column modal", () => {
+  const clientSource = readRepoFile(
+    "app/(application)/leads/payment-confirmation/components/payment-confirmation-client.tsx"
+  );
+
+  assert.match(clientSource, /referenceColumnDialogOpen/);
+  assert.match(clientSource, /Select payment reference column/);
+  assert.match(clientSource, /handleOpenReferenceColumnDialog/);
+  assert.match(clientSource, /DialogContent/);
+  assert.match(clientSource, /columnMapping: \{ referenceColumn: mapping\.referenceColumn \}/);
+  assert.doesNotMatch(clientSource, /Object\.keys\(FIELD_LABELS\)/);
+  assert.doesNotMatch(clientSource, /fineractLoanId: mapping\.loanIdColumn/);
+});

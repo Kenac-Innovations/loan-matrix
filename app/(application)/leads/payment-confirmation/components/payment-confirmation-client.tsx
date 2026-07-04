@@ -30,6 +30,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -57,10 +65,6 @@ type CsvRow = Record<string, string>;
 
 type ColumnMapping = {
   referenceColumn: string;
-  loanIdColumn: string;
-  loanAccountNoColumn: string;
-  fineractClientIdColumn: string;
-  clientNameColumn: string;
 };
 
 type LookupPayment = {
@@ -134,29 +138,11 @@ type AuditPage = {
 
 const EMPTY_MAPPING: ColumnMapping = {
   referenceColumn: "",
-  loanIdColumn: "",
-  loanAccountNoColumn: "",
-  fineractClientIdColumn: "",
-  clientNameColumn: "",
-};
-
-const FIELD_LABELS: Record<keyof ColumnMapping, string> = {
-  referenceColumn: "Reference column *",
-  loanIdColumn: "Loan ID column",
-  loanAccountNoColumn: "Loan account column",
-  fineractClientIdColumn: "Client ID column",
-  clientNameColumn: "Client name column",
 };
 
 const AUTO_DETECT_PATTERNS: Record<keyof ColumnMapping, RegExp> = {
   referenceColumn:
     /^(payment[_\s-]?ref|payment[_\s-]?reference|internal[_\s-]?reference[_\s-]?number|internalreference|reference|ref)$/i,
-  loanIdColumn: /^(loan[_\s-]?id|loanid|fineract[_\s-]?loan[_\s-]?id)$/i,
-  loanAccountNoColumn:
-    /^(loan[_\s-]?account[_\s-]?no|loan[_\s-]?account|account[_\s-]?no)$/i,
-  fineractClientIdColumn:
-    /^(client[_\s-]?id|fineract[_\s-]?client[_\s-]?id)$/i,
-  clientNameColumn: /^(client[_\s-]?name|customer[_\s-]?name|name)$/i,
 };
 
 function formatDate(value?: string | null): string {
@@ -458,6 +444,8 @@ export function PaymentConfirmationClient() {
   const [previewRows, setPreviewRows] = useState<CsvRow[]>([]);
   const [allRows, setAllRows] = useState<CsvRow[]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>(EMPTY_MAPPING);
+  const [referenceColumnDialogOpen, setReferenceColumnDialogOpen] =
+    useState(false);
   const [lookup, setLookup] = useState<LookupResponse | null>(null);
   const [selectedConfirmRefs, setSelectedConfirmRefs] = useState<Set<string>>(new Set());
   const [selectedRejectRefs, setSelectedRejectRefs] = useState<Set<string>>(new Set());
@@ -554,6 +542,7 @@ export function PaymentConfirmationClient() {
     setPreviewRows([]);
     setAllRows([]);
     setMapping(EMPTY_MAPPING);
+    setReferenceColumnDialogOpen(false);
     setLookup(null);
     setSelectedConfirmRefs(new Set());
     setSelectedRejectRefs(new Set());
@@ -628,6 +617,7 @@ export function PaymentConfirmationClient() {
           setPreviewRows(parsedRows.slice(0, 5));
           setAllRows(parsedRows);
           setMapping(autoMapping);
+          setReferenceColumnDialogOpen(true);
         },
         error: () => {
           setError("Failed to read CSV file");
@@ -681,17 +671,24 @@ export function PaymentConfirmationClient() {
     [processCsvFile]
   );
 
-  const updateMapping = (field: keyof ColumnMapping, value: string) => {
-    setMapping((current) => ({
-      ...current,
-      [field]: value === NONE_VALUE ? "" : value,
-    }));
+  const updateReferenceColumn = (value: string) => {
+    setMapping({
+      referenceColumn: value === NONE_VALUE ? "" : value,
+    });
   };
 
   const getMappedLabel = (header: string) => {
-    const mapped = Object.entries(mapping).find(([, value]) => value === header);
-    if (!mapped) return null;
-    return FIELD_LABELS[mapped[0] as keyof ColumnMapping].replace(" *", "");
+    return mapping.referenceColumn === header ? "Payment reference" : null;
+  };
+
+  const handleOpenReferenceColumnDialog = () => {
+    if (!file || allRows.length === 0) {
+      setError("Choose a CSV file");
+      return;
+    }
+
+    setError(null);
+    setReferenceColumnDialogOpen(true);
   };
 
   const handleLookup = async () => {
@@ -711,14 +708,6 @@ export function PaymentConfirmationClient() {
     const rows = allRows.map((row, index) => ({
       rowNumber: index + 1,
       paymentReference: row[mapping.referenceColumn] || "",
-      fineractLoanId: mapping.loanIdColumn ? row[mapping.loanIdColumn] || null : null,
-      loanAccountNo: mapping.loanAccountNoColumn
-        ? row[mapping.loanAccountNoColumn] || null
-        : null,
-      fineractClientId: mapping.fineractClientIdColumn
-        ? row[mapping.fineractClientIdColumn] || null
-        : null,
-      clientName: mapping.clientNameColumn ? row[mapping.clientNameColumn] || null : null,
       rawRow: row,
     }));
 
@@ -729,7 +718,7 @@ export function PaymentConfirmationClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fileName: file.name,
-          columnMapping: mapping,
+          columnMapping: { referenceColumn: mapping.referenceColumn },
           rows,
         }),
       });
@@ -752,6 +741,7 @@ export function PaymentConfirmationClient() {
       setNotice(
         `${data.upload.matchedCount} matched, ${data.upload.unmatchedCount} unmatched`
       );
+      setReferenceColumnDialogOpen(false);
       setRefreshKey((key) => key + 1);
     } catch (err) {
       setLookup(null);
@@ -958,52 +948,38 @@ export function PaymentConfirmationClient() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-              <CsvUploadDropzone
-                file={file}
-                isDragging={isDraggingUpload}
-                onFileInputChange={handleFileChange}
-                onDragEnter={handleUploadDragEnter}
-                onDragLeave={handleUploadDragLeave}
-                onDragOver={handleUploadDragOver}
-                onDrop={handleUploadDrop}
-              />
-              <Button
-                type="button"
-                onClick={handleLookup}
-                disabled={lookupLoading || !file || !mapping.referenceColumn}
-              >
-                <Search className="h-4 w-4" />
-                {lookupLoading ? "Looking up..." : "Lookup"}
-              </Button>
-            </div>
+            <CsvUploadDropzone
+              file={file}
+              isDragging={isDraggingUpload}
+              onFileInputChange={handleFileChange}
+              onDragEnter={handleUploadDragEnter}
+              onDragLeave={handleUploadDragLeave}
+              onDragOver={handleUploadDragOver}
+              onDrop={handleUploadDrop}
+            />
 
             {allRows.length > 0 && (
               <>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-5">
-                  {(Object.keys(FIELD_LABELS) as (keyof ColumnMapping)[]).map(
-                    (field) => (
-                      <div key={field} className="space-y-2">
-                        <Label>{FIELD_LABELS[field]}</Label>
-                        <Select
-                          value={mapping[field] || NONE_VALUE}
-                          onValueChange={(value) => updateMapping(field, value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select column" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NONE_VALUE}>Not mapped</SelectItem>
-                            {headers.map((header) => (
-                              <SelectItem key={header} value={header}>
-                                {header}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )
-                  )}
+                <div className="flex flex-col gap-3 rounded-md border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium">
+                      Payment reference column
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {mapping.referenceColumn
+                        ? mapping.referenceColumn
+                        : "No column selected yet"}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleOpenReferenceColumnDialog}
+                    disabled={lookupLoading}
+                  >
+                    <Search className="h-4 w-4" />
+                    {mapping.referenceColumn ? "Change column" : "Select column"}
+                  </Button>
                 </div>
 
                 <div className="rounded-md border overflow-auto max-h-[320px]">
@@ -1049,6 +1025,84 @@ export function PaymentConfirmationClient() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog
+          open={referenceColumnDialogOpen}
+          onOpenChange={(open) => {
+            if (!lookupLoading) setReferenceColumnDialogOpen(open);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Select payment reference column</DialogTitle>
+              <DialogDescription>
+                Choose the CSV column that contains the payment references to
+                lookup.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="payment-reference-column">
+                  Payment reference column
+                </Label>
+                <Select
+                  value={mapping.referenceColumn || NONE_VALUE}
+                  onValueChange={updateReferenceColumn}
+                >
+                  <SelectTrigger id="payment-reference-column">
+                    <SelectValue placeholder="Select column" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE_VALUE}>Select column</SelectItem>
+                    {headers.map((header) => (
+                      <SelectItem key={header} value={header}>
+                        {header}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {mapping.referenceColumn && (
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Sample values
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    {previewRows.slice(0, 3).map((row, index) => (
+                      <p
+                        key={`${mapping.referenceColumn}-sample-${index}`}
+                        className="truncate text-sm"
+                      >
+                        {row[mapping.referenceColumn] || "-"}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setReferenceColumnDialogOpen(false)}
+                disabled={lookupLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleLookup}
+                disabled={lookupLoading || !mapping.referenceColumn}
+              >
+                <Search className="h-4 w-4" />
+                {lookupLoading ? "Looking up..." : "Lookup"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {lookupLoading ? (
           <LookupResultsSkeleton />
