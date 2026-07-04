@@ -367,6 +367,10 @@ export function UserDetailTabs({
               value={user.canOverrideInitiatorDisbursement ? "Yes" : "No"}
             />
             <DetailField
+              label="Can Confirm Payments"
+              value={user.canConfirmPayments ? "Yes" : "No"}
+            />
+            <DetailField
               label="Lead Visibility"
               value={
                 restrictLeadVisibilityToBranches

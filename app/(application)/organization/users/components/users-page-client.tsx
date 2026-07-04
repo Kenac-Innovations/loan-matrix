@@ -70,6 +70,18 @@ export function UsersPageClient({
       getExportValue: (item) => (item.isBlocked ? "Blocked" : "Active"),
     },
     {
+      id: "canConfirmPayments",
+      header: "Payment Confirmation",
+      accessorKey: "canConfirmPayments",
+      cell: ({ row }) => (
+        <Badge variant={row.original.canConfirmPayments ? "secondary" : "outline"}>
+          {row.original.canConfirmPayments ? "Allowed" : "Not allowed"}
+        </Badge>
+      ),
+      getExportValue: (item) =>
+        item.canConfirmPayments ? "Allowed" : "Not allowed",
+    },
+    {
       id: "officeName",
       header: "Office",
       accessorKey: "officeName",
