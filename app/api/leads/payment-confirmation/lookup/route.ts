@@ -46,6 +46,8 @@ type PaymentConfirmationLookupLog = {
   paymentCallbackStatus: string | null;
   paymentConfirmed: boolean;
   paymentConfirmedAt: Date | null;
+  rawRow: Prisma.JsonValue | null;
+  responsePayload: Prisma.JsonValue | null;
 };
 
 function normalizeReference(value: unknown): string {
@@ -89,6 +91,44 @@ function isConfirmable(payment: PaymentLookupPayment): boolean {
   );
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getStringField(
+  record: Record<string, unknown> | null,
+  keys: string[]
+): string | null {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== null && value !== undefined && value !== "") {
+      return String(value);
+    }
+  }
+  return null;
+}
+
+function getPaymentSnapshot(payload: unknown): Record<string, unknown> | null {
+  const root = asRecord(payload);
+  if (!root) return null;
+  return asRecord(root.payment) || root;
+}
+
+function toStringRecord(value: unknown): Record<string, string> | null {
+  const record = asRecord(value);
+  if (!record) return null;
+
+  return Object.fromEntries(
+    Object.entries(record).map(([key, fieldValue]) => [
+      key,
+      normalizeReference(fieldValue),
+    ])
+  );
+}
+
 function toPaymentPayload(payment: PaymentLookupPayment | null) {
   if (!payment) return null;
 
@@ -110,6 +150,8 @@ function toPaymentPayload(payment: PaymentLookupPayment | null) {
 }
 
 function toLookupItem(log: PaymentConfirmationLookupLog) {
+  const paymentSnapshot = getPaymentSnapshot(log.responsePayload);
+
   return {
     id: log.id,
     uploadId: log.uploadId,
@@ -122,10 +164,18 @@ function toLookupItem(log: PaymentConfirmationLookupLog) {
     loanAccountNo: log.loanAccountNo,
     clientName: log.clientName,
     createdAt: log.createdAt,
+    rawRow: toStringRecord(log.rawRow),
     payment: log.matched
       ? {
-          internalReferenceNumber: log.paymentInternalReference,
-          userReferenceNumber: log.paymentUserReference,
+          amount: paymentSnapshot?.amount ?? null,
+          currency: getStringField(paymentSnapshot, ["currency"]),
+          phoneNumber: getStringField(paymentSnapshot, ["phoneNumber"]),
+          internalReferenceNumber:
+            log.paymentInternalReference ||
+            getStringField(paymentSnapshot, ["internalReferenceNumber"]),
+          userReferenceNumber:
+            log.paymentUserReference ||
+            getStringField(paymentSnapshot, ["userReferenceNumber"]),
           providerReferenceNumber: log.paymentProviderReference,
           status: log.paymentStatus,
           callbackStatus: log.paymentCallbackStatus,
