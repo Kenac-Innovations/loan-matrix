@@ -1,6 +1,13 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  DragEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import Papa from "papaparse";
 import {
   Ban,
@@ -8,9 +15,9 @@ import {
   ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
-  Loader2,
   RefreshCw,
   Search,
+  Upload,
   XCircle,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -25,6 +32,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -43,6 +51,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const NONE_VALUE = "__none__";
+const MAX_CSV_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
 type CsvRow = Record<string, string>;
 
@@ -164,6 +173,11 @@ function formatDate(value?: string | null): string {
   }).format(date);
 }
 
+function formatFileSize(bytes: number): string {
+  const megabytes = bytes / (1024 * 1024);
+  return `${megabytes.toFixed(megabytes >= 10 ? 0 : 1)} MB`;
+}
+
 function normalizeCell(value: unknown): string {
   return typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
 }
@@ -190,6 +204,153 @@ function StatusBadge({ status }: { status?: string | null }) {
     <Badge variant={statusVariant(status)} className="max-w-full">
       {status || "-"}
     </Badge>
+  );
+}
+
+function PaymentConfirmationTableSkeleton({
+  columns,
+  rows = 5,
+}: {
+  columns: number;
+  rows?: number;
+}) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <TableRow key={`payment-confirmation-skeleton-row-${rowIndex}`}>
+          {Array.from({ length: columns }).map((__, columnIndex) => (
+            <TableCell key={`payment-confirmation-skeleton-cell-${rowIndex}-${columnIndex}`}>
+              <Skeleton
+                className={
+                  columnIndex === 0
+                    ? "h-4 w-8"
+                    : columnIndex % 3 === 0
+                      ? "h-4 w-24"
+                      : "h-4 w-32"
+                }
+              />
+            </TableCell>
+          ))}
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
+function LookupResultsSkeleton() {
+  const tables = [
+    {
+      titleWidth: "w-40",
+      badgeWidth: "w-10",
+      columns: ["", "Reference", "Provider Ref", "Status", "Loan ID", "Client"],
+    },
+    {
+      titleWidth: "w-44",
+      badgeWidth: "w-10",
+      columns: ["", "Reference", "Loan ID", "Client", "Status"],
+    },
+  ];
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-2" aria-busy="true">
+      {tables.map((table, index) => (
+        <Card key={`lookup-results-skeleton-${index}`}>
+          <CardHeader>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-4 w-4 rounded-full" />
+                <Skeleton className={`h-5 ${table.titleWidth}`} />
+                <Skeleton className={`h-5 ${table.badgeWidth}`} />
+              </div>
+              <Skeleton className="h-9 w-28" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border overflow-auto max-h-[420px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {table.columns.map((column, columnIndex) => (
+                      <TableHead key={`${column}-${columnIndex}`}>
+                        {column || <span className="sr-only">Select</span>}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <PaymentConfirmationTableSkeleton
+                    columns={table.columns.length}
+                  />
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function CsvUploadDropzone({
+  file,
+  isDragging,
+  onFileInputChange,
+  onDragEnter,
+  onDragLeave,
+  onDragOver,
+  onDrop,
+}: {
+  file: File | null;
+  isDragging: boolean;
+  onFileInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onDragEnter: (event: DragEvent<HTMLLabelElement>) => void;
+  onDragLeave: (event: DragEvent<HTMLLabelElement>) => void;
+  onDragOver: (event: DragEvent<HTMLLabelElement>) => void;
+  onDrop: (event: DragEvent<HTMLLabelElement>) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Input
+        id="payment-confirmation-file"
+        type="file"
+        accept=".csv,text/csv"
+        className="sr-only"
+        onChange={onFileInputChange}
+      />
+      <Label
+        htmlFor="payment-confirmation-file"
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        className={`flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-8 text-center transition-colors ${
+          isDragging
+            ? "border-primary bg-primary/5"
+            : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
+        }`}
+      >
+        <span className="relative mb-5 inline-flex h-14 w-14 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <FileSpreadsheet className="h-8 w-8" />
+          <span className="absolute -right-2 -top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+            <Upload className="h-4 w-4" />
+          </span>
+        </span>
+        <span className="text-sm font-medium text-foreground">
+          {file ? file.name : "Create or import a payment confirmation CSV"}
+        </span>
+        {file ? (
+          <span className="mt-2 text-xs text-muted-foreground">
+            {formatFileSize(file.size)}
+          </span>
+        ) : (
+          <span className="mt-2 text-xs leading-5 text-muted-foreground">
+            Maximum file size: 50 MB
+            <br />
+            Supported format: .CSV
+          </span>
+        )}
+      </Label>
+    </div>
   );
 }
 
@@ -229,11 +390,7 @@ function AuditTable({
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
-                    <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
+                <PaymentConfirmationTableSkeleton columns={7} />
               ) : page.items.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
@@ -296,6 +453,7 @@ function AuditTable({
 export function PaymentConfirmationClient() {
   const [activeTab, setActiveTab] = useState("upload");
   const [file, setFile] = useState<File | null>(null);
+  const [isDraggingUpload, setIsDraggingUpload] = useState(false);
   const [headers, setHeaders] = useState<string[]>([]);
   const [previewRows, setPreviewRows] = useState<CsvRow[]>([]);
   const [allRows, setAllRows] = useState<CsvRow[]>([]);
@@ -403,13 +561,30 @@ export function PaymentConfirmationClient() {
     setNotice(null);
   }, []);
 
-  const handleFileChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      const selected = event.target.files?.[0] || null;
-      setFile(selected);
+  const processCsvFile = useCallback(
+    (selected: File | null) => {
       resetUploadState();
 
-      if (!selected) return;
+      if (!selected) {
+        setFile(null);
+        return;
+      }
+
+      const isCsvFile = selected.name.toLowerCase().endsWith(".csv");
+
+      if (!isCsvFile) {
+        setFile(null);
+        setError("Choose a CSV file");
+        return;
+      }
+
+      if (selected.size > MAX_CSV_FILE_SIZE_BYTES) {
+        setFile(null);
+        setError("CSV file must be 50 MB or smaller");
+        return;
+      }
+
+      setFile(selected);
 
       Papa.parse(selected, {
         header: true,
@@ -460,6 +635,50 @@ export function PaymentConfirmationClient() {
       });
     },
     [resetUploadState]
+  );
+
+  const handleFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      processCsvFile(event.target.files?.[0] || null);
+    },
+    [processCsvFile]
+  );
+
+  const handleUploadDragEnter = useCallback(
+    (event: DragEvent<HTMLLabelElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDraggingUpload(true);
+    },
+    []
+  );
+
+  const handleUploadDragLeave = useCallback(
+    (event: DragEvent<HTMLLabelElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDraggingUpload(false);
+    },
+    []
+  );
+
+  const handleUploadDragOver = useCallback(
+    (event: DragEvent<HTMLLabelElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDraggingUpload(true);
+    },
+    []
+  );
+
+  const handleUploadDrop = useCallback(
+    (event: DragEvent<HTMLLabelElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDraggingUpload(false);
+      processCsvFile(event.dataTransfer.files?.[0] || null);
+    },
+    [processCsvFile]
   );
 
   const updateMapping = (field: keyof ColumnMapping, value: string) => {
@@ -740,26 +959,22 @@ export function PaymentConfirmationClient() {
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-              <div className="space-y-2">
-                <Label htmlFor="payment-confirmation-file">CSV file</Label>
-                <Input
-                  id="payment-confirmation-file"
-                  type="file"
-                  accept=".csv,.txt"
-                  onChange={handleFileChange}
-                />
-              </div>
+              <CsvUploadDropzone
+                file={file}
+                isDragging={isDraggingUpload}
+                onFileInputChange={handleFileChange}
+                onDragEnter={handleUploadDragEnter}
+                onDragLeave={handleUploadDragLeave}
+                onDragOver={handleUploadDragOver}
+                onDrop={handleUploadDrop}
+              />
               <Button
                 type="button"
                 onClick={handleLookup}
                 disabled={lookupLoading || !file || !mapping.referenceColumn}
               >
-                {lookupLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="h-4 w-4" />
-                )}
-                Lookup
+                <Search className="h-4 w-4" />
+                {lookupLoading ? "Looking up..." : "Lookup"}
               </Button>
             </div>
 
@@ -835,7 +1050,9 @@ export function PaymentConfirmationClient() {
           </CardContent>
         </Card>
 
-        {lookup && (
+        {lookupLoading ? (
+          <LookupResultsSkeleton />
+        ) : lookup && (
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader>
@@ -850,12 +1067,8 @@ export function PaymentConfirmationClient() {
                     onClick={handleConfirm}
                     disabled={confirmLoading || selectedConfirmRefs.size === 0}
                   >
-                    {confirmLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="h-4 w-4" />
-                    )}
-                    Confirm
+                    <CheckCircle2 className="h-4 w-4" />
+                    {confirmLoading ? "Confirming..." : "Confirm"}
                   </Button>
                 </div>
               </CardHeader>
@@ -937,12 +1150,8 @@ export function PaymentConfirmationClient() {
                     onClick={handleReject}
                     disabled={rejectLoading || selectedRejectRefs.size === 0}
                   >
-                    {rejectLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <XCircle className="h-4 w-4" />
-                    )}
-                    Reject Loans
+                    <XCircle className="h-4 w-4" />
+                    {rejectLoading ? "Rejecting..." : "Reject Loans"}
                   </Button>
                 </div>
               </CardHeader>

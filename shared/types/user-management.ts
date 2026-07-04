@@ -26,6 +26,7 @@ export interface UserSummary {
   countryCode?: string;
   isBlocked: boolean;
   blockedAt?: string | null;
+  canConfirmPayments: boolean;
   officeId?: number;
   officeName?: string;
   roles: string[];
@@ -83,6 +84,7 @@ export interface UserFormInput {
   sendPasswordToEmail?: boolean;
   passwordNeverExpires?: boolean;
   canOverrideInitiatorDisbursement?: boolean;
+  canConfirmPayments?: boolean;
   officeId: number | string;
   staffId?: number | string | null;
   visibleLeadOfficeIds?: Array<number | string>;
