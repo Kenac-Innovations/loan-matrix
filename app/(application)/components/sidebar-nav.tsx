@@ -53,6 +53,10 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
     isEnabled("leadConfig")
   ) {
     leadsSubMenuItems.push({ label: "Configuration", href: "/leads/config" });
+    leadsSubMenuItems.push({
+      label: "Payment Confirmation",
+      href: "/leads/payment-confirmation",
+    });
   }
 
   const organizationSubMenuItems: SubMenuItem[] = [];
