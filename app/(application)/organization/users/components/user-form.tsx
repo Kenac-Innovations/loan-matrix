@@ -83,6 +83,7 @@ type FormState = {
   sendPasswordToEmail: boolean;
   passwordNeverExpires: boolean;
   canOverrideInitiatorDisbursement: boolean;
+  canConfirmPayments: boolean;
   officeId: string;
   staffId: string;
   visibleLeadOfficeIds: number[];
@@ -109,6 +110,7 @@ function buildInitialState(
     passwordNeverExpires: initialUser?.passwordNeverExpires ?? false,
     canOverrideInitiatorDisbursement:
       initialUser?.canOverrideInitiatorDisbursement ?? false,
+    canConfirmPayments: initialUser?.canConfirmPayments ?? false,
     officeId: initialUser?.officeId ? String(initialUser.officeId) : "",
     staffId: initialUser?.staff?.id ? String(initialUser.staff.id) : "",
     visibleLeadOfficeIds: initialUser?.visibleLeadOffices.map((office) => office.id) ?? [],
@@ -258,10 +260,11 @@ export function UserForm({
       .filter((office): office is NonNullable<typeof office> => Boolean(office));
   }, [expandedVisibleLeadOfficeSelection, template.allowedOffices]);
   const isHeadOfficeSelection =
-    Boolean(headOffice) && visibleLeadOfficeSelection.includes(headOffice.id);
+    headOffice ? visibleLeadOfficeSelection.includes(headOffice.id) : false;
   const isHeadOfficeDraftSelection =
-    Boolean(headOffice) &&
-    collapsedLeadBranchDraftSelection.includes(headOffice.id);
+    headOffice
+      ? collapsedLeadBranchDraftSelection.includes(headOffice.id)
+      : false;
   const initialVisibleLeadOfficeSelection = useMemo(
     () =>
       collapseVisibleLeadOfficeSelection(
@@ -279,14 +282,10 @@ export function UserForm({
 
   useEffect(() => {
     if (mode !== "edit" || !initialUser?.id) {
-      setSignatureLoading(false);
       return;
     }
 
     let isCancelled = false;
-
-    setSignatureLoading(true);
-    setSignatureError(null);
 
     getUserSignatureAction(initialUser.id)
       .then((result) => {
@@ -316,30 +315,6 @@ export function UserForm({
       isCancelled = true;
     };
   }, [initialUser?.id, mode]);
-
-  useEffect(() => {
-    if (!template.restrictLeadVisibilityToBranches) {
-      return;
-    }
-
-    const normalizedSelection = collapseVisibleLeadOfficeSelection(
-      form.visibleLeadOfficeIds,
-      template.allowedOffices
-    );
-
-    if (areNumberArraysEqual(form.visibleLeadOfficeIds, normalizedSelection)) {
-      return;
-    }
-
-    setForm((current) => ({
-      ...current,
-      visibleLeadOfficeIds: normalizedSelection,
-    }));
-  }, [
-    form.visibleLeadOfficeIds,
-    template.allowedOffices,
-    template.restrictLeadVisibilityToBranches,
-  ]);
 
   const handleChange = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((current) => ({
@@ -427,8 +402,9 @@ export function UserForm({
       template.allowedOffices
     );
     const hasHeadOfficeSelected =
-      Boolean(headOffice) &&
-      normalizedCurrentSelection.includes(headOffice.id);
+      headOffice
+        ? normalizedCurrentSelection.includes(headOffice.id)
+        : false;
 
     if (headOffice && officeId === headOffice.id) {
       return checked ? [headOffice.id] : [];
@@ -523,9 +499,10 @@ export function UserForm({
       sendPasswordToEmail: form.sendPasswordToEmail,
       passwordNeverExpires: form.passwordNeverExpires,
       canOverrideInitiatorDisbursement: form.canOverrideInitiatorDisbursement,
+      canConfirmPayments: form.canConfirmPayments,
       officeId: form.officeId,
       staffId: form.staffId || null,
-      visibleLeadOfficeIds: form.visibleLeadOfficeIds,
+      visibleLeadOfficeIds: visibleLeadOfficeSelection,
       roles: form.roles,
       password: form.password,
       repeatPassword: form.repeatPassword,
@@ -831,6 +808,22 @@ export function UserForm({
             <span className="font-medium">Can override designated disburser</span>
             <p className="text-sm text-muted-foreground">
               Allow this user to set or change the designated disburser on a lead.
+            </p>
+          </div>
+        </label>
+
+        <label className="flex items-start gap-3 rounded-lg border p-4">
+          <Checkbox
+            checked={form.canConfirmPayments}
+            onCheckedChange={(checked) =>
+              handleChange("canConfirmPayments", checked === true)
+            }
+          />
+          <div className="space-y-1">
+            <span className="font-medium">Can confirm payments</span>
+            <p className="text-sm text-muted-foreground">
+              Allow this user to access payment confirmation uploads, lookups,
+              confirmations, and loan rejection actions.
             </p>
           </div>
         </label>
