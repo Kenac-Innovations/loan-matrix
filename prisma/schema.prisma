@@ -1186,6 +1186,7 @@ model UserLogin {
   phone                String?
   countryCode          String?
   canOverrideInitiatorDisbursement Boolean  @default(false)
+  canConfirmPayments   Boolean              @default(false)
   isBlocked            Boolean              @default(false)
   blockedAt            DateTime?
   blockedSource        String?
