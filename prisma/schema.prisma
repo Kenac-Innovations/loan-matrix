@@ -49,6 +49,8 @@ model Tenant {
   invoiceDiscountingCharges InvoiceDiscountingCharge[]
   chargeProducts             ChargeProduct[]
   revolvingCreditFacilities  RevolvingCreditFacility[]
+  paymentConfirmationUploads PaymentConfirmationUpload[]
+  paymentConfirmationActionLogs PaymentConfirmationActionLog[]
 
   @@index([slug])
   @@index([isActive])
@@ -1363,6 +1365,70 @@ model BulkRepaymentItem {
   @@index([uploadId, status])
   @@index([uploadId, reversalStatus])
   @@index([loanId])
+}
+
+// ─── Payment Confirmation (Leads) ──────────────────────────────────────────
+
+model PaymentConfirmationUpload {
+  id             String                         @id @default(cuid())
+  tenantId       String
+  tenant         Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fileName       String
+  uploadedById   String?
+  uploadedByName String?
+  status         String                         @default("LOOKED_UP") // LOOKED_UP, PARTIAL, COMPLETED, FAILED
+  totalRows      Int                            @default(0)
+  matchedCount   Int                            @default(0)
+  unmatchedCount Int                            @default(0)
+  confirmedCount Int                            @default(0)
+  rejectedCount  Int                            @default(0)
+  failedCount    Int                            @default(0)
+  columnMapping  Json?
+  createdAt      DateTime                       @default(now())
+  updatedAt      DateTime                       @updatedAt
+  actionLogs     PaymentConfirmationActionLog[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+model PaymentConfirmationActionLog {
+  id                       String                     @id @default(cuid())
+  tenantId                 String
+  tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadId                 String?
+  upload                   PaymentConfirmationUpload? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  rowNumber                Int?
+  paymentReference         String
+  matched                  Boolean                    @default(false)
+  action                   String                     // LOOKUP, CONFIRM_PAYMENT, REJECT_LOAN
+  actionStatus             String                     @default("PENDING") // MATCHED, UNMATCHED, SUCCESS, FAILED, REJECTED, CONFIRMED
+  leadId                   String?
+  fineractLoanId           Int?
+  fineractClientId         Int?
+  loanAccountNo            String?
+  clientName               String?
+  paymentInternalReference String?
+  paymentUserReference     String?
+  paymentProviderReference String?
+  paymentStatus            String?
+  paymentCallbackStatus    String?
+  paymentConfirmed         Boolean                    @default(false)
+  paymentConfirmedAt       DateTime?
+  actedById                String?
+  actedByName              String?
+  errorMessage             String?                    @db.Text
+  rawRow                   Json?
+  requestPayload           Json?
+  responsePayload          Json?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+
+  @@index([tenantId, action, actionStatus])
+  @@index([tenantId, createdAt])
+  @@index([uploadId])
+  @@index([paymentReference])
+  @@index([fineractLoanId])
 }
 
 model LoanEligibilityUpload {
