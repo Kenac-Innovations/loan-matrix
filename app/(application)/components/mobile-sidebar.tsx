@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { TenantDisplayClient } from "@/components/tenant-display-client";
 import { useMobileMenu } from "./mobile-menu-context";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { useUserRoles } from "@/components/role-guard";
 
 interface MobileSidebarProps {
   /** Organization logo URL from document service (when set) */
@@ -38,16 +39,20 @@ export function MobileSidebar({
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const { isEnabled } = useFeatureFlags();
+  const { hasAnyRole, isLoading: rolesLoading } = useUserRoles();
+  const canSeeLeadConfiguration =
+    !rolesLoading && hasAnyRole(["SUPER_ADMIN"]) && isEnabled("leadConfig");
 
   // Avoid hydration mismatch
   useEffect(() => {
-    setMounted(true);
+    const frame = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   // Close mobile menu when changing routes
   useEffect(() => {
     setMobileMenuOpen(false);
-  }, [pathname]);
+  }, [pathname, setMobileMenuOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -64,7 +69,7 @@ export function MobileSidebar({
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
+  }, [setMobileMenuOpen]);
 
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
@@ -201,17 +206,29 @@ export function MobileSidebar({
                       USSD Leads
                     </Link>
                   )}
-                  {isEnabled("leadConfig") && (
-                    <Link
-                      href="/leads/config"
-                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
-                        pathname === "/leads/config"
-                          ? iconColorActive
-                          : `${iconColor} hover:${textColor}`
-                      }`}
-                    >
-                      Configuration
-                    </Link>
+                  {canSeeLeadConfiguration && (
+                    <>
+                      <Link
+                        href="/leads/config"
+                        className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                          pathname === "/leads/config"
+                            ? iconColorActive
+                            : `${iconColor} hover:${textColor}`
+                        }`}
+                      >
+                        Configuration
+                      </Link>
+                      <Link
+                        href="/leads/payment-confirmation"
+                        className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                          pathname === "/leads/payment-confirmation"
+                            ? iconColorActive
+                            : `${iconColor} hover:${textColor}`
+                        }`}
+                      >
+                        Payment Confirmation
+                      </Link>
+                    </>
                   )}
                 </div>
               )}
