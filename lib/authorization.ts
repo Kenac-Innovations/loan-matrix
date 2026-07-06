@@ -38,9 +38,13 @@ export function mapApiPermissionsToSpecific(
 
     // System permissions
     SYSTEM_ADMIN: SpecificPermission.SYSTEM_ADMIN,
+    UPDATE_PERMISSION: SpecificPermission.UPDATE_PERMISSION,
+    UPDATE_SCHEDULER: SpecificPermission.UPDATE_SCHEDULER,
+    EXECUTE_INLINE_JOB: SpecificPermission.EXECUTE_INLINE_JOB,
 
     // Special permissions
     ALL_FUNCTIONS: SpecificPermission.ALL_FUNCTIONS,
+    ALL_FUNCTIONS_READ: SpecificPermission.ALL_FUNCTIONS_READ,
   };
 
   // Map API permissions to our specific permissions
@@ -88,6 +92,34 @@ export async function hasPermissionServer(
 
   // Check if the user has the specific permission
   return session.user.permissions.includes(permission);
+}
+
+/**
+ * Mirrors Mifos UI's permission directive for raw Fineract permission codes.
+ */
+export async function hasFineractPermissionServer(
+  permission: string
+): Promise<boolean> {
+  const normalizedPermission = permission.trim();
+  const session = await getSession();
+  const permissions = session?.user?.permissions ?? [];
+
+  if (!normalizedPermission || permissions.length === 0) {
+    return false;
+  }
+
+  if (permissions.includes(SpecificPermission.ALL_FUNCTIONS)) {
+    return true;
+  }
+
+  if (
+    normalizedPermission.startsWith("READ_") &&
+    permissions.includes(SpecificPermission.ALL_FUNCTIONS_READ)
+  ) {
+    return true;
+  }
+
+  return permissions.some((item) => item === normalizedPermission);
 }
 
 /**
