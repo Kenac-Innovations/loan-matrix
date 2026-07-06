@@ -180,23 +180,25 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
         subMenuItems={organizationSubMenuItems}
       />
 
-      <MenuItemWithSubmenu
-        icon={<Settings2 />}
-        label="System"
-        href="/system"
-        subMenuItems={[
-          {
-            label: "Roles & Permissions",
-            href: "/system/roles-and-permissions",
-          },
-          { label: "Manage Jobs", href: "/system/manage-jobs" },
-          { label: "Audit Trails", href: "/system/audit-trails" },
-          {
-            label: "Configure Maker Checker Tasks",
-            href: "/system/configure-mc-tasks",
-          },
-        ]}
-      />
+      {!rolesLoading && hasAnyRole(["SUPER_ADMIN"]) && (
+        <MenuItemWithSubmenu
+          icon={<Settings2 />}
+          label="System"
+          href="/system"
+          subMenuItems={[
+            {
+              label: "Roles & Permissions",
+              href: "/system/roles-and-permissions",
+            },
+            { label: "Manage Jobs", href: "/system/manage-jobs" },
+            { label: "Audit Trails", href: "/system/audit-trails" },
+            {
+              label: "Configure Maker Checker Tasks",
+              href: "/system/configure-mc-tasks",
+            },
+          ]}
+        />
+      )}
 
       {isEnabled("reports") && (
         <Link
