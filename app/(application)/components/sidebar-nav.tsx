@@ -8,6 +8,7 @@ import {
   CreditCard,
   FileText,
   Receipt,
+  Settings2,
   TrendingUp,
   Users,
   Landmark,
@@ -178,6 +179,26 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
         href={organizationSubMenuItems[0]?.href || "/organization/payment-types"}
         subMenuItems={organizationSubMenuItems}
       />
+
+      {!rolesLoading && hasAnyRole(["SUPER_ADMIN"]) && (
+        <MenuItemWithSubmenu
+          icon={<Settings2 />}
+          label="System"
+          href="/system"
+          subMenuItems={[
+            {
+              label: "Roles & Permissions",
+              href: "/system/roles-and-permissions",
+            },
+            { label: "Manage Jobs", href: "/system/manage-jobs" },
+            { label: "Audit Trails", href: "/system/audit-trails" },
+            {
+              label: "Configure Maker Checker Tasks",
+              href: "/system/configure-mc-tasks",
+            },
+          ]}
+        />
+      )}
 
       {isEnabled("reports") && (
         <Link
