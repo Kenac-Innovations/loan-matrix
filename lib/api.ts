@@ -1,3 +1,4 @@
+import https from "https";
 import { getFineractTenantId as getFineractTenantIdFromService } from "./fineract-tenant-service";
 import { getFineractBaseUrl } from "./fineract-base-url";
 
@@ -21,6 +22,15 @@ type FineractRequestConfig = {
   headers: Record<string, string>;
   requestOptions: RequestInit;
   url: string;
+};
+
+type FineractError = Error & {
+  status?: number;
+  errorData?: unknown;
+};
+
+type FetchOptionsWithAgent = RequestInit & {
+  agent?: https.Agent;
 };
 
 /**
@@ -63,10 +73,118 @@ export async function getAccessToken(): Promise<string> {
   return SERVICE_TOKEN;
 }
 
+export async function getCurrentUserAccessToken(): Promise<string> {
+  const { getSession } = await import("./auth");
+  const nextAuthSession = (await getSession()) as {
+    base64EncodedAuthenticationKey?: string;
+    accessToken?: string;
+  } | null;
+
+  const accessToken =
+    nextAuthSession?.base64EncodedAuthenticationKey ||
+    nextAuthSession?.accessToken;
+
+  if (!accessToken) {
+    throw new Error("A logged-in Fineract user session is required");
+  }
+
+  return accessToken;
+}
+
 async function resolveFineractAuthToken(
   authMode: FineractAuthMode
 ): Promise<string> {
   return authMode === "service" ? SERVICE_TOKEN : await getAccessToken();
+}
+
+async function performFineractRequest(
+  url: string,
+  requestOptions: RequestInit,
+  headers: Record<string, string>
+) {
+  if (url.startsWith("http://")) {
+    return fetch(url, {
+      ...requestOptions,
+      headers,
+    });
+  }
+
+  const agent = new https.Agent({ rejectUnauthorized: false });
+
+  const fetchOptions: FetchOptionsWithAgent = {
+    ...requestOptions,
+    headers,
+    agent,
+  };
+
+  return fetch(url, fetchOptions);
+}
+
+async function readFineractResponse(response: Response, url: string) {
+  if (!response.ok) {
+    let errorData;
+    try {
+      errorData = await response.json();
+    } catch {
+      errorData = {
+        defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
+        developerMessage: `HTTP ${response.status}: ${response.statusText}`,
+      };
+    }
+
+    if (!errorData || Object.keys(errorData).length === 0) {
+      errorData = {
+        defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
+        developerMessage: `HTTP ${response.status}: ${response.statusText}`,
+      };
+    }
+
+    let specificErrorMessage =
+      errorData.defaultUserMessage || errorData.developerMessage;
+
+    if (
+      errorData.errors &&
+      Array.isArray(errorData.errors) &&
+      errorData.errors.length > 0
+    ) {
+      const firstError = errorData.errors[0];
+      specificErrorMessage =
+        firstError.defaultUserMessage ||
+        firstError.developerMessage ||
+        specificErrorMessage;
+    }
+
+    const error = new Error(
+      `API error: ${response.status} ${response.statusText}`
+    );
+    const fineractError = error as FineractError;
+    fineractError.status = response.status;
+    fineractError.errorData = {
+      ...errorData,
+      defaultUserMessage: specificErrorMessage,
+      developerMessage: specificErrorMessage,
+    };
+
+    console.error("API Error Details:", {
+      status: response.status,
+      statusText: response.statusText,
+      url,
+      errorData: JSON.stringify(errorData, null, 2),
+      specificErrorMessage,
+    });
+
+    throw error;
+  }
+
+  const text = await response.text();
+  if (!text || text.trim() === "") {
+    return {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
 }
 
 export async function buildFineractRequest(
@@ -118,98 +236,42 @@ export async function fetchFineractAPI(
   );
 
   try {
-    let response;
+    const response = await performFineractRequest(url, requestOptions, headers);
+    return readFineractResponse(response as Response, url);
+  } catch (error) {
+    console.error("API request failed:", error);
+    throw error;
+  }
+}
 
-    // Check if it's HTTP and use different approach
-    if (url.startsWith("http://")) {
-      // Use standard fetch for HTTP URLs (no agent needed)
-      response = await fetch(url, {
-        ...requestOptions,
-        headers,
-      });
-    } else {
-      // Skip SSL verification for local development
-      // In production, you should use proper SSL certificates
-      const https = require("https");
-      const agent = new https.Agent({ rejectUnauthorized: false });
+export async function fetchFineractAPIAsCurrentUser(
+  endpoint: string,
+  options: RequestInit = {},
+  version: "v1" | "v2" = "v1"
+) {
+  const accessToken = await getCurrentUserAccessToken();
+  const fineractTenantId = await getFineractTenantIdFromService();
+  const url = `${baseUrl}/fineract-provider/api/${version}${
+    endpoint.startsWith("/") ? endpoint : `/${endpoint}`
+  }`;
 
-      response = await fetch(url, {
-        ...requestOptions,
-        headers,
-        //@ts-ignore
-        agent,
-      });
-    }
+  const strictHeaders: Record<string, string> = {
+    ...(options.headers as Record<string, string> | undefined),
+    Authorization: `Basic ${accessToken}`,
+    "Fineract-Platform-TenantId": fineractTenantId,
+  };
 
-    if (!response.ok) {
-      // Try to get the error response body
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        // If we can't parse JSON, use the status text
-        errorData = {
-          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
-        };
-      }
+  if (!(options.body instanceof FormData)) {
+    strictHeaders["Content-Type"] = "application/json";
+  }
 
-      // Handle empty response bodies (common with 403/401 errors)
-      if (!errorData || Object.keys(errorData).length === 0) {
-        errorData = {
-          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
-        };
-      }
-
-      // Extract the most specific error message from the errors array
-      let specificErrorMessage =
-        errorData.defaultUserMessage || errorData.developerMessage;
-
-      if (
-        errorData.errors &&
-        Array.isArray(errorData.errors) &&
-        errorData.errors.length > 0
-      ) {
-        // Use the first error's defaultUserMessage if available, otherwise developerMessage
-        const firstError = errorData.errors[0];
-        specificErrorMessage =
-          firstError.defaultUserMessage ||
-          firstError.developerMessage ||
-          specificErrorMessage;
-      }
-
-      // Create a custom error that includes the backend error data
-      const error = new Error(
-        `API error: ${response.status} ${response.statusText}`
-      );
-      (error as any).status = response.status;
-      (error as any).errorData = {
-        ...errorData,
-        defaultUserMessage: specificErrorMessage,
-        developerMessage: specificErrorMessage,
-      };
-
-      console.error("API Error Details:", {
-        status: response.status,
-        statusText: response.statusText,
-        url: url,
-        errorData: JSON.stringify(errorData, null, 2),
-        specificErrorMessage: specificErrorMessage,
-      });
-
-      throw error;
-    }
-
-    const text = await response.text();
-    if (!text || text.trim() === "") {
-      return {};
-    }
-    try {
-      return JSON.parse(text);
-    } catch {
-      return {};
-    }
+  try {
+    const response = await performFineractRequest(
+      url,
+      options,
+      strictHeaders
+    );
+    return readFineractResponse(response as Response, url);
   } catch (error) {
     console.error("API request failed:", error);
     throw error;
@@ -250,7 +312,7 @@ export async function fetchClientByExternalId(externalId: string) {
     // Find the client that matches the external ID exactly
     // (search might return multiple results)
     const matchingClient = searchData.pageItems.find(
-      (client: any) => client.externalId === externalId
+      (client: { externalId?: string }) => client.externalId === externalId
     );
 
     if (!matchingClient) {
@@ -300,7 +362,7 @@ export async function fetchFineractAPIV2(
  * TODO: Restore token parameter when needed
  */
 export function createClientFineractAPI(accessToken?: string) {
-  const token = SERVICE_TOKEN; // Use hardcoded token for now
+  const token = accessToken || SERVICE_TOKEN;
   
   return async (endpoint: string, options: RequestInit = {}) => {
     const fineractTenantId = await getFineractTenantIdFromService();
@@ -317,7 +379,7 @@ export function createClientFineractAPI(accessToken?: string) {
     };
 
     try {
-      let response;
+      let response: Response;
 
       // Check if it's HTTP and use different approach
       if (url.startsWith("http://")) {
@@ -329,15 +391,15 @@ export function createClientFineractAPI(accessToken?: string) {
       } else {
         // Skip SSL verification for local development
         // In production, you should use proper SSL certificates
-        const https = require("https");
         const agent = new https.Agent({ rejectUnauthorized: false });
 
-        response = await fetch(url, {
+        const fetchOptions: FetchOptionsWithAgent = {
           ...options,
           headers,
-          //@ts-ignore
           agent,
-        });
+        };
+
+        response = await fetch(url, fetchOptions);
       }
 
       if (!response.ok) {
@@ -345,7 +407,7 @@ export function createClientFineractAPI(accessToken?: string) {
         let errorData;
         try {
           errorData = await response.json();
-        } catch (e) {
+        } catch {
           // If we can't parse JSON, use the status text
           errorData = {
             defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
@@ -374,8 +436,9 @@ export function createClientFineractAPI(accessToken?: string) {
         const error = new Error(
           `API error: ${response.status} ${response.statusText}`
         );
-        (error as any).status = response.status;
-        (error as any).errorData = {
+        const fineractError = error as FineractError;
+        fineractError.status = response.status;
+        fineractError.errorData = {
           ...errorData,
           defaultUserMessage: specificErrorMessage,
           developerMessage: specificErrorMessage,

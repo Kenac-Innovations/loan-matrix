@@ -47,9 +47,13 @@ export enum SpecificPermission {
 
   // System permissions
   SYSTEM_ADMIN = "SYSTEM_ADMIN",
+  UPDATE_PERMISSION = "UPDATE_PERMISSION",
+  UPDATE_SCHEDULER = "UPDATE_SCHEDULER",
+  EXECUTE_INLINE_JOB = "EXECUTE_INLINE_JOB",
 
   // Special permission that grants all access
   ALL_FUNCTIONS = "ALL_FUNCTIONS",
+  ALL_FUNCTIONS_READ = "ALL_FUNCTIONS_READ",
 }
 
 export enum AccessLevel {
