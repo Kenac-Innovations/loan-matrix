@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Building2,
   Download,
+  Eye,
   FileText,
   Landmark,
   ShieldCheck,
@@ -9,6 +10,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DocumentViewButton } from "@/components/document/document-view-button";
 
 type EntityStakeholder = {
   id: string;
@@ -212,11 +214,8 @@ function StakeholderCard({
           ) : (
             <div className="mt-2 space-y-2">
               {uploadedFiles.map((file) => (
-                <Link
+                <div
                   key={file.key}
-                  href={file.href}
-                  target="_blank"
-                  rel="noreferrer"
                   className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2 transition-colors hover:bg-muted/40"
                 >
                   <div className="min-w-0">
@@ -226,8 +225,32 @@ function StakeholderCard({
                       {file.uploadedAt ? ` • ${file.uploadedAt}` : ""}
                     </p>
                   </div>
-                  <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </Link>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <DocumentViewButton
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      documentUrl={file.href}
+                      fileName={file.fileName}
+                      documentName={file.label}
+                      title="View document"
+                      aria-label={`View ${file.fileName}`}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </DocumentViewButton>
+                    <Link
+                      href={file.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      download={file.fileName}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+                      title="Download document"
+                      aria-label={`Download ${file.fileName}`}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Link>
+                  </div>
+                </div>
               ))}
             </div>
           )}

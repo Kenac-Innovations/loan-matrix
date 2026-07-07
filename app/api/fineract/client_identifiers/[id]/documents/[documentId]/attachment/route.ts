@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken, getFineractTenantId } from "@/lib/api";
+import { toInlineContentDisposition } from "@/lib/document-viewing";
 
 export async function GET(
   request: NextRequest,
@@ -102,13 +103,17 @@ export async function GET(
       response.headers.get("content-type") || "application/octet-stream";
     const contentDisposition =
       response.headers.get("content-disposition") || "";
+    const responseContentDisposition =
+      request.nextUrl.searchParams.get("disposition") === "inline"
+        ? toInlineContentDisposition(contentDisposition)
+        : contentDisposition;
 
     // Return the file with appropriate headers
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": contentDisposition,
+        "Content-Disposition": responseContentDisposition,
       },
     });
   } catch (error) {
@@ -119,4 +124,3 @@ export async function GET(
     );
   }
 }
-

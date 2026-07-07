@@ -54,6 +54,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/searchable-select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { DocumentViewButton } from "@/components/document/document-view-button";
 
 import {
   Popover,
@@ -1698,34 +1699,6 @@ export function ClientRegistrationForm({
         title: "Download Failed",
         description: err?.message || "Failed to download document",
       });
-    }
-  };
-
-  // State for inline document preview
-  const [previewingDocumentId, setPreviewingDocumentId] = useState<
-    string | null
-  >(null);
-  const [previewingIdentifierId, setPreviewingIdentifierId] = useState<
-    number | null
-  >(null);
-
-  // Handle document view (toggles inline preview)
-  const handleViewDocument = (
-    documentId: string | number,
-    identifierId?: number
-  ) => {
-    const docIdStr = String(documentId);
-    if (
-      previewingDocumentId === docIdStr &&
-      previewingIdentifierId === (identifierId || null)
-    ) {
-      // If already previewing this document, close it
-      setPreviewingDocumentId(null);
-      setPreviewingIdentifierId(null);
-    } else {
-      // Open preview for this document
-      setPreviewingDocumentId(docIdStr);
-      setPreviewingIdentifierId(identifierId || null);
     }
   };
 
@@ -9516,33 +9489,6 @@ export function ClientRegistrationForm({
                                                                     doc: any,
                                                                     docIndex: number
                                                                   ) => {
-                                                                    const isPreviewing =
-                                                                      previewingDocumentId ===
-                                                                        String(
-                                                                          doc.id
-                                                                        ) &&
-                                                                      previewingIdentifierId ===
-                                                                        identifierId;
-                                                                    const isImage =
-                                                                      doc.type?.includes(
-                                                                        "image"
-                                                                      ) ||
-                                                                      doc.name?.match(
-                                                                        /\.(jpg|jpeg|png|gif|webp|bmp)$/i
-                                                                      ) ||
-                                                                      doc.fileName?.match(
-                                                                        /\.(jpg|jpeg|png|gif|webp|bmp)$/i
-                                                                      );
-                                                                    const isPdf =
-                                                                      doc.type?.includes(
-                                                                        "pdf"
-                                                                      ) ||
-                                                                      doc.name?.match(
-                                                                        /\.pdf$/i
-                                                                      ) ||
-                                                                      doc.fileName?.match(
-                                                                        /\.pdf$/i
-                                                                      );
                                                                     // Use identifier documents endpoint for documents linked to identifiers
                                                                     const previewUrl =
                                                                       fineractClientId &&
@@ -9563,13 +9509,7 @@ export function ClientRegistrationForm({
                                                                         <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
                                                                           <FileText className="h-3 w-3 text-blue-500 flex-shrink-0" />
                                                                           <span
-                                                                            className={`flex-1 ${colors.textColor} truncate cursor-pointer`}
-                                                                            onClick={() =>
-                                                                              handleViewDocument(
-                                                                                doc.id,
-                                                                                identifierId
-                                                                              )
-                                                                            }
+                                                                            className={`flex-1 ${colors.textColor} truncate`}
                                                                             title={
                                                                               doc.name ||
                                                                               doc.fileName ||
@@ -9600,29 +9540,36 @@ export function ClientRegistrationForm({
                                                                             </span>
                                                                           )}
                                                                           <div className="flex items-center gap-1 flex-shrink-0">
-                                                                            <Button
-                                                                              type="button"
+                                                                            <DocumentViewButton
                                                                               variant="ghost"
                                                                               size="sm"
-                                                                              className={`h-6 w-6 p-0 ${
-                                                                                isPreviewing
-                                                                                  ? "bg-blue-100 dark:bg-blue-900"
-                                                                                  : ""
-                                                                              }`}
-                                                                              onClick={() =>
-                                                                                handleViewDocument(
+                                                                              className="h-6 w-6 p-0"
+                                                                              documentUrl={previewUrl}
+                                                                              fileName={
+                                                                                doc.name ||
+                                                                                doc.fileName ||
+                                                                                `document_${doc.id}`
+                                                                              }
+                                                                              contentType={doc.type}
+                                                                              documentName={doc.name}
+                                                                              onFallbackDownload={() =>
+                                                                                handleDownloadDocument(
                                                                                   doc.id,
+                                                                                  doc.name ||
+                                                                                    doc.fileName ||
+                                                                                    `document_${doc.id}`,
                                                                                   identifierId
                                                                                 )
                                                                               }
-                                                                              title={
-                                                                                isPreviewing
-                                                                                  ? "Hide preview"
-                                                                                  : "View document"
-                                                                              }
+                                                                              title="View document"
+                                                                              aria-label={`View ${
+                                                                                doc.name ||
+                                                                                doc.fileName ||
+                                                                                `document ${doc.id}`
+                                                                              }`}
                                                                             >
                                                                               <Eye className="h-3 w-3" />
-                                                                            </Button>
+                                                                            </DocumentViewButton>
                                                                             <Button
                                                                               type="button"
                                                                               variant="ghost"
@@ -9643,92 +9590,6 @@ export function ClientRegistrationForm({
                                                                             </Button>
                                                                           </div>
                                                                         </div>
-
-                                                                        {/* Inline Preview */}
-                                                                        {isPreviewing &&
-                                                                          previewUrl && (
-                                                                            <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                                                              {isImage ? (
-                                                                                <div className="flex items-center justify-center">
-                                                                                  <img
-                                                                                    src={
-                                                                                      previewUrl
-                                                                                    }
-                                                                                    alt={
-                                                                                      doc.name ||
-                                                                                      doc.fileName ||
-                                                                                      "Document preview"
-                                                                                    }
-                                                                                    className="max-w-full max-h-96 object-contain rounded-lg shadow-sm"
-                                                                                    onError={(
-                                                                                      e
-                                                                                    ) => {
-                                                                                      console.error(
-                                                                                        "Error loading image"
-                                                                                      );
-                                                                                      e.currentTarget.style.display =
-                                                                                        "none";
-                                                                                      const errorDiv =
-                                                                                        document.createElement(
-                                                                                          "div"
-                                                                                        );
-                                                                                      errorDiv.className =
-                                                                                        "text-center text-gray-500 p-4 text-sm";
-                                                                                      errorDiv.textContent =
-                                                                                        "Failed to load image. Please try downloading the document.";
-                                                                                      e.currentTarget.parentElement?.appendChild(
-                                                                                        errorDiv
-                                                                                      );
-                                                                                    }}
-                                                                                  />
-                                                                                </div>
-                                                                              ) : isPdf ? (
-                                                                                <div className="w-full h-96">
-                                                                                  <iframe
-                                                                                    src={
-                                                                                      previewUrl
-                                                                                    }
-                                                                                    className="w-full h-full border-0 rounded-lg"
-                                                                                    title={
-                                                                                      doc.name ||
-                                                                                      doc.fileName ||
-                                                                                      "Document preview"
-                                                                                    }
-                                                                                  />
-                                                                                </div>
-                                                                              ) : (
-                                                                                <div className="flex flex-col items-center justify-center h-32 space-y-2">
-                                                                                  <FileText className="h-8 w-8 text-gray-400" />
-                                                                                  <p className="text-gray-500 text-sm text-center">
-                                                                                    Preview
-                                                                                    not
-                                                                                    available
-                                                                                    for
-                                                                                    this
-                                                                                    file
-                                                                                    type.
-                                                                                  </p>
-                                                                                  <Button
-                                                                                    size="sm"
-                                                                                    variant="outline"
-                                                                                    onClick={() =>
-                                                                                      handleDownloadDocument(
-                                                                                        doc.id,
-                                                                                        doc.name ||
-                                                                                          doc.fileName ||
-                                                                                          `document_${doc.id}`
-                                                                                      )
-                                                                                    }
-                                                                                  >
-                                                                                    <Download className="h-3 w-3 mr-2" />
-                                                                                    Download
-                                                                                    to
-                                                                                    View
-                                                                                  </Button>
-                                                                                </div>
-                                                                              )}
-                                                                            </div>
-                                                                          )}
                                                                       </div>
                                                                     );
                                                                   }
@@ -10000,22 +9861,6 @@ export function ClientRegistrationForm({
                                       <div className="space-y-2">
                                         {otherDocuments.map(
                                           (doc: any, docIndex: number) => {
-                                            const isPreviewing =
-                                              previewingDocumentId ===
-                                                String(doc.id) &&
-                                              previewingIdentifierId === null;
-                                            const isImage =
-                                              doc.type?.includes("image") ||
-                                              doc.name?.match(
-                                                /\.(jpg|jpeg|png|gif|webp|bmp)$/i
-                                              ) ||
-                                              doc.fileName?.match(
-                                                /\.(jpg|jpeg|png|gif|webp|bmp)$/i
-                                              );
-                                            const isPdf =
-                                              doc.type?.includes("pdf") ||
-                                              doc.name?.match(/\.pdf$/i) ||
-                                              doc.fileName?.match(/\.pdf$/i);
                                             const previewUrl = fineractClientId
                                               ? `/api/fineract/clients/${fineractClientId}/documents/${doc.id}/attachment`
                                               : null;
@@ -10028,10 +9873,7 @@ export function ClientRegistrationForm({
                                                 <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs">
                                                   <FileText className="h-3 w-3 text-blue-500 flex-shrink-0" />
                                                   <span
-                                                    className={`flex-1 ${colors.textColor} truncate cursor-pointer`}
-                                                    onClick={() =>
-                                                      handleViewDocument(doc.id)
-                                                    }
+                                                    className={`flex-1 ${colors.textColor} truncate`}
                                                     title={
                                                       doc.name ||
                                                       doc.fileName ||
@@ -10055,28 +9897,35 @@ export function ClientRegistrationForm({
                                                     </span>
                                                   )}
                                                   <div className="flex items-center gap-1 flex-shrink-0">
-                                                    <Button
-                                                      type="button"
+                                                    <DocumentViewButton
                                                       variant="ghost"
                                                       size="sm"
-                                                      className={`h-6 w-6 p-0 ${
-                                                        isPreviewing
-                                                          ? "bg-blue-100 dark:bg-blue-900"
-                                                          : ""
-                                                      }`}
-                                                      onClick={() =>
-                                                        handleViewDocument(
-                                                          doc.id
+                                                      className="h-6 w-6 p-0"
+                                                      documentUrl={previewUrl}
+                                                      fileName={
+                                                        doc.name ||
+                                                        doc.fileName ||
+                                                        `document_${doc.id}`
+                                                      }
+                                                      contentType={doc.type}
+                                                      documentName={doc.name}
+                                                      onFallbackDownload={() =>
+                                                        handleDownloadDocument(
+                                                          doc.id,
+                                                          doc.name ||
+                                                            doc.fileName ||
+                                                            `document_${doc.id}`
                                                         )
                                                       }
-                                                      title={
-                                                        isPreviewing
-                                                          ? "Hide preview"
-                                                          : "View document"
-                                                      }
+                                                      title="View document"
+                                                      aria-label={`View ${
+                                                        doc.name ||
+                                                        doc.fileName ||
+                                                        `document ${doc.id}`
+                                                      }`}
                                                     >
                                                       <Eye className="h-3 w-3" />
-                                                    </Button>
+                                                    </DocumentViewButton>
                                                     <Button
                                                       type="button"
                                                       variant="ghost"
@@ -10096,78 +9945,6 @@ export function ClientRegistrationForm({
                                                     </Button>
                                                   </div>
                                                 </div>
-
-                                                {/* Inline Preview */}
-                                                {isPreviewing && previewUrl && (
-                                                  <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                                    {isImage ? (
-                                                      <div className="flex items-center justify-center">
-                                                        <img
-                                                          src={previewUrl}
-                                                          alt={
-                                                            doc.name ||
-                                                            doc.fileName ||
-                                                            "Document preview"
-                                                          }
-                                                          className="max-w-full max-h-96 object-contain rounded-lg shadow-sm"
-                                                          onError={(e) => {
-                                                            console.error(
-                                                              "Error loading image"
-                                                            );
-                                                            e.currentTarget.style.display =
-                                                              "none";
-                                                            const errorDiv =
-                                                              document.createElement(
-                                                                "div"
-                                                              );
-                                                            errorDiv.className =
-                                                              "text-center text-gray-500 p-4 text-sm";
-                                                            errorDiv.textContent =
-                                                              "Failed to load image. Please try downloading the document.";
-                                                            e.currentTarget.parentElement?.appendChild(
-                                                              errorDiv
-                                                            );
-                                                          }}
-                                                        />
-                                                      </div>
-                                                    ) : isPdf ? (
-                                                      <div className="w-full h-96">
-                                                        <iframe
-                                                          src={previewUrl}
-                                                          className="w-full h-full border-0 rounded-lg"
-                                                          title={
-                                                            doc.name ||
-                                                            doc.fileName ||
-                                                            "Document preview"
-                                                          }
-                                                        />
-                                                      </div>
-                                                    ) : (
-                                                      <div className="flex flex-col items-center justify-center h-32 space-y-2">
-                                                        <FileText className="h-8 w-8 text-gray-400" />
-                                                        <p className="text-gray-500 text-sm text-center">
-                                                          Preview not available
-                                                          for this file type.
-                                                        </p>
-                                                        <Button
-                                                          size="sm"
-                                                          variant="outline"
-                                                          onClick={() =>
-                                                            handleDownloadDocument(
-                                                              doc.id,
-                                                              doc.name ||
-                                                                doc.fileName ||
-                                                                `document_${doc.id}`
-                                                            )
-                                                          }
-                                                        >
-                                                          <Download className="h-3 w-3 mr-2" />
-                                                          Download to View
-                                                        </Button>
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                )}
                                               </div>
                                             );
                                           }
