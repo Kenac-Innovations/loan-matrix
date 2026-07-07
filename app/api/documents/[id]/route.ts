@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractDocumentId } from "@/lib/document-utils";
+import { toInlineContentDisposition } from "@/lib/document-viewing";
 
 /**
  * GET /api/documents/[id]
@@ -43,13 +44,19 @@ export async function GET(
 
     const contentType = res.headers.get("content-type") || "application/octet-stream";
     const contentDisposition = res.headers.get("content-disposition") || "";
+    const responseContentDisposition =
+      request.nextUrl.searchParams.get("disposition") === "inline"
+        ? toInlineContentDisposition(contentDisposition)
+        : contentDisposition;
     const body = await res.arrayBuffer();
 
     return new NextResponse(body, {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        ...(contentDisposition && { "Content-Disposition": contentDisposition }),
+        ...(responseContentDisposition && {
+          "Content-Disposition": responseContentDisposition,
+        }),
       },
     });
   } catch (error) {

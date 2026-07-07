@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildFineractRequest } from "@/lib/api";
+import { toInlineContentDisposition } from "@/lib/document-viewing";
 
 export async function GET(
   request: NextRequest,
@@ -115,6 +116,10 @@ export async function GET(
       response.headers.get("content-type") || "application/octet-stream";
     const contentDisposition =
       response.headers.get("content-disposition") || "";
+    const responseContentDisposition =
+      request.nextUrl.searchParams.get("disposition") === "inline"
+        ? toInlineContentDisposition(contentDisposition)
+        : contentDisposition;
 
     console.log("Document downloaded successfully");
     console.log("Content-Type:", contentType);
@@ -126,7 +131,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": contentDisposition,
+        "Content-Disposition": responseContentDisposition,
         "Cache-Control": "no-cache",
       },
     });

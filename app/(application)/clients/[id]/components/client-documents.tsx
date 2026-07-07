@@ -38,6 +38,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DocumentViewButton } from "@/components/document/document-view-button";
 import { downloadClientDocumentAttachment } from "@/app/actions/client-document-actions";
 import { formatDateDdMmYyyy } from "@/lib/date-format";
 
@@ -382,7 +383,20 @@ export function ClientDocuments({
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end">
+                      <div className="flex items-center justify-end gap-2">
+                        <DocumentViewButton
+                          documentUrl={`/api/fineract/clients/${clientId}/documents/${document.id}/attachment`}
+                          fileName={document.fileName || document.name}
+                          contentType={document.type}
+                          documentName={document.name}
+                          className="gap-2"
+                          onFallbackDownload={() =>
+                            handleDownloadDocument(document)
+                          }
+                          disabled={downloadingDocumentId === document.id}
+                          title="View document"
+                          aria-label={`View ${document.name}`}
+                        />
                         <Button
                           type="button"
                           variant="outline"
