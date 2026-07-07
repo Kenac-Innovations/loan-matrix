@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DocumentViewButton } from "@/components/document/document-view-button";
 import { useCurrency } from "@/contexts/currency-context";
 import { useToast } from "@/hooks/use-toast";
 
@@ -716,15 +717,23 @@ export function InvoiceDiscountingForm({
                             }
                           />
                           {row.fineractDocumentId && fineractClientId ? (
-                            <a
-                              className="inline-flex items-center text-xs text-blue-600 hover:underline"
-                              href={`/api/fineract/clients/${fineractClientId}/documents/${row.fineractDocumentId}/attachment`}
-                              target="_blank"
-                              rel="noreferrer"
+                            <DocumentViewButton
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 text-xs text-blue-600 hover:underline"
+                              documentUrl={`/api/fineract/clients/${fineractClientId}/documents/${row.fineractDocumentId}/attachment`}
+                              fileName={
+                                row.documentFile?.name ||
+                                `invoice-${row.invoiceNumber || row.fineractDocumentId}`
+                              }
+                              contentType={row.documentFile?.type}
+                              documentName={`Invoice ${
+                                row.invoiceNumber || row.fineractDocumentId
+                              }`}
                             >
                               View Uploaded File
                               <ExternalLink className="ml-1 h-3 w-3" />
-                            </a>
+                            </DocumentViewButton>
                           ) : null}
                         </div>
                       </TableCell>
