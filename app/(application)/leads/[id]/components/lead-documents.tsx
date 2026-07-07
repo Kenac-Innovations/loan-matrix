@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
+import { DocumentViewButton } from "@/components/document/document-view-button";
 
 interface LeadDocumentsProps {
   leadId: string;
@@ -281,6 +282,19 @@ export function LeadDocuments({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  const getLeadDocumentUrl = (doc: Document) =>
+    doc.filePath?.trim() || `/api/documents/${encodeURIComponent(doc.id)}`;
+
+  const handleDownloadLeadDocument = (doc: Document) => {
+    const url = getLeadDocumentUrl(doc);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.originalName || doc.name || `document-${doc.id}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const handleDownloadLoanDocument = async (
     documentId: string,
     fileName: string
@@ -465,6 +479,27 @@ export function LeadDocuments({
                           Client Document
                         </Badge>
                         <div className="flex items-center">
+                          <DocumentViewButton
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            documentUrl={`/api/fineract/clients/${fineractClientId}/documents/${doc.id}/attachment`}
+                            fileName={doc.fileName || doc.name}
+                            contentType={doc.type}
+                            documentName={doc.name}
+                            onFallbackDownload={() =>
+                              handleDownloadClientDocument(
+                                doc.id.toString(),
+                                doc.fileName || doc.name
+                              )
+                            }
+                            title="View document"
+                            aria-label={`View ${
+                              doc.name || doc.fileName || `Document ${doc.id}`
+                            }`}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </DocumentViewButton>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -558,6 +593,27 @@ export function LeadDocuments({
                           From Cloud Storage
                         </Badge>
                         <div className="flex items-center">
+                          <DocumentViewButton
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            documentUrl={`/api/fineract/loans/${fineractLoanId}/documents/${doc.id}/attachment`}
+                            fileName={doc.fileName || doc.name}
+                            contentType={doc.type}
+                            documentName={doc.name}
+                            onFallbackDownload={() =>
+                              handleDownloadLoanDocument(
+                                doc.id.toString(),
+                                doc.fileName || doc.name
+                              )
+                            }
+                            title="View document"
+                            aria-label={`View ${
+                              doc.name || doc.fileName || `Document ${doc.id}`
+                            }`}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </DocumentViewButton>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -697,19 +753,32 @@ export function LeadDocuments({
                                   </Badge>
                                 )}
                                 <div className="flex items-center">
-                                  <Button
+                                  <DocumentViewButton
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                    documentUrl={getLeadDocumentUrl(doc)}
+                                    fileName={doc.originalName || doc.name}
+                                    contentType={doc.mimeType}
+                                    documentType={doc.type}
+                                    documentName={doc.name}
+                                    originalName={doc.originalName}
+                                    onFallbackDownload={() =>
+                                      handleDownloadLeadDocument(doc)
+                                    }
                                     title="View document"
+                                    aria-label={`View ${doc.name}`}
                                   >
                                     <Eye className="h-4 w-4" />
-                                  </Button>
+                                  </DocumentViewButton>
                                   <Button
                                     variant="ghost"
                                     size="icon"
                                     className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                     title="Download document"
+                                    onClick={() =>
+                                      handleDownloadLeadDocument(doc)
+                                    }
                                   >
                                     <Download className="h-4 w-4" />
                                   </Button>
