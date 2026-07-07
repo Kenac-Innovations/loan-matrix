@@ -51,6 +51,7 @@ import CreateGuarantorModal from "@/components/CreateGuarantorModal";
 import RecoverFromGuarantorModal from "@/components/RecoverFromGuarantorModal";
 import SellLoanModal from "@/components/SellLoanModal";
 import { TransactionsDataTable } from "./transactions-data-table";
+import { DocumentViewButton } from "@/components/document/document-view-button";
 import { downloadLoanDocumentAttachment } from "@/app/actions/loan-document-actions";
 import { formatDateDdMmYyyy } from "@/lib/date-format";
 import { FineractClient, FineractLoan } from "@/shared/types";
@@ -4427,6 +4428,27 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
+                              <DocumentViewButton
+                                documentUrl={`/api/fineract/loans/${loanId}/documents/${document.id}/attachment`}
+                                fileName={
+                                  document.fileName ||
+                                  document.name ||
+                                  `document-${document.id}`
+                                }
+                                documentType={document.type}
+                                documentName={document.name}
+                                className="gap-2"
+                                onFallbackDownload={() =>
+                                  handleDownloadDocument(document)
+                                }
+                                disabled={downloadingDocumentId === document.id}
+                                title="View document"
+                                aria-label={`View ${
+                                  document.name ||
+                                  document.fileName ||
+                                  `document ${document.id}`
+                                }`}
+                              />
                               <Button
                                 type="button"
                                 variant="outline"

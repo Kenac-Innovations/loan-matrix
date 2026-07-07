@@ -37,11 +37,11 @@ import {
   Clock,
   CheckCircle,
   ArrowRight,
-  ExternalLink,
   FileText,
   TrendingUp,
   TrendingDown,
   Minus,
+  Eye,
   User,
   MapPin,
   Hash,
@@ -51,6 +51,7 @@ import {
   Coins,
 } from "lucide-react";
 import { format } from "date-fns";
+import { DocumentViewButton } from "@/components/document/document-view-button";
 import { useCurrency } from "@/contexts/currency-context";
 import { CreditBalanceRefundModal } from "./credit-balance-refund-modal";
 import { TransferFundsModal } from "./transfer-funds-modal";
@@ -880,14 +881,22 @@ export function ComprehensiveLeadDetails({
                               </td>
                               <td className="px-3 py-2">
                                 {invoice.fineractDocumentId && lead?.fineractClientId ? (
-                                  <a
-                                    href={`/api/fineract/clients/${lead.fineractClientId}/documents/${invoice.fineractDocumentId}/attachment`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-blue-600 hover:underline"
+                                  <DocumentViewButton
+                                    variant="link"
+                                    size="sm"
+                                    className="h-auto p-0 text-blue-600 hover:underline"
+                                    documentUrl={`/api/fineract/clients/${lead.fineractClientId}/documents/${invoice.fineractDocumentId}/attachment`}
+                                    fileName={`invoice-${
+                                      invoice.invoiceNumber ||
+                                      invoice.fineractDocumentId
+                                    }`}
+                                    documentName={`Invoice ${
+                                      invoice.invoiceNumber ||
+                                      invoice.fineractDocumentId
+                                    }`}
                                   >
                                     View file
-                                  </a>
+                                  </DocumentViewButton>
                                 ) : (
                                   "N/A"
                                 )}
@@ -2063,6 +2072,49 @@ export function ComprehensiveLeadDetails({
                           >
                             <Download className="h-4 w-4" />
                           </Button>
+                          <DocumentViewButton
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            documentUrl={`/api/fineract/loans/${
+                              data?.lead?.fineractLoanId ||
+                              data?.fineractLoan?.id
+                            }/documents/${
+                              doc.id ||
+                              doc.documentId ||
+                              doc.resourceId ||
+                              index
+                            }/attachment`}
+                            fileName={
+                              doc.fileName ||
+                              doc.name ||
+                              `document-${
+                                doc.id ||
+                                doc.documentId ||
+                                doc.resourceId ||
+                                index
+                              }`
+                            }
+                            contentType={doc.type}
+                            documentName={doc.name}
+                            onFallbackDownload={() => {
+                              const docId =
+                                doc.id ||
+                                doc.documentId ||
+                                doc.resourceId ||
+                                index;
+                              handleDownloadLoanDocument(
+                                docId.toString(),
+                                doc.fileName || doc.name || `document-${docId}`
+                              );
+                            }}
+                            title="View document"
+                            aria-label={`View ${
+                              doc.name || doc.fileName || `document ${index + 1}`
+                            }`}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </DocumentViewButton>
                         </div>
                       </div>
                     ))}
