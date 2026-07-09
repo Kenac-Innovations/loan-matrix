@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
-import { getFineractServiceWithSession } from '@/lib/fineract-api';
 import { isPaymentTypeCash } from '@/lib/cash-repayment-teller';
 import { upsertRepaymentCashLink } from '@/lib/repayment-cash-link';
 import { getTenantFromHeaders } from '@/lib/tenant-service';
@@ -8,15 +7,6 @@ import { getOrgRawCurrencyCode } from '@/lib/currency-utils';
 import { fetchLoanNotificationDetails, resolveLoanNotificationTarget } from '@/lib/loan-notification-target';
 import { sendLoanRepaymentSms } from '@/lib/notification-service';
 import { prisma } from '@/lib/prisma';
-
-/** Ensure date is yyyy-MM-dd for Fineract allocate */
-function formatDateForAllocate(isoDate: string): string {
-  const d = new Date(isoDate);
-  const year = d.getFullYear();
-  const month = (d.getMonth() + 1).toString().padStart(2, '0');
-  const day = d.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 /**
  * POST /api/fineract/loans/[id]/transactions
@@ -286,74 +276,13 @@ export async function POST(
       });
 
       if (isCash) {
-        const transactionDate =
-          typeof body.transactionDate === 'string'
-            ? body.transactionDate
-            : new Date().toISOString().split('T')[0];
-
-        if (
-          tellerId != null &&
-          !isNaN(tellerId) &&
-          cashierId != null &&
-          !isNaN(cashierId)
-        ) {
-          // Request includes tellerId/cashierId - call allocate here
-          try {
-            const fineractService = await getFineractServiceWithSession();
-            await fineractService.allocateCashToCashier(
-              tellerId,
-              cashierId,
-              {
-                txnDate: formatDateForAllocate(transactionDate),
-                txnAmount: String(body.transactionAmount),
-                currencyCode: currency,
-                txnNote: 'Loan repayment',
-                dateFormat: 'yyyy-MM-dd',
-                locale: 'en',
-              }
-            );
-            cashierAllocateResult = { success: true };
-            console.log(
-              `[CashRepayment] Allocated ${body.transactionAmount} ${currency} for loan ${loanId} to teller ${tellerId}/cashier ${cashierId}`
-            );
-          } catch (err: unknown) {
-            type AllocationError = {
-              response?: {
-                data?: {
-                  defaultUserMessage?: string;
-                  errors?: Array<{ defaultUserMessage?: string }>;
-                };
-                status?: number;
-              };
-              message?: string;
-            };
-            const allocationError = err as AllocationError;
-            const fineractError = allocationError.response?.data;
-            cashierAllocateResult = {
-              success: false,
-              error:
-                fineractError?.defaultUserMessage ||
-                fineractError?.errors?.[0]?.defaultUserMessage ||
-                allocationError.message ||
-                'Allocate failed',
-              details: fineractError || { message: allocationError.message },
-            };
-            console.error('[CashRepayment] Allocate failed:', {
-              message: allocationError.message,
-              status: allocationError.response?.status,
-              data: allocationError.response?.data,
-            });
-          }
-        } else {
-          // The repayment has already been linked to the selected local teller/cashier.
-          // We skip the extra Fineract allocate call unless an older flow explicitly
-          // provided fineract teller/cashier ids, because that legacy call duplicates
-          // cashier rows in summary screens.
-          cashierAllocateResult = {
-            success: true,
-            error: 'Skipped - no legacy Fineract allocate call was requested',
-          };
-        }
+        // Manual Fineract allocate is disabled for repayments because Fineract
+        // already surfaces cash loan repayments in cashier summary/history.
+        // Calling allocate here creates duplicate cashier rows.
+        cashierAllocateResult = {
+          success: true,
+          error: 'Skipped - manual Fineract allocate disabled for repayments',
+        };
       } else {
         cashierAllocateResult = { success: false, error: 'Skipped - payment type is not cash' };
       }
