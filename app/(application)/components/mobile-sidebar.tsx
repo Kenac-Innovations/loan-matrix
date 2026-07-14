@@ -26,11 +26,13 @@ interface MobileSidebarProps {
   /** Organization logo URL from document service (when set) */
   tenantLogoUrl?: string | null;
   canReadUsers: boolean;
+  canResetUssdPin: boolean;
 }
 
 export function MobileSidebar({
   tenantLogoUrl,
   canReadUsers,
+  canResetUssdPin,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
@@ -290,20 +292,25 @@ export function MobileSidebar({
               <Link
                 href="/clients"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
-                  pathname.startsWith("/clients")
+                  pathname.startsWith("/clients") ||
+                  pathname.startsWith("/ussd-pin-reset")
                     ? `${activeBgColor} ${textColor}`
                     : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
                 }`}
               >
                 <Users
                   className={`h-5 w-5 ${
-                    pathname.startsWith("/clients") ? iconColorActive : iconColor
+                    pathname.startsWith("/clients") ||
+                    pathname.startsWith("/ussd-pin-reset")
+                      ? iconColorActive
+                      : iconColor
                   }`}
                 />
                 Clients
               </Link>
 
-              {pathname.startsWith("/clients") && (
+              {(pathname.startsWith("/clients") ||
+                pathname.startsWith("/ussd-pin-reset")) && (
                 <div className="pl-10 space-y-1">
                   <Link
                     href="/clients"
@@ -325,6 +332,18 @@ export function MobileSidebar({
                   >
                     Add Client
                   </Link>
+                  {canResetUssdPin && (
+                    <Link
+                      href="/ussd-pin-reset"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/ussd-pin-reset"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      USSD PIN Reset
+                    </Link>
+                  )}
                 </div>
               )}
             </div>

@@ -29,6 +29,7 @@ interface UserRoleResponse {
   roles: string[];
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  canResetUssdPin: boolean;
 }
 
 /**
@@ -104,6 +105,7 @@ export function useUserRoles() {
   const [roles, setRoles] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [canResetUssdPin, setCanResetUssdPin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -118,6 +120,7 @@ export function useUserRoles() {
         setRoles(data.roles);
         setIsAdmin(data.isAdmin);
         setIsSuperAdmin(data.isSuperAdmin);
+        setCanResetUssdPin(Boolean(data.canResetUssdPin));
       } catch (error) {
         console.error("Error fetching user roles:", error);
       } finally {
@@ -143,6 +146,7 @@ export function useUserRoles() {
     roles,
     isAdmin,
     isSuperAdmin,
+    canResetUssdPin,
     isLoading,
     hasRole,
     hasAnyRole,

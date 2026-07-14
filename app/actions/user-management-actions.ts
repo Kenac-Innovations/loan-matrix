@@ -73,6 +73,7 @@ const createUserSchema = z
     sendPasswordToEmail: z.boolean().default(true),
     passwordNeverExpires: z.boolean().default(false),
     canOverrideInitiatorDisbursement: z.boolean().default(false),
+    canResetUssdPin: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
       .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
@@ -174,6 +175,7 @@ const updateUserSchema = z
       ),
     passwordNeverExpires: z.boolean().default(false),
     canOverrideInitiatorDisbursement: z.boolean().default(false),
+    canResetUssdPin: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
       .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
@@ -445,6 +447,7 @@ function mapUserDetail(user: unknown): UserDetail {
     passwordNeverExpires: Boolean(userRecord.passwordNeverExpires),
     isSelfServiceUser: Boolean(userRecord.isSelfServiceUser),
     canOverrideInitiatorDisbursement: false,
+    canResetUssdPin: false,
     visibleLeadOffices: [],
     blockedSource: null,
     blockedNote: null,
@@ -648,6 +651,7 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
       blockedNote: true,
       blockedByActorName: true,
       canOverrideInitiatorDisbursement: true,
+      canResetUssdPin: true,
       leadBranchAccesses: {
         orderBy: {
           officeId: "asc",
@@ -678,6 +682,7 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
     countryCode: localLogin?.countryCode || undefined,
     canOverrideInitiatorDisbursement:
       localLogin?.canOverrideInitiatorDisbursement ?? false,
+    canResetUssdPin: localLogin?.canResetUssdPin ?? false,
     visibleLeadOffices: collapsedVisibleLeadOfficeIds.map((officeId) =>
       mapVisibleLeadOffice(
         officeId,
@@ -869,6 +874,7 @@ export async function createUserAction(
         countryCode,
         canOverrideInitiatorDisbursement:
           parsed.data.canOverrideInitiatorDisbursement,
+        canResetUssdPin: parsed.data.canResetUssdPin,
       });
 
       if (tenant.restrictLeadVisibilityToBranches) {
@@ -944,6 +950,7 @@ export async function updateUserAction(
         : null,
       canOverrideInitiatorDisbursement:
         parsed.data.canOverrideInitiatorDisbursement,
+      canResetUssdPin: parsed.data.canResetUssdPin,
     });
 
     if (tenant.restrictLeadVisibilityToBranches) {

@@ -25,13 +25,17 @@ interface SubMenuItem {
 
 interface SidebarNavProps {
   canReadUsers: boolean;
+  canResetUssdPin: boolean;
 }
 
 /**
  * Sidebar Navigation Component
  * Handles role-based and feature-based visibility of menu items
  */
-export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
+export function SidebarNav({
+  canReadUsers,
+  canResetUssdPin,
+}: Readonly<SidebarNavProps>) {
   const { hasAnyRole, isLoading: rolesLoading } = useUserRoles();
   const { isEnabled } = useFeatureFlags();
 
@@ -65,6 +69,18 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
     label: "Payment Types",
     href: "/organization/payment-types",
   });
+
+  const clientsSubMenuItems: SubMenuItem[] = [
+    { label: "All Clients", href: "/clients" },
+    { label: "Add Client", href: "/clients/new" },
+  ];
+
+  if (canResetUssdPin) {
+    clientsSubMenuItems.push({
+      label: "USSD PIN Reset",
+      href: "/ussd-pin-reset",
+    });
+  }
 
   return (
     <nav className="space-y-1 px-2">
@@ -117,10 +133,7 @@ export function SidebarNav({ canReadUsers }: Readonly<SidebarNavProps>) {
           icon={<Users />}
           label="Clients"
           href="/clients"
-          subMenuItems={[
-            { label: "All Clients", href: "/clients" },
-            { label: "Add Client", href: "/clients/new" },
-          ]}
+          subMenuItems={clientsSubMenuItems}
         />
       </div>
 

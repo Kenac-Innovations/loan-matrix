@@ -13,7 +13,7 @@ export async function GET() {
     
     if (!session?.user?.userId) {
       return NextResponse.json(
-        { roles: [], isAdmin: false, isSuperAdmin: false },
+        { roles: [], isAdmin: false, isSuperAdmin: false, canResetUssdPin: false },
         { status: 200 }
       );
     }
@@ -28,22 +28,35 @@ export async function GET() {
 
     if (!tenant) {
       return NextResponse.json(
-        { roles: [], isAdmin: false, isSuperAdmin: false },
+        { roles: [], isAdmin: false, isSuperAdmin: false, canResetUssdPin: false },
         { status: 200 }
       );
     }
 
     // Get user's roles from local DB
-    const userRoles = await prisma.userRole.findMany({
-      where: {
-        tenantId: tenant.id,
-        mifosUserId: mifosUserId,
-        isActive: true,
-      },
-      include: {
-        role: true,
-      },
-    });
+    const [userRoles, userLogin] = await Promise.all([
+      prisma.userRole.findMany({
+        where: {
+          tenantId: tenant.id,
+          mifosUserId: mifosUserId,
+          isActive: true,
+        },
+        include: {
+          role: true,
+        },
+      }),
+      prisma.userLogin.findUnique({
+        where: {
+          tenantId_fineractUserId: {
+            tenantId: tenant.id,
+            fineractUserId: mifosUserId,
+          },
+        },
+        select: {
+          canResetUssdPin: true,
+        },
+      }),
+    ]);
 
     // Extract role names
     const roles = userRoles.map((ur) => ur.role.name);
@@ -57,11 +70,12 @@ export async function GET() {
       roles,
       isAdmin,
       isSuperAdmin,
+      canResetUssdPin: isSuperAdmin || Boolean(userLogin?.canResetUssdPin),
     });
   } catch (error) {
     console.error("Error fetching user roles:", error);
     return NextResponse.json(
-      { roles: [], isAdmin: false, isSuperAdmin: false },
+      { roles: [], isAdmin: false, isSuperAdmin: false, canResetUssdPin: false },
       { status: 200 }
     );
   }

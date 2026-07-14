@@ -83,6 +83,7 @@ type FormState = {
   sendPasswordToEmail: boolean;
   passwordNeverExpires: boolean;
   canOverrideInitiatorDisbursement: boolean;
+  canResetUssdPin: boolean;
   officeId: string;
   staffId: string;
   visibleLeadOfficeIds: number[];
@@ -109,6 +110,7 @@ function buildInitialState(
     passwordNeverExpires: initialUser?.passwordNeverExpires ?? false,
     canOverrideInitiatorDisbursement:
       initialUser?.canOverrideInitiatorDisbursement ?? false,
+    canResetUssdPin: initialUser?.canResetUssdPin ?? false,
     officeId: initialUser?.officeId ? String(initialUser.officeId) : "",
     staffId: initialUser?.staff?.id ? String(initialUser.staff.id) : "",
     visibleLeadOfficeIds: initialUser?.visibleLeadOffices.map((office) => office.id) ?? [],
@@ -523,6 +525,7 @@ export function UserForm({
       sendPasswordToEmail: form.sendPasswordToEmail,
       passwordNeverExpires: form.passwordNeverExpires,
       canOverrideInitiatorDisbursement: form.canOverrideInitiatorDisbursement,
+      canResetUssdPin: form.canResetUssdPin,
       officeId: form.officeId,
       staffId: form.staffId || null,
       visibleLeadOfficeIds: form.visibleLeadOfficeIds,
@@ -831,6 +834,22 @@ export function UserForm({
             <span className="font-medium">Can override designated disburser</span>
             <p className="text-sm text-muted-foreground">
               Allow this user to set or change the designated disburser on a lead.
+            </p>
+          </div>
+        </label>
+
+        <label className="flex items-start gap-3 rounded-lg border p-4">
+          <Checkbox
+            checked={form.canResetUssdPin}
+            onCheckedChange={(checked) =>
+              handleChange("canResetUssdPin", checked === true)
+            }
+          />
+          <div className="space-y-1">
+            <span className="font-medium">Can reset USSD PIN</span>
+            <p className="text-sm text-muted-foreground">
+              Allow this user to search USSD clients and request staff-initiated
+              PIN resets.
             </p>
           </div>
         </label>
