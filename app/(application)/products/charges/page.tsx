@@ -1183,24 +1183,20 @@ export default function ChargeProductsPage() {
                 </div>
               )}
 
-              {/*
-              {editingRecordId != null && (
-                <div
-                  className="flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors hover:bg-muted/40"
-                >
-                  <Label htmlFor="active" className="text-sm font-medium">
-                    Active
-                  </Label>
-                  <Switch
-                    id="active"
-                    checked={form.active}
-                    onCheckedChange={(checked) =>
-                      setForm((prev) => ({ ...prev, active: checked }))
-                    }
-                  />
-                </div>
-              )}
-              */}
+              <div
+                className="flex w-full items-center justify-between rounded-md border p-3 text-left transition-colors hover:bg-muted/40"
+              >
+                <Label htmlFor="active" className="text-sm font-medium">
+                  Active
+                </Label>
+                <Switch
+                  id="active"
+                  checked={form.active}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({ ...prev, active: checked }))
+                  }
+                />
+              </div>
             </div>
 
             {formError && <p className="text-sm text-destructive">{formError}</p>}
