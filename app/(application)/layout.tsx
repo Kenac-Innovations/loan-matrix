@@ -15,17 +15,19 @@ import { TenantDisplay } from "@/components/tenant-display";
 import { MobileMenuProvider } from "./components/mobile-menu-context";
 import { hasPermissionServer } from "@/lib/authorization";
 import { SpecificPermission } from "@/shared/types/auth";
+import { canResetUssdPinServer } from "@/lib/ussd-pin-reset-access";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [userProfileData, tenant] = await Promise.all([
+  const [userProfileData, tenant, canReadUsers, canResetUssdPin] = await Promise.all([
     getUserProfileData(),
     getTenantFromHeaders(),
+    hasPermissionServer(SpecificPermission.READ_USER),
+    canResetUssdPinServer(),
   ]);
-  const canReadUsers = await hasPermissionServer(SpecificPermission.READ_USER);
   const tenantLogoUrl = tenant?.logoFileUrl ?? null;
 
   return (
@@ -68,7 +70,10 @@ export default async function DashboardLayout({
             </div>
             <TenantDisplay />
             <div className="py-4 h-[calc(100vh-7rem)] overflow-y-auto">
-              <SidebarNav canReadUsers={canReadUsers} />
+              <SidebarNav
+                canReadUsers={canReadUsers}
+                canResetUssdPin={canResetUssdPin}
+              />
             </div>
           </div>
 
@@ -76,6 +81,7 @@ export default async function DashboardLayout({
           <MobileSidebarWrapper
             tenantLogoUrl={tenantLogoUrl}
             canReadUsers={canReadUsers}
+            canResetUssdPin={canResetUssdPin}
           />
 
           {/* Main Content */}
