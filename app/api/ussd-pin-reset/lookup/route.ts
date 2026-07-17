@@ -5,6 +5,7 @@ import {
 } from "@/lib/ussd-admin-client";
 import {
   requireUssdPinResetAccess,
+  requireUssdServiceTenantId,
   UssdPinResetAccessError,
 } from "@/lib/ussd-pin-reset-access";
 
@@ -22,7 +23,8 @@ function errorResponse(error: unknown) {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireUssdPinResetAccess();
+    const access = await requireUssdPinResetAccess();
+    const ussdServiceTenantId = requireUssdServiceTenantId(access.tenant);
 
     const { searchParams } = new URL(request.url);
     const phoneNumber = searchParams.get("phoneNumber") ?? "";
@@ -35,7 +37,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const user = await lookupUssdUserByPhone(normalizedPhoneNumber);
+    const user = await lookupUssdUserByPhone({
+      phoneNumber: normalizedPhoneNumber,
+      ussdServiceTenantId,
+    });
 
     if (!user) {
       return NextResponse.json(
