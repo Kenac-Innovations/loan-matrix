@@ -371,6 +371,10 @@ export function UserDetailTabs({
               value={user.canConfirmPayments ? "Yes" : "No"}
             />
             <DetailField
+              label="Can Reset USSD PIN"
+              value={user.canResetUssdPin ? "Yes" : "No"}
+            />
+            <DetailField
               label="Lead Visibility"
               value={
                 restrictLeadVisibilityToBranches

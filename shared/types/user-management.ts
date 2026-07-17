@@ -57,6 +57,7 @@ export interface UserDetail extends UserSummary {
   passwordNeverExpires: boolean;
   isSelfServiceUser: boolean;
   canOverrideInitiatorDisbursement: boolean;
+  canResetUssdPin: boolean;
   visibleLeadOffices: OfficeOption[];
   blockedSource?: UserLoginBlockSource | null;
   blockedNote?: string | null;
@@ -85,6 +86,7 @@ export interface UserFormInput {
   passwordNeverExpires?: boolean;
   canOverrideInitiatorDisbursement?: boolean;
   canConfirmPayments?: boolean;
+  canResetUssdPin?: boolean;
   officeId: number | string;
   staffId?: number | string | null;
   visibleLeadOfficeIds?: Array<number | string>;
