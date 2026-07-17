@@ -15,6 +15,9 @@ export type UssdAdminResetResult = {
   userId?: number | null;
   fullName?: string | null;
   phoneNumber?: string | null;
+  pinChanged?: boolean | null;
+  smsAccepted?: boolean | null;
+  resetRequired?: boolean | null;
 };
 
 type ResetInput = {
@@ -67,6 +70,10 @@ function optionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function optionalBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function numericId(value: unknown, fieldName: string): number {
   const id = typeof value === "number" ? value : Number(value);
 
@@ -112,6 +119,9 @@ function parseUssdResetResult(payload: unknown): UssdAdminResetResult | null {
     userId: payload.userId == null ? null : numericId(payload.userId, "userId"),
     fullName: optionalString(payload.fullName),
     phoneNumber: optionalString(payload.phoneNumber),
+    pinChanged: optionalBoolean(payload.pinChanged),
+    smsAccepted: optionalBoolean(payload.smsAccepted),
+    resetRequired: optionalBoolean(payload.resetRequired),
   };
 }
 
@@ -194,14 +204,16 @@ export async function resetUssdPin(
     }
 
     throw new Error(
-      `USSD PIN reset failed (${response.status}): ${body || response.statusText}`
+      `USSD PIN change request failed (${response.status}): ${
+        body || response.statusText
+      }`
     );
   }
 
   const payload = await response.json();
   const resetResult = parseUssdResetResult(payload);
   if (!resetResult) {
-    throw new Error("USSD PIN reset returned invalid reset details");
+    throw new Error("USSD PIN change request returned invalid details");
   }
 
   return resetResult;

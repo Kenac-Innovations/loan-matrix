@@ -77,9 +77,17 @@ function formatDateTime(value?: string | null) {
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toUpperCase();
 
-  if (normalized === "SUCCESS") {
+  if (normalized === "SUCCESS" || normalized === "FLAGGED") {
     return (
       <Badge className="border-transparent bg-green-100 text-green-800">
+        {status}
+      </Badge>
+    );
+  }
+
+  if (normalized === "FLAGGED_SMS_FAILED") {
+    return (
+      <Badge className="border-transparent bg-amber-100 text-amber-800">
         {status}
       </Badge>
     );
@@ -97,7 +105,7 @@ async function fetchResetLogs() {
   const data = await readJson(response);
 
   if (!response.ok) {
-    throw new Error(String(data.error || "Failed to load reset logs"));
+    throw new Error(String(data.error || "Failed to load PIN change logs"));
   }
 
   return Array.isArray(data.logs) ? (data.logs as ResetLog[]) : [];
@@ -127,7 +135,9 @@ export function UssdPinResetClient() {
         type: "error",
         title: "Log refresh failed",
         message:
-          error instanceof Error ? error.message : "Failed to load reset logs",
+          error instanceof Error
+            ? error.message
+            : "Failed to load PIN change logs",
       });
     } finally {
       setIsLoadingLogs(false);
@@ -152,7 +162,7 @@ export function UssdPinResetClient() {
             message:
               error instanceof Error
                 ? error.message
-                : "Failed to load reset logs",
+                : "Failed to load PIN change logs",
           });
         }
       } finally {
@@ -205,7 +215,7 @@ export function UssdPinResetClient() {
       setNotice({
         type: "error",
         title: "No client selected",
-        message: "Search and select a USSD client before resetting.",
+        message: "Search and select a USSD client before requiring a PIN change.",
       });
       return;
     }
@@ -237,22 +247,27 @@ export function UssdPinResetClient() {
       const data = await readJson(response);
 
       if (!response.ok) {
-        throw new Error(String(data.error || "PIN reset failed"));
+        throw new Error(String(data.error || "PIN change request failed"));
       }
 
       setNotice({
         type: "success",
-        title: "Reset requested",
-        message: String(data.message || "USSD reset SMS sent to the client."),
+        title: "PIN change requested",
+        message: String(
+          data.message ||
+            "The client will be prompted to set a new PIN in USSD."
+        ),
       });
       setReason("");
       await loadLogs();
     } catch (error) {
       setNotice({
         type: "error",
-        title: "Reset failed",
+        title: "PIN change request failed",
         message:
-          error instanceof Error ? error.message : "Failed to reset USSD PIN",
+          error instanceof Error
+            ? error.message
+            : "Failed to require USSD PIN change",
       });
       await loadLogs();
     } finally {
@@ -355,7 +370,7 @@ export function UssdPinResetClient() {
                 ) : (
                   <ShieldCheck className="mr-2 h-4 w-4" />
                 )}
-                Reset USSD PIN
+                Require PIN Change
               </Button>
             </div>
           )}
@@ -364,9 +379,9 @@ export function UssdPinResetClient() {
         <section className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="font-semibold">Recent resets</h3>
+              <h3 className="font-semibold">Recent PIN changes</h3>
               <p className="text-sm text-muted-foreground">
-                Staff-initiated USSD PIN reset activity
+                Staff-initiated USSD PIN change activity
               </p>
             </div>
             <Button
@@ -403,7 +418,7 @@ export function UssdPinResetClient() {
                     colSpan={6}
                     className="h-24 text-center text-muted-foreground"
                   >
-                    No reset activity found.
+                    No PIN change activity found.
                   </TableCell>
                 </TableRow>
               ) : (

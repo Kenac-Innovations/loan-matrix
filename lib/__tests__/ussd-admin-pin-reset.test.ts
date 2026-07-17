@@ -27,7 +27,7 @@ test("USSD admin client uses the dedicated admin key and never the loan-product 
   assert.doesNotMatch(source, /USSD_LOAN_PRODUCT_SYNC_API_KEY/);
 });
 
-test("USSD admin client returns structured reset failures from USSD", async () => {
+test("USSD admin client returns structured forced PIN change notification failures from USSD", async () => {
   process.env.USSD_BASE_URL = "http://localhost:8080/api/v1";
   process.env.USSD_ADMIN_API_KEY = "admin-reset-key";
 
@@ -35,12 +35,16 @@ test("USSD admin client returns structured reset failures from USSD", async () =
   globalThis.fetch = (async () =>
     new Response(
       JSON.stringify({
-        success: false,
-        status: "SMS_FAILED_PIN_CHANGED",
-        message: "PIN was changed but the reset SMS was not accepted",
+        success: true,
+        status: "FLAGGED_SMS_FAILED",
+        message:
+          "PIN change was required, but the notification SMS was not accepted",
+        resetRequired: true,
+        pinChanged: false,
+        smsAccepted: false,
       }),
       {
-        status: 400,
+        status: 200,
         headers: {
           "Content-Type": "application/json",
         },
@@ -56,12 +60,15 @@ test("USSD admin client returns structured reset failures from USSD", async () =
       reason: "Client verified at branch",
     });
 
-    assert.equal(result.success, false);
-    assert.equal(result.status, "SMS_FAILED_PIN_CHANGED");
+    assert.equal(result.success, true);
+    assert.equal(result.status, "FLAGGED_SMS_FAILED");
     assert.equal(
       result.message,
-      "PIN was changed but the reset SMS was not accepted"
+      "PIN change was required, but the notification SMS was not accepted"
     );
+    assert.equal(result.resetRequired, true);
+    assert.equal(result.pinChanged, false);
+    assert.equal(result.smsAccepted, false);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -101,7 +108,7 @@ test("USSD admin client normalizes string lookup user ids from USSD", async () =
   }
 });
 
-test("Loan Matrix audit model records reset attempts without storing PIN values", () => {
+test("Loan Matrix audit model records PIN change requests without storing PIN values", () => {
   const schema = readRepoFile("prisma/schema.prisma");
 
   assert.match(schema, /model UssdPinResetLog/);
@@ -113,14 +120,36 @@ test("Loan Matrix audit model records reset attempts without storing PIN values"
   assert.doesNotMatch(schema, /newPin|temporaryPin|plainPin|pinValue/i);
 });
 
-test("USSD PIN reset API creates and updates a local audit log", () => {
+test("USSD PIN reset API creates and updates a local audit log with USSD statuses", () => {
   const resetRoute = readRepoFile("app/api/ussd-pin-reset/reset/route.ts");
 
   assert.match(resetRoute, /requireUssdPinResetAccess/);
   assert.match(resetRoute, /prisma\.ussdPinResetLog\.create/);
   assert.match(resetRoute, /prisma\.ussdPinResetLog\.update/);
   assert.match(resetRoute, /resetUssdPin/);
+  assert.match(resetRoute, /const finalStatus =\s+resetResult\.status \|\|/);
+  assert.match(
+    resetRoute,
+    /const responseStatus = resetResult\.success \? 200 : 400/
+  );
+  assert.match(resetRoute, /{ status: responseStatus }/);
+  assert.match(resetRoute, /Failed to require USSD PIN change/);
+  assert.doesNotMatch(resetRoute, /\? "SUCCESS"/);
   assert.doesNotMatch(resetRoute, /newPin|temporaryPin|plainPin|pinValue/i);
+});
+
+test("USSD PIN reset screen requests a forced PIN change instead of describing a direct reset", () => {
+  const page = readRepoFile("app/(application)/ussd-pin-reset/page.tsx");
+  const component = readRepoFile(
+    "app/(application)/ussd-pin-reset/components/ussd-pin-reset-client.tsx"
+  );
+
+  assert.match(page, /flag a client to change their USSD PIN/);
+  assert.match(component, /Require PIN Change/);
+  assert.match(component, /PIN change requested/);
+  assert.match(component, /prompted to set a new PIN in USSD/);
+  assert.match(component, /Staff-initiated USSD PIN change activity/);
+  assert.doesNotMatch(component, /USSD reset SMS sent|Reset USSD PIN|PIN reset failed/);
 });
 
 test("USSD PIN reset permission is wired into users and navigation", () => {
