@@ -18,6 +18,7 @@ export async function GET() {
           isAdmin: false,
           isSuperAdmin: false,
           canConfirmPayments: false,
+          canResetUssdPin: false,
         },
         { status: 200 }
       );
@@ -38,6 +39,7 @@ export async function GET() {
           isAdmin: false,
           isSuperAdmin: false,
           canConfirmPayments: false,
+          canResetUssdPin: false,
         },
         { status: 200 }
       );
@@ -63,6 +65,7 @@ export async function GET() {
         },
         select: {
           canConfirmPayments: true,
+          canResetUssdPin: true,
         },
       }),
     ]);
@@ -80,6 +83,7 @@ export async function GET() {
       isAdmin,
       isSuperAdmin,
       canConfirmPayments: userLogin?.canConfirmPayments ?? false,
+      canResetUssdPin: isSuperAdmin || Boolean(userLogin?.canResetUssdPin),
     });
   } catch (error) {
     console.error("Error fetching user roles:", error);
@@ -89,6 +93,7 @@ export async function GET() {
         isAdmin: false,
         isSuperAdmin: false,
         canConfirmPayments: false,
+        canResetUssdPin: false,
       },
       { status: 200 }
     );
