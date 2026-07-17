@@ -15,7 +15,7 @@ test("USSD admin client uses the dedicated admin key and never the loan-product 
   process.env.USSD_BASE_URL = "http://localhost:8080/api/v1";
   process.env.USSD_ADMIN_API_KEY = "admin-reset-key";
 
-  const mod = await import("../ussd-admin-client.ts");
+  const mod = await import("../ussd-admin-client");
 
   assert.equal(typeof mod.normalizeUssdPhoneNumber, "function");
   assert.equal(mod.normalizeUssdPhoneNumber("0977 123 456"), "260977123456");
@@ -25,6 +25,80 @@ test("USSD admin client uses the dedicated admin key and never the loan-product 
   assert.match(source, /USSD_ADMIN_API_KEY/);
   assert.match(source, /X-USSD-Admin-Key/);
   assert.doesNotMatch(source, /USSD_LOAN_PRODUCT_SYNC_API_KEY/);
+});
+
+test("USSD admin client returns structured reset failures from USSD", async () => {
+  process.env.USSD_BASE_URL = "http://localhost:8080/api/v1";
+  process.env.USSD_ADMIN_API_KEY = "admin-reset-key";
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        success: false,
+        status: "SMS_FAILED_PIN_CHANGED",
+        message: "PIN was changed but the reset SMS was not accepted",
+      }),
+      {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    )) as typeof fetch;
+
+  try {
+    const mod = await import("../ussd-admin-client");
+    const result = await mod.resetUssdPin({
+      phoneNumber: "0977 123 456",
+      actorUserId: 501,
+      actorName: "Admin User",
+      reason: "Client verified at branch",
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, "SMS_FAILED_PIN_CHANGED");
+    assert.equal(
+      result.message,
+      "PIN was changed but the reset SMS was not accepted"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("USSD admin client normalizes string lookup user ids from USSD", async () => {
+  process.env.USSD_BASE_URL = "http://localhost:8080/api/v1";
+  process.env.USSD_ADMIN_API_KEY = "admin-reset-key";
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        userId: "42",
+        fullName: "Mary Banda",
+        nationalIdMask: "123456****",
+        phoneNumber: "260977123456",
+        accountNumber: "ACC-123",
+        status: "ACTIVE",
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    )) as typeof fetch;
+
+  try {
+    const mod = await import("../ussd-admin-client");
+    const result = await mod.lookupUssdUserByPhone("0977 123 456");
+
+    assert.equal(result?.userId, 42);
+    assert.equal(typeof result?.userId, "number");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("Loan Matrix audit model records reset attempts without storing PIN values", () => {

@@ -59,6 +59,74 @@ async function readResponseBody(response: Response): Promise<string> {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function numericId(value: unknown, fieldName: string): number {
+  const id = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(id)) {
+    throw new Error(`USSD response returned an invalid ${fieldName}`);
+  }
+
+  return id;
+}
+
+function parseUssdAdminUser(payload: unknown): UssdAdminUser {
+  if (
+    !isRecord(payload) ||
+    typeof payload.fullName !== "string" ||
+    typeof payload.phoneNumber !== "string"
+  ) {
+    throw new Error("USSD lookup returned invalid user details");
+  }
+
+  return {
+    userId: numericId(payload.userId, "userId"),
+    fullName: payload.fullName,
+    nationalIdMask: optionalString(payload.nationalIdMask),
+    phoneNumber: payload.phoneNumber,
+    createdAt: optionalString(payload.createdAt),
+  };
+}
+
+function parseUssdResetResult(payload: unknown): UssdAdminResetResult | null {
+  if (
+    !isRecord(payload) ||
+    typeof payload.success !== "boolean" ||
+    typeof payload.status !== "string" ||
+    typeof payload.message !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    success: payload.success,
+    status: payload.status,
+    message: payload.message,
+    userId: payload.userId == null ? null : numericId(payload.userId, "userId"),
+    fullName: optionalString(payload.fullName),
+    phoneNumber: optionalString(payload.phoneNumber),
+  };
+}
+
+function parseUssdResetResultBody(body: string): UssdAdminResetResult | null {
+  if (!body) {
+    return null;
+  }
+
+  try {
+    return parseUssdResetResult(JSON.parse(body));
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeUssdPhoneNumber(phoneNumber: string): string {
   const digits = String(phoneNumber || "").replace(/\D/g, "");
 
@@ -100,7 +168,8 @@ export async function lookupUssdUserByPhone(
     );
   }
 
-  return response.json() as Promise<UssdAdminUser>;
+  const payload = await response.json();
+  return parseUssdAdminUser(payload);
 }
 
 export async function resetUssdPin(
@@ -119,10 +188,21 @@ export async function resetUssdPin(
 
   if (!response.ok) {
     const body = await readResponseBody(response);
+    const resetResult = parseUssdResetResultBody(body);
+    if (resetResult) {
+      return resetResult;
+    }
+
     throw new Error(
       `USSD PIN reset failed (${response.status}): ${body || response.statusText}`
     );
   }
 
-  return response.json() as Promise<UssdAdminResetResult>;
+  const payload = await response.json();
+  const resetResult = parseUssdResetResult(payload);
+  if (!resetResult) {
+    throw new Error("USSD PIN reset returned invalid reset details");
+  }
+
+  return resetResult;
 }
