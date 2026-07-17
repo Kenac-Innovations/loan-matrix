@@ -11,6 +11,11 @@ import {
 import {
   isCashierCounterEntryBlockedByLoanContext,
 } from "@/lib/cashier-txn-reversal-eligibility";
+import {
+  buildCashierTransactionLoanContext,
+  extractLoanIdFromCashierTransactionNotes,
+  matchLoanPayoutForCashierTransaction,
+} from "@/lib/cashier-transaction-enrichment";
 
 type TellerRow = NonNullable<Awaited<ReturnType<typeof prisma.teller.findFirst>>>;
 type CashierRow = NonNullable<Awaited<ReturnType<typeof prisma.cashier.findFirst>>>;
@@ -57,123 +62,6 @@ type CashierSummaryPayload = {
     | CashierTransaction[];
   [key: string]: unknown;
 };
-
-const LOAN_REPAYMENT_NOTE_REGEX = /loan repayment\s*#\s*(\d+)/i;
-
-function extractLoanIdFromNotes(notes: string | null | undefined): number | null {
-  if (!notes) return null;
-  const match = notes.match(LOAN_REPAYMENT_NOTE_REGEX);
-  if (!match) return null;
-  const loanId = Number(match[1]);
-  return Number.isFinite(loanId) ? loanId : null;
-}
-
-function normalizeText(value: string | null | undefined): string {
-  return (value ?? "").trim().toLowerCase();
-}
-
-function getTransactionDate(value: unknown): Date | null {
-  if (Array.isArray(value) && value.length >= 3) {
-    const [year, month, day] = value;
-    if (
-      typeof year === "number" &&
-      typeof month === "number" &&
-      typeof day === "number"
-    ) {
-      return new Date(year, month - 1, day);
-    }
-  }
-
-  if (typeof value === "string") {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed;
-    }
-  }
-
-  return null;
-}
-
-function isSameCalendarDay(a: Date | null, b: Date | null): boolean {
-  if (!a || !b) return false;
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-function buildLeadFullName(lead: {
-  fullname?: string | null;
-  firstname?: string | null;
-  middlename?: string | null;
-  lastname?: string | null;
-}) {
-  const explicit = lead.fullname?.trim();
-  if (explicit) return explicit;
-
-  const joined = [lead.firstname, lead.middlename, lead.lastname]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-
-  return joined || null;
-}
-
-function matchLoanPayoutForTransaction(
-  tx: CashierTransaction,
-  payouts: Array<{
-    id: string;
-    fineractLoanId: number;
-    fineractClientId: number;
-    clientName: string;
-    loanAccountNo: string;
-    amount: number;
-    paidAt: Date | null;
-    voidedAt: Date | null;
-    createdAt: Date;
-  }>
-) {
-  const note = String(tx?.txnNote ?? tx?.notes ?? "");
-  const noteLower = normalizeText(note);
-  const looksLoanRelated =
-    noteLower.includes("loan disbursement") ||
-    noteLower.includes("payout") ||
-    noteLower.includes("credit balance refund");
-
-  if (!looksLoanRelated) {
-    return null;
-  }
-
-  const amount = Math.abs(Number(tx?.txnAmount ?? tx?.amount ?? 0));
-  const txDate = getTransactionDate(
-    tx?.txnDate ?? tx?.transactionDate ?? tx?.createdDate
-  );
-
-  let candidates = payouts.filter(
-    (payout) => Math.abs(Math.abs(payout.amount) - amount) < 0.01
-  );
-
-  if (txDate) {
-    const sameDay = candidates.filter((payout) =>
-      isSameCalendarDay(txDate, payout.paidAt ?? payout.voidedAt ?? payout.createdAt)
-    );
-    if (sameDay.length > 0) {
-      candidates = sameDay;
-    }
-  }
-
-  const byNarration = candidates.filter((payout) => {
-    const clientName = normalizeText(payout.clientName);
-    const accountNo = normalizeText(payout.loanAccountNo);
-    return (
-      (!!clientName && noteLower.includes(clientName)) ||
-      (!!accountNo && noteLower.includes(accountNo))
-    );
-  });
-
-  return byNarration[0] ?? candidates[0] ?? null;
-}
 
 function isDuplicateFineractAllocationError(error: unknown) {
   return (
@@ -535,7 +423,9 @@ export async function GET(
 
     const candidateLoanIds = new Set<number>();
     for (const tx of normalizedItems) {
-      const noteLoanId = extractLoanIdFromNotes(tx?.txnNote ?? tx?.notes);
+      const noteLoanId = extractLoanIdFromCashierTransactionNotes(
+        tx?.txnNote ?? tx?.notes
+      );
       if (noteLoanId != null) {
         candidateLoanIds.add(noteLoanId);
       }
@@ -554,7 +444,7 @@ export async function GET(
         }
       }
 
-      const payoutMatch = matchLoanPayoutForTransaction(tx, loanPayouts);
+      const payoutMatch = matchLoanPayoutForCashierTransaction(tx, loanPayouts);
       if (payoutMatch?.fineractLoanId != null) {
         candidateLoanIds.add(payoutMatch.fineractLoanId);
       }
@@ -586,7 +476,9 @@ export async function GET(
     );
 
     const enrichedItems = normalizedItems.map((tx) => {
-      const noteLoanId = extractLoanIdFromNotes(tx?.txnNote ?? tx?.notes);
+      const noteLoanId = extractLoanIdFromCashierTransactionNotes(
+        tx?.txnNote ?? tx?.notes
+      );
       const repaymentLoanId =
         typeof tx?.id === "number" ? repaymentLinkByTxId.get(tx.id) ?? null : null;
 
@@ -596,31 +488,22 @@ export async function GET(
           : null;
 
       if (!payoutMatch) {
-        payoutMatch = matchLoanPayoutForTransaction(tx, loanPayouts);
+        payoutMatch = matchLoanPayoutForCashierTransaction(tx, loanPayouts);
       }
 
       const linkedLoanId =
         noteLoanId ?? repaymentLoanId ?? payoutMatch?.fineractLoanId ?? null;
       const lead = linkedLoanId != null ? leadByLoanId.get(linkedLoanId) ?? null : null;
-      const linkedClientId =
-        lead?.fineractClientId ?? payoutMatch?.fineractClientId ?? null;
-      const linkedFullName =
-        buildLeadFullName(lead ?? {}) ?? payoutMatch?.clientName ?? null;
-      const loanDetailHref =
-        linkedLoanId != null && linkedClientId != null
-          ? `/clients/${linkedClientId}/loans/${linkedLoanId}`
-          : lead?.id
-          ? `/leads/${lead.id}`
-          : null;
+      const loanContext = buildCashierTransactionLoanContext({
+        tx,
+        repaymentLoanId,
+        payoutMatch,
+        lead,
+      });
 
       return {
         ...tx,
-        linkedLoanId,
-        linkedClientId,
-        linkedLeadId: lead?.id ?? null,
-        linkedNrc: lead?.externalId ?? null,
-        linkedFullName,
-        loanDetailHref,
+        ...loanContext,
       };
     });
 
