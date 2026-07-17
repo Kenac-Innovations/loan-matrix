@@ -142,6 +142,7 @@ export interface TenantInfo {
   domain?: string | null;
   settings?: TenantSettings;
   notificationServiceTenantId?: string | null;
+  ussdServiceTenantId?: string | null;
   restrictLeadVisibilityToBranches?: boolean;
   onlyOriginatorCanDisburse?: boolean;
   autoAssignLeadOnApproval?: boolean;

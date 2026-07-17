@@ -7,6 +7,7 @@ import {
 } from "@/lib/ussd-admin-client";
 import {
   requireUssdPinResetAccess,
+  requireUssdServiceTenantId,
   UssdPinResetAccessError,
 } from "@/lib/ussd-pin-reset-access";
 
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const access = await requireUssdPinResetAccess();
+    const ussdServiceTenantId = requireUssdServiceTenantId(access.tenant);
     const body = (await request.json().catch(() => ({}))) as ResetBody;
     const phoneNumber = cleanString(body.phoneNumber);
     const reason = cleanString(body.reason);
@@ -55,7 +57,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await lookupUssdUserByPhone(normalizedPhoneNumber);
+    const user = await lookupUssdUserByPhone({
+      phoneNumber: normalizedPhoneNumber,
+      ussdServiceTenantId,
+    });
 
     if (!user) {
       const notFoundLog = await prisma.ussdPinResetLog.create({
@@ -96,6 +101,7 @@ export async function POST(request: NextRequest) {
     logId = log.id;
 
     const resetResult = await resetUssdPin({
+      ussdServiceTenantId,
       phoneNumber: user.phoneNumber || normalizedPhoneNumber,
       actorUserId: access.actorUserId,
       actorName: access.actorName,

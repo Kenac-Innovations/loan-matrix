@@ -21,10 +21,16 @@ export type UssdAdminResetResult = {
 };
 
 type ResetInput = {
+  ussdServiceTenantId: string;
   phoneNumber: string;
   actorUserId: number;
   actorName: string;
   reason: string;
+};
+
+type LookupInput = {
+  ussdServiceTenantId: string;
+  phoneNumber: string;
 };
 
 function getUssdApiBaseUrl(): string {
@@ -47,10 +53,16 @@ function getUssdAdminApiKey(): string {
   return apiKey;
 }
 
-function getAdminHeaders(): Record<string, string> {
+function getAdminHeaders(ussdServiceTenantId: string): Record<string, string> {
+  const tenantId = ussdServiceTenantId.trim();
+  if (!tenantId) {
+    throw new Error("USSD service tenant id is required");
+  }
+
   return {
     "Content-Type": "application/json",
     "X-USSD-Admin-Key": getUssdAdminApiKey(),
+    "X-USSD-Tenant-Id": tenantId,
   };
 }
 
@@ -155,16 +167,17 @@ export function normalizeUssdPhoneNumber(phoneNumber: string): string {
   return digits;
 }
 
-export async function lookupUssdUserByPhone(
-  phoneNumber: string
-): Promise<UssdAdminUser | null> {
+export async function lookupUssdUserByPhone({
+  phoneNumber,
+  ussdServiceTenantId,
+}: LookupInput): Promise<UssdAdminUser | null> {
   const normalizedPhoneNumber = normalizeUssdPhoneNumber(phoneNumber);
   const url = new URL(`${getUssdApiBaseUrl()}/admin/users/lookup`);
   url.searchParams.set("phoneNumber", normalizedPhoneNumber);
 
   const response = await fetch(url, {
     method: "GET",
-    headers: getAdminHeaders(),
+    headers: getAdminHeaders(ussdServiceTenantId),
   });
 
   if (response.status === 404) {
@@ -187,7 +200,7 @@ export async function resetUssdPin(
 ): Promise<UssdAdminResetResult> {
   const response = await fetch(`${getUssdApiBaseUrl()}/admin/users/pin-reset`, {
     method: "POST",
-    headers: getAdminHeaders(),
+    headers: getAdminHeaders(input.ussdServiceTenantId),
     body: JSON.stringify({
       phoneNumber: normalizeUssdPhoneNumber(input.phoneNumber),
       actorUserId: input.actorUserId,

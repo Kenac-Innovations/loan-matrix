@@ -54,6 +54,7 @@ test("USSD admin client returns structured forced PIN change notification failur
   try {
     const mod = await import("../ussd-admin-client");
     const result = await mod.resetUssdPin({
+      ussdServiceTenantId: "goodfellow",
       phoneNumber: "0977 123 456",
       actorUserId: 501,
       actorName: "Admin User",
@@ -69,6 +70,49 @@ test("USSD admin client returns structured forced PIN change notification failur
     assert.equal(result.resetRequired, true);
     assert.equal(result.pinChanged, false);
     assert.equal(result.smsAccepted, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("USSD admin client sends the configured service tenant id in headers", async () => {
+  process.env.USSD_BASE_URL = "http://localhost:8080/api/v1";
+  process.env.USSD_ADMIN_API_KEY = "admin-reset-key";
+
+  const requests: Array<{ url: string; headers: Headers }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      headers: new Headers(init?.headers),
+    });
+
+    return new Response(
+      JSON.stringify({
+        userId: "42",
+        fullName: "Mary Banda",
+        nationalIdMask: "123456****",
+        phoneNumber: "260977123456",
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }) as typeof fetch;
+
+  try {
+    const mod = await import("../ussd-admin-client");
+    await mod.lookupUssdUserByPhone({
+      phoneNumber: "0977 123 456",
+      ussdServiceTenantId: "goodfellow",
+    });
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].headers.get("X-USSD-Tenant-Id"), "goodfellow");
+    assert.match(requests[0].url, /phoneNumber=260977123456/);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -99,7 +143,10 @@ test("USSD admin client normalizes string lookup user ids from USSD", async () =
 
   try {
     const mod = await import("../ussd-admin-client");
-    const result = await mod.lookupUssdUserByPhone("0977 123 456");
+    const result = await mod.lookupUssdUserByPhone({
+      phoneNumber: "0977 123 456",
+      ussdServiceTenantId: "goodfellow",
+    });
 
     assert.equal(result?.userId, 42);
     assert.equal(typeof result?.userId, "number");
@@ -112,6 +159,7 @@ test("Loan Matrix audit model records PIN change requests without storing PIN va
   const schema = readRepoFile("prisma/schema.prisma");
 
   assert.match(schema, /model UssdPinResetLog/);
+  assert.match(schema, /ussdServiceTenantId\s+String\?/);
   assert.match(schema, /canResetUssdPin\s+Boolean\s+@default\(false\)/);
   assert.match(schema, /ussdPinResetLogs\s+UssdPinResetLog\[\]/);
   assert.match(schema, /status\s+String\s+@default\("PENDING"\)/);
@@ -122,10 +170,17 @@ test("Loan Matrix audit model records PIN change requests without storing PIN va
 
 test("USSD PIN reset API creates and updates a local audit log with USSD statuses", () => {
   const resetRoute = readRepoFile("app/api/ussd-pin-reset/reset/route.ts");
+  const access = readRepoFile("lib/ussd-pin-reset-access.ts");
 
   assert.match(resetRoute, /requireUssdPinResetAccess/);
   assert.match(resetRoute, /prisma\.ussdPinResetLog\.create/);
   assert.match(resetRoute, /prisma\.ussdPinResetLog\.update/);
+  assert.match(resetRoute, /ussdServiceTenantId/);
+  assert.match(resetRoute, /requireUssdServiceTenantId/);
+  assert.match(
+    access,
+    /USSD PIN reset is not enabled for this tenant/
+  );
   assert.match(resetRoute, /resetUssdPin/);
   assert.match(resetRoute, /const finalStatus =\s+resetResult\.status \|\|/);
   assert.match(
