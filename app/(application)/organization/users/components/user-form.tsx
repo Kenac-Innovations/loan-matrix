@@ -84,6 +84,7 @@ type FormState = {
   passwordNeverExpires: boolean;
   canOverrideInitiatorDisbursement: boolean;
   canConfirmPayments: boolean;
+  canResetUssdPin: boolean;
   officeId: string;
   staffId: string;
   visibleLeadOfficeIds: number[];
@@ -111,6 +112,7 @@ function buildInitialState(
     canOverrideInitiatorDisbursement:
       initialUser?.canOverrideInitiatorDisbursement ?? false,
     canConfirmPayments: initialUser?.canConfirmPayments ?? false,
+    canResetUssdPin: initialUser?.canResetUssdPin ?? false,
     officeId: initialUser?.officeId ? String(initialUser.officeId) : "",
     staffId: initialUser?.staff?.id ? String(initialUser.staff.id) : "",
     visibleLeadOfficeIds: initialUser?.visibleLeadOffices.map((office) => office.id) ?? [],
@@ -500,6 +502,7 @@ export function UserForm({
       passwordNeverExpires: form.passwordNeverExpires,
       canOverrideInitiatorDisbursement: form.canOverrideInitiatorDisbursement,
       canConfirmPayments: form.canConfirmPayments,
+      canResetUssdPin: form.canResetUssdPin,
       officeId: form.officeId,
       staffId: form.staffId || null,
       visibleLeadOfficeIds: visibleLeadOfficeSelection,
@@ -824,6 +827,22 @@ export function UserForm({
             <p className="text-sm text-muted-foreground">
               Allow this user to access payment confirmation uploads, lookups,
               confirmations, and loan rejection actions.
+            </p>
+          </div>
+        </label>
+
+        <label className="flex items-start gap-3 rounded-lg border p-4">
+          <Checkbox
+            checked={form.canResetUssdPin}
+            onCheckedChange={(checked) =>
+              handleChange("canResetUssdPin", checked === true)
+            }
+          />
+          <div className="space-y-1">
+            <span className="font-medium">Can reset USSD PIN</span>
+            <p className="text-sm text-muted-foreground">
+              Allow this user to search USSD clients and request staff-initiated
+              PIN resets.
             </p>
           </div>
         </label>
