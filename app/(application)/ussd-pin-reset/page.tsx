@@ -12,7 +12,7 @@ import { UssdPinResetClient } from "./components/ussd-pin-reset-client";
 
 export const metadata: Metadata = {
   title: "USSD PIN Reset | KENAC Loan Matrix",
-  description: "Reset Goodfellow USSD client PINs",
+  description: "Require Goodfellow USSD clients to change PINs",
 };
 
 export default async function UssdPinResetPage() {
@@ -40,7 +40,7 @@ export default async function UssdPinResetPage() {
             USSD PIN Reset
           </h2>
           <p className="text-muted-foreground">
-            Search a USSD client and request a staff-initiated PIN reset.
+            Search a USSD client and flag a client to change their USSD PIN.
           </p>
         </div>
       </div>
