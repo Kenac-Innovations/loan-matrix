@@ -7,6 +7,7 @@ import {
 } from "@/lib/ussd-admin-client";
 import {
   requireUssdPinResetAccess,
+  requireUssdServiceTenantId,
   UssdPinResetAccessError,
 } from "@/lib/ussd-pin-reset-access";
 
@@ -24,9 +25,9 @@ function errorResponse(error: unknown) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
 
-  console.error("USSD PIN reset request failed:", error);
+  console.error("USSD PIN change request failed:", error);
   return NextResponse.json(
-    { error: "Failed to reset USSD PIN" },
+    { error: "Failed to require USSD PIN change" },
     { status: 500 }
   );
 }
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const access = await requireUssdPinResetAccess();
+    const ussdServiceTenantId = requireUssdServiceTenantId(access.tenant);
     const body = (await request.json().catch(() => ({}))) as ResetBody;
     const phoneNumber = cleanString(body.phoneNumber);
     const reason = cleanString(body.reason);
@@ -50,12 +52,15 @@ export async function POST(request: NextRequest) {
 
     if (!reason) {
       return NextResponse.json(
-        { error: "Reset reason is required" },
+        { error: "PIN change reason is required" },
         { status: 400 }
       );
     }
 
-    const user = await lookupUssdUserByPhone(normalizedPhoneNumber);
+    const user = await lookupUssdUserByPhone({
+      phoneNumber: normalizedPhoneNumber,
+      ussdServiceTenantId,
+    });
 
     if (!user) {
       const notFoundLog = await prisma.ussdPinResetLog.create({
@@ -96,15 +101,15 @@ export async function POST(request: NextRequest) {
     logId = log.id;
 
     const resetResult = await resetUssdPin({
+      ussdServiceTenantId,
       phoneNumber: user.phoneNumber || normalizedPhoneNumber,
       actorUserId: access.actorUserId,
       actorName: access.actorName,
       reason,
     });
 
-    const finalStatus = resetResult.success
-      ? "SUCCESS"
-      : resetResult.status || "FAILED";
+    const finalStatus =
+      resetResult.status || (resetResult.success ? "FLAGGED" : "FAILED");
 
     await prisma.ussdPinResetLog.update({
       where: {
@@ -118,18 +123,26 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      success: resetResult.success,
-      status: finalStatus,
-      message: resetResult.message,
-      user: {
-        userId: user.userId,
-        fullName: user.fullName,
-        nationalIdMask: user.nationalIdMask,
-        phoneNumber: user.phoneNumber,
+    const responseStatus = resetResult.success ? 200 : 400;
+
+    return NextResponse.json(
+      {
+        success: resetResult.success,
+        status: finalStatus,
+        message: resetResult.message,
+        resetRequired: resetResult.resetRequired,
+        pinChanged: resetResult.pinChanged,
+        smsAccepted: resetResult.smsAccepted,
+        user: {
+          userId: user.userId,
+          fullName: user.fullName,
+          nationalIdMask: user.nationalIdMask,
+          phoneNumber: user.phoneNumber,
+        },
+        logId: log.id,
       },
-      logId: log.id,
-    });
+      { status: responseStatus }
+    );
   } catch (error) {
     if (logId) {
       await prisma.ussdPinResetLog.update({
@@ -139,7 +152,9 @@ export async function POST(request: NextRequest) {
         data: {
           status: "FAILED",
           errorMessage:
-            error instanceof Error ? error.message : "Unknown reset failure",
+            error instanceof Error
+              ? error.message
+              : "Unknown PIN change request failure",
           completedAt: new Date(),
         },
       });

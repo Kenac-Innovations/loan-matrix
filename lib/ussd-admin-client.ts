@@ -15,13 +15,22 @@ export type UssdAdminResetResult = {
   userId?: number | null;
   fullName?: string | null;
   phoneNumber?: string | null;
+  pinChanged?: boolean | null;
+  smsAccepted?: boolean | null;
+  resetRequired?: boolean | null;
 };
 
 type ResetInput = {
+  ussdServiceTenantId: string;
   phoneNumber: string;
   actorUserId: number;
   actorName: string;
   reason: string;
+};
+
+type LookupInput = {
+  ussdServiceTenantId: string;
+  phoneNumber: string;
 };
 
 function getUssdApiBaseUrl(): string {
@@ -44,10 +53,16 @@ function getUssdAdminApiKey(): string {
   return apiKey;
 }
 
-function getAdminHeaders(): Record<string, string> {
+function getAdminHeaders(ussdServiceTenantId: string): Record<string, string> {
+  const tenantId = ussdServiceTenantId.trim();
+  if (!tenantId) {
+    throw new Error("USSD service tenant id is required");
+  }
+
   return {
     "Content-Type": "application/json",
     "X-USSD-Admin-Key": getUssdAdminApiKey(),
+    "X-USSD-Tenant-Id": tenantId,
   };
 }
 
@@ -65,6 +80,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function optionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
+}
+
+function optionalBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function numericId(value: unknown, fieldName: string): number {
@@ -112,6 +131,9 @@ function parseUssdResetResult(payload: unknown): UssdAdminResetResult | null {
     userId: payload.userId == null ? null : numericId(payload.userId, "userId"),
     fullName: optionalString(payload.fullName),
     phoneNumber: optionalString(payload.phoneNumber),
+    pinChanged: optionalBoolean(payload.pinChanged),
+    smsAccepted: optionalBoolean(payload.smsAccepted),
+    resetRequired: optionalBoolean(payload.resetRequired),
   };
 }
 
@@ -145,16 +167,17 @@ export function normalizeUssdPhoneNumber(phoneNumber: string): string {
   return digits;
 }
 
-export async function lookupUssdUserByPhone(
-  phoneNumber: string
-): Promise<UssdAdminUser | null> {
+export async function lookupUssdUserByPhone({
+  phoneNumber,
+  ussdServiceTenantId,
+}: LookupInput): Promise<UssdAdminUser | null> {
   const normalizedPhoneNumber = normalizeUssdPhoneNumber(phoneNumber);
   const url = new URL(`${getUssdApiBaseUrl()}/admin/users/lookup`);
   url.searchParams.set("phoneNumber", normalizedPhoneNumber);
 
   const response = await fetch(url, {
     method: "GET",
-    headers: getAdminHeaders(),
+    headers: getAdminHeaders(ussdServiceTenantId),
   });
 
   if (response.status === 404) {
@@ -177,7 +200,7 @@ export async function resetUssdPin(
 ): Promise<UssdAdminResetResult> {
   const response = await fetch(`${getUssdApiBaseUrl()}/admin/users/pin-reset`, {
     method: "POST",
-    headers: getAdminHeaders(),
+    headers: getAdminHeaders(input.ussdServiceTenantId),
     body: JSON.stringify({
       phoneNumber: normalizeUssdPhoneNumber(input.phoneNumber),
       actorUserId: input.actorUserId,
@@ -194,14 +217,16 @@ export async function resetUssdPin(
     }
 
     throw new Error(
-      `USSD PIN reset failed (${response.status}): ${body || response.statusText}`
+      `USSD PIN change request failed (${response.status}): ${
+        body || response.statusText
+      }`
     );
   }
 
   const payload = await response.json();
   const resetResult = parseUssdResetResult(payload);
   if (!resetResult) {
-    throw new Error("USSD PIN reset returned invalid reset details");
+    throw new Error("USSD PIN change request returned invalid details");
   }
 
   return resetResult;

@@ -15,6 +15,7 @@ model Tenant {
   domain                 String?
   settings               Json?
   notificationServiceTenantId String?
+  ussdServiceTenantId    String?
   logoLinkId             String?                 // Document service link ID (UUID) for logo
   logoFileUrl            String?                 // Document service file URL for display
   isActive               Boolean                 @default(true)

@@ -14,6 +14,9 @@ export class UssdPinResetAccessError extends Error {
 
 type SessionLike = Awaited<ReturnType<typeof getSession>>;
 
+export const USSD_PIN_RESET_NOT_ENABLED_MESSAGE =
+  "USSD PIN reset is not enabled for this tenant. Contact your administrator to configure the USSD service tenant.";
+
 function isSuperAdminSession(session: SessionLike): boolean {
   if (!session?.user) {
     return false;
@@ -105,4 +108,19 @@ export async function requireUssdPinResetAccess() {
     actorUserId: session.user.userId,
     actorName: session.user.name,
   };
+}
+
+export function requireUssdServiceTenantId(tenant: {
+  ussdServiceTenantId?: string | null;
+}): string {
+  const ussdServiceTenantId = tenant.ussdServiceTenantId?.trim();
+
+  if (!ussdServiceTenantId) {
+    throw new UssdPinResetAccessError(
+      USSD_PIN_RESET_NOT_ENABLED_MESSAGE,
+      403
+    );
+  }
+
+  return ussdServiceTenantId;
 }
