@@ -137,6 +137,9 @@ const formatLoanSequenceLabel = (position: number): string => {
   }
 };
 
+const loanDetailsTabTriggerClass =
+  "shrink-0 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white";
+
 export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -3537,74 +3540,74 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <div className="w-full">
-          <TabsList className="h-12 flex w-max min-w-full bg-muted/50 p-1 rounded-lg gap-1 sm:flex-wrap sm:w-full">
+        <div className="w-full overflow-x-auto overflow-y-hidden pb-1">
+          <TabsList className="h-12 inline-flex min-w-max bg-muted/50 p-1 rounded-lg gap-1">
             <TabsTrigger 
               value="general" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <User className="h-4 w-4" />
               <span className="hidden sm:inline">General</span>
             </TabsTrigger>
             <TabsTrigger 
               value="account-details" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <CreditCard className="h-4 w-4" />
               <span className="hidden sm:inline">Account Details</span>
             </TabsTrigger>
             <TabsTrigger 
               value="schedule" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <Calendar className="h-4 w-4" />
               <span className="hidden sm:inline">Repayment Schedule</span>
             </TabsTrigger>
             <TabsTrigger 
               value="transactions" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <DollarSign className="h-4 w-4" />
               <span className="hidden sm:inline">Transactions</span>
             </TabsTrigger>
             <TabsTrigger 
               value="collateral" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <Shield className="h-4 w-4" />
               <span className="hidden sm:inline">Collateral</span>
             </TabsTrigger>
             <TabsTrigger 
               value="overdue-charges" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <AlertCircle className="h-4 w-4" />
               <span className="hidden sm:inline">Overdue</span>
             </TabsTrigger>
             <TabsTrigger 
               value="charges" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <Coins className="h-4 w-4" />
               <span className="hidden sm:inline">Charges</span>
             </TabsTrigger>
             <TabsTrigger 
               value="loan-reschedules" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <RotateCcw className="h-4 w-4" />
               <span className="hidden sm:inline">Reschedules</span>
             </TabsTrigger>
             <TabsTrigger 
               value="loan-documents" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <FileText className="h-4 w-4" />
               <span className="hidden sm:inline">Documents</span>
             </TabsTrigger>
             <TabsTrigger 
               value="notes" 
-              className="flex-1 flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium whitespace-nowrap sm:px-4 sm:text-sm sm:gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className={loanDetailsTabTriggerClass}
             >
               <StickyNote className="h-4 w-4" />
               <span className="hidden sm:inline">Notes</span>
