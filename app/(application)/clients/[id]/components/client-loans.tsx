@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useCurrency } from "@/contexts/currency-context";
 import useSWR from 'swr';
 import {
@@ -9,6 +10,7 @@ import {
   AlertCircle,
   TrendingUp,
   ChevronRight,
+  Search,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -19,6 +21,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -27,6 +31,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  buildClientLoanSequenceNumbers,
+  CLIENT_LOANS_PAGE_SIZE,
+  filterClientLoans,
+  orderClientLoansLatestFirst,
+  paginateClientLoans,
+} from "@/lib/client-loans-table";
 import { getDisplayLoanStatus } from "@/lib/loan-status";
 import {
   extractTenantSlugFromHostname,
@@ -102,6 +113,7 @@ interface RawClientLoan {
     submittedOnDate?: string;
     approvedOnDate?: string;
     actualDisbursementDate?: string;
+    expectedDisbursementDate?: string;
     expectedMaturityDate?: string;
   };
   summary?: {
@@ -117,16 +129,6 @@ interface RawClientLoan {
     pastDueDays?: number;
     delinquentDays?: number;
     delinquentAmount?: number;
-  };
-}
-
-interface ClientLoanSequenceItem {
-  id: number;
-  timeline?: {
-    submittedOnDate?: string;
-    approvedOnDate?: string;
-    actualDisbursementDate?: string;
-    expectedDisbursementDate?: string;
   };
 }
 
@@ -149,31 +151,18 @@ interface LoanDetailsForTable {
   };
 }
 
-const getLoanSequenceSortTime = (loan: ClientLoanSequenceItem): number => {
-  const candidateDates = [
-    loan.timeline?.submittedOnDate,
-    loan.timeline?.approvedOnDate,
-    loan.timeline?.actualDisbursementDate,
-    loan.timeline?.expectedDisbursementDate,
-  ];
-
-  for (const value of candidateDates) {
-    if (typeof value === "string" && value) {
-      const parsed = new Date(value).getTime();
-      if (!Number.isNaN(parsed)) {
-        return parsed;
-      }
-    }
-  }
-
-  return Number.MAX_SAFE_INTEGER;
-};
-
 // Simple fetcher for SWR
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function ClientLoans({ clientId, readOnly = false }: ClientLoansProps) {
   const router = useRouter();
+  const [loanPageRequest, setLoanPageRequest] = useState({
+    clientId,
+    loanCount: 0,
+    searchQuery: "",
+    page: 1,
+  });
+  const [loanSearchQuery, setLoanSearchQuery] = useState("");
   const tenantSlug =
     typeof globalThis.window !== "undefined"
       ? extractTenantSlugFromHostname(globalThis.location.hostname)
@@ -259,6 +248,7 @@ export function ClientLoans({ clientId, readOnly = false }: ClientLoansProps) {
         submittedOnDate: loan.timeline?.submittedOnDate || "",
         approvedOnDate: loan.timeline?.approvedOnDate || "",
         actualDisbursementDate: loan.timeline?.actualDisbursementDate || "",
+        expectedDisbursementDate: loan.timeline?.expectedDisbursementDate || "",
         expectedMaturityDate: loan.timeline?.expectedMaturityDate || "",
       },
       summary: {
@@ -486,18 +476,19 @@ export function ClientLoans({ clientId, readOnly = false }: ClientLoansProps) {
     const statusLower = loan.displayStatus.toLowerCase();
     return statusLower.includes("active") || statusLower.includes("overdue");
   }).length;
-  const orderedLoans = [...loans].sort((left, right) => {
-    const timeDiff =
-      getLoanSequenceSortTime(left) - getLoanSequenceSortTime(right);
-
-    if (timeDiff !== 0) {
-      return timeDiff;
-    }
-
-    return left.id - right.id;
-  });
-  const loanSequenceNumbers = new Map(
-    orderedLoans.map((loan, index) => [loan.id, index + 1])
+  const displayLoans = orderClientLoansLatestFirst(loans);
+  const filteredLoans = filterClientLoans(displayLoans, loanSearchQuery);
+  const loanSequenceNumbers = buildClientLoanSequenceNumbers(loans);
+  const currentPage =
+    loanPageRequest.clientId === clientId &&
+    loanPageRequest.loanCount === loans.length &&
+    loanPageRequest.searchQuery === loanSearchQuery
+      ? loanPageRequest.page
+      : 1;
+  const paginatedLoans = paginateClientLoans(
+    filteredLoans,
+    currentPage,
+    CLIENT_LOANS_PAGE_SIZE
   );
 
   // Get currency for display - use first loan's currency when all share same currency
@@ -626,7 +617,7 @@ export function ClientLoans({ clientId, readOnly = false }: ClientLoansProps) {
             Complete list of loans for this client
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           {loans.length === 0 ? (
             <div className="text-center py-8">
               <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -635,144 +626,244 @@ export function ClientLoans({ clientId, readOnly = false }: ClientLoansProps) {
               </p>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[72px]"></TableHead>
-                    <TableHead>Loan Product</TableHead>
-                    <TableHead>Account No</TableHead>
-                    <TableHead>Principal</TableHead>
-                    <TableHead>Outstanding</TableHead>
-                    {isOmamaTenant && <TableHead>Overdue By</TableHead>}
-                    <TableHead>Status</TableHead>
-                    {isOmamaTenant && <TableHead>Closed Obligations Met</TableHead>}
-                    <TableHead>Maturity Date</TableHead>
-                    <TableHead className="w-[48px] text-right">Open</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orderedLoans.map((loan) => {
-                    const overdueDays = isOmamaTenant
-                      ? getOverdueDays(loan)
-                      : null;
-                    const closedObligationsPaidOnTime = isOmamaTenant
-                      ? getClosedObligationsPaidOnTime(loan)
-                      : null;
-
-                    return (
-                    <TableRow
-                      key={loan.id}
-                      className={readOnly ? "" : "cursor-pointer transition-colors hover:bg-muted/50"}
-                      onClick={() => {
-                        if (readOnly) return;
-                        router.push(`/clients/${clientId}/loans/${loan.id}`);
-                      }}
-                      onKeyDown={(event) => {
-                        if (readOnly) return;
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          router.push(`/clients/${clientId}/loans/${loan.id}`);
-                        }
-                      }}
-                      tabIndex={readOnly ? -1 : 0}
-                      role={readOnly ? undefined : "link"}
-                      aria-label={
-                        readOnly
-                          ? undefined
-                          : `Open loan ${loan.accountNo || loan.id} details`
-                      }
-                    >
-                      <TableCell>
-                        <div className="flex justify-center">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                            {loanSequenceNumbers.get(loan.id) ?? "?"}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">
-                              {loan.loanProductName}
-                            </span>
-                            {loan.isTopup && (
-                              <Badge className="bg-amber-500/15 text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 font-medium">
-                                Top-Up
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {loan.interestRatePerPeriod}% •{" "}
-                            {loan.numberOfRepayments} payments
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-mono text-sm">
-                          {loan.accountNo}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">
-                          {formatCurrency(loan.principal, loan.currency?.code)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">
-                            {formatCurrency(loan.summary.totalOutstanding, loan.currency?.code)}
-                          </div>
-                          {loan.summary.totalOverdue > 0 && (
-                            <div className="text-sm text-red-500">
-                              {formatCurrency(loan.summary.totalOverdue, loan.currency?.code)}{" "}
-                              overdue
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      {isOmamaTenant && (
-                        <TableCell>
-                          <div className="text-sm">
-                            {loan.summary.totalOverdue > 0
-                              ? formatDayCount(overdueDays)
-                              : "Current"}
-                          </div>
-                        </TableCell>
-                      )}
-                      <TableCell>{getStatusBadge(loan)}</TableCell>
-                      {isOmamaTenant && (
-                        <TableCell>
-                          <div className="text-sm">
-                            {loan.status.closedObligationsMet
-                              ? closedObligationsPaidOnTime === null
-                                ? "Closed in full"
-                                : closedObligationsPaidOnTime
-                                  ? "Paid in full and on time"
-                                  : "Paid in full, but not all on time"
-                              : "—"}
-                          </div>
-                        </TableCell>
-                      )}
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm">
-                          <Calendar className="h-3 w-3" />
-                          {loan.timeline.expectedMaturityDate
-                            ? formatDate(loan.timeline.expectedMaturityDate)
-                            : "Not set"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {!readOnly && (
-                          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+            <>
+              <div className="relative max-w-md">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={loanSearchQuery}
+                  onChange={(event) => {
+                    const searchQuery = event.target.value;
+                    setLoanSearchQuery(searchQuery);
+                    setLoanPageRequest({
+                      clientId,
+                      loanCount: loans.length,
+                      searchQuery,
+                      page: 1,
+                    });
+                  }}
+                  placeholder="Search by account number or loan product name"
+                  aria-label="Search loans by account number or loan product name"
+                  className="pl-9"
+                />
+              </div>
+              {filteredLoans.length === 0 ? (
+                <div className="rounded-md border px-4 py-8 text-center text-sm text-muted-foreground">
+                  No loans match your search.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[72px]"></TableHead>
+                        <TableHead>Loan Product</TableHead>
+                        <TableHead>Account No</TableHead>
+                        <TableHead>Principal</TableHead>
+                        <TableHead>Outstanding</TableHead>
+                        {isOmamaTenant && <TableHead>Overdue By</TableHead>}
+                        <TableHead>Status</TableHead>
+                        {isOmamaTenant && (
+                          <TableHead>Closed Obligations Met</TableHead>
                         )}
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                        <TableHead>Maturity Date</TableHead>
+                        <TableHead className="w-[48px] text-right">
+                          Open
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedLoans.pageItems.map((loan) => {
+                        const overdueDays = isOmamaTenant
+                          ? getOverdueDays(loan)
+                          : null;
+                        const closedObligationsPaidOnTime = isOmamaTenant
+                          ? getClosedObligationsPaidOnTime(loan)
+                          : null;
+
+                        return (
+                          <TableRow
+                            key={loan.id}
+                            className={
+                              readOnly
+                                ? ""
+                                : "cursor-pointer transition-colors hover:bg-muted/50"
+                            }
+                            onClick={() => {
+                              if (readOnly) return;
+                              router.push(
+                                `/clients/${clientId}/loans/${loan.id}`
+                              );
+                            }}
+                            onKeyDown={(event) => {
+                              if (readOnly) return;
+                              if (
+                                event.key === "Enter" ||
+                                event.key === " "
+                              ) {
+                                event.preventDefault();
+                                router.push(
+                                  `/clients/${clientId}/loans/${loan.id}`
+                                );
+                              }
+                            }}
+                            tabIndex={readOnly ? -1 : 0}
+                            role={readOnly ? undefined : "link"}
+                            aria-label={
+                              readOnly
+                                ? undefined
+                                : `Open loan ${loan.accountNo || loan.id} details`
+                            }
+                          >
+                            <TableCell>
+                              <div className="flex justify-center">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                  {loanSequenceNumbers.get(loan.id) ?? "?"}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">
+                                    {loan.loanProductName}
+                                  </span>
+                                  {loan.isTopup && (
+                                    <Badge className="bg-amber-500/15 text-amber-600 border-amber-300 text-[10px] px-1.5 py-0 font-medium">
+                                      Top-Up
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  {loan.interestRatePerPeriod}% •{" "}
+                                  {loan.numberOfRepayments} payments
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-mono text-sm">
+                                {loan.accountNo}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium">
+                                {formatCurrency(
+                                  loan.principal,
+                                  loan.currency?.code
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">
+                                  {formatCurrency(
+                                    loan.summary.totalOutstanding,
+                                    loan.currency?.code
+                                  )}
+                                </div>
+                                {loan.summary.totalOverdue > 0 && (
+                                  <div className="text-sm text-red-500">
+                                    {formatCurrency(
+                                      loan.summary.totalOverdue,
+                                      loan.currency?.code
+                                    )}{" "}
+                                    overdue
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            {isOmamaTenant && (
+                              <TableCell>
+                                <div className="text-sm">
+                                  {loan.summary.totalOverdue > 0
+                                    ? formatDayCount(overdueDays)
+                                    : "Current"}
+                                </div>
+                              </TableCell>
+                            )}
+                            <TableCell>{getStatusBadge(loan)}</TableCell>
+                            {isOmamaTenant && (
+                              <TableCell>
+                                <div className="text-sm">
+                                  {loan.status.closedObligationsMet
+                                    ? closedObligationsPaidOnTime === null
+                                      ? "Closed in full"
+                                      : closedObligationsPaidOnTime
+                                        ? "Paid in full and on time"
+                                        : "Paid in full, but not all on time"
+                                    : "—"}
+                                </div>
+                              </TableCell>
+                            )}
+                            <TableCell>
+                              <div className="flex items-center gap-1 text-sm">
+                                <Calendar className="h-3 w-3" />
+                                {loan.timeline.expectedMaturityDate
+                                  ? formatDate(
+                                      loan.timeline.expectedMaturityDate
+                                    )
+                                  : "Not set"}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {!readOnly && (
+                                <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  {paginatedLoans.totalPages > 1 && (
+                    <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Showing{" "}
+                        {`${paginatedLoans.startItem}-${paginatedLoans.endItem}`}{" "}
+                        of {paginatedLoans.totalItems} loans
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setLoanPageRequest({
+                              clientId,
+                              loanCount: loans.length,
+                              searchQuery: loanSearchQuery,
+                              page: paginatedLoans.page - 1,
+                            })
+                          }
+                          disabled={!paginatedLoans.canPreviousPage}
+                        >
+                          Previous
+                        </Button>
+                        <span className="text-sm text-muted-foreground">
+                          Page {paginatedLoans.page} of{" "}
+                          {paginatedLoans.totalPages}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setLoanPageRequest({
+                              clientId,
+                              loanCount: loans.length,
+                              searchQuery: loanSearchQuery,
+                              page: paginatedLoans.page + 1,
+                            })
+                          }
+                          disabled={!paginatedLoans.canNextPage}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
