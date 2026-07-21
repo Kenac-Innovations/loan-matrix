@@ -14,6 +14,7 @@ import { Transaction } from "@/shared/types/transaction";
 import { formatCurrency } from "@/lib/format-currency";
 import { formatDate } from "@/lib/format-date";
 import { getDisplayedTransactionType } from "@/lib/format-transaction";
+import { attachRunningOutstandingBalances } from "@/lib/loan-transaction-running-balance";
 import { GenericDataTable } from "@/components/tables/generic-data-table";
 import { DataTableColumn, DataTableFilter } from "@/shared/types/data-table";
 
@@ -45,6 +46,10 @@ type ChargeItem = {
 
 /** A transaction row with optional charge-split metadata */
 type DisplayRow = Transaction & {
+  /** Running client outstanding balance after this transaction */
+  runningOutstandingBalance?: number;
+  /** Signed transaction movement used to build the running balance */
+  outstandingBalanceMovement?: number;
   /** 0-based charge index within the group; undefined = not a charge-split row */
   _chargeIndex?: number;
   /** Display name of this specific charge */
@@ -104,10 +109,11 @@ export function TransactionsDataTable({
       return [reversalRow, ...transactions];
     })();
 
+    const transactionsWithRunningBalances = attachRunningOutstandingBalances(source);
     const rows: DisplayRow[] = [];
     let txnNumber = 0;
 
-    for (const t of source) {
+    for (const t of transactionsWithRunningBalances) {
       txnNumber++;
       const paidCharges = t.loanChargePaidByList;
       const isMultiCharge =
@@ -328,6 +334,26 @@ export function TransactionsDataTable({
           </span>
         );
       },
+    },
+    {
+      id: "runningOutstandingBalance",
+      header: "Running Balance",
+      accessorKey: "runningOutstandingBalance",
+      cell: ({ row, getValue }) => {
+        const tx = row.original;
+        if (isSubCharge(tx)) {
+          return <span className={getReversedTextClass(tx)} />;
+        }
+        return (
+          <span className={getReversedTextClass(tx)}>
+            {formatCurrency(Number(getValue() ?? 0), currencyCode)}
+          </span>
+        );
+      },
+      getExportValue: (row) =>
+        isSubCharge(row)
+          ? ""
+          : formatCurrency(row.runningOutstandingBalance ?? 0, currencyCode),
     },
     {
       id: "actions",
