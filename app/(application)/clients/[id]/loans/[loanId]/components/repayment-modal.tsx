@@ -2,6 +2,10 @@
 
 import { useCurrency } from "@/contexts/currency-context";
 import { fineractFetch } from "@/lib/fineract-fetch";
+import {
+  type LoanOutstandingAmounts,
+  resolveRepaymentDisplayAmounts,
+} from "@/lib/repayment-amount";
 
 import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -45,6 +49,7 @@ interface RepaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   loanId: number;
+  outstandingSummary?: LoanOutstandingAmounts | null;
   onSuccess: () => void;
 }
 
@@ -69,7 +74,13 @@ interface Cashier {
   sessionStatus?: string;
 }
 
-export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: RepaymentModalProps) {
+export function RepaymentModal({
+  isOpen,
+  onClose,
+  loanId,
+  outstandingSummary,
+  onSuccess,
+}: RepaymentModalProps) {
   const [template, setTemplate] = useState<RepaymentTemplate | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -192,6 +203,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       const response = await fineractFetch(`/api/fineract/loans/${loanId}/transactions/template?command=repayment`);
       const data = await response.json();
       setTemplate(data);
+      const repaymentAmounts = resolveRepaymentDisplayAmounts(data, outstandingSummary);
       
       // Pre-populate form with template data
       const today = new Date();
@@ -200,7 +212,7 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       setFormData(prev => ({
         ...prev,
         transactionDate: formattedDate,
-        transactionAmount: data.amount?.toString() || "",
+        transactionAmount: repaymentAmounts.amount.toFixed(2),
       }));
       
     } catch (err) {
@@ -223,6 +235,11 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
       };
     });
   }, [template, paymentTypes]);
+
+  const repaymentAmounts = useMemo(
+    () => template ? resolveRepaymentDisplayAmounts(template, outstandingSummary) : null,
+    [template, outstandingSummary]
+  );
 
   const selectedPaymentTypeIsCash = useMemo(() => {
     if (!formData.paymentTypeId) return false;
@@ -517,25 +534,25 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="text-sm">Principal</span>
                   <span className="font-medium">
-                    {formatCurrency(template.principalPortion, template.currency.code)}
+                    {formatCurrency(repaymentAmounts?.principal ?? template.principalPortion, template.currency.code)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="text-sm">Interest</span>
                   <span className="font-medium">
-                    {formatCurrency(template.interestPortion, template.currency.code)}
+                    {formatCurrency(repaymentAmounts?.interest ?? template.interestPortion, template.currency.code)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="text-sm">Fees</span>
                   <span className="font-medium">
-                    {formatCurrency(template.feeChargesPortion, template.currency.code)}
+                    {formatCurrency(repaymentAmounts?.fees ?? template.feeChargesPortion, template.currency.code)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="text-sm">Arrears</span>
                   <span className="font-medium">
-                    {formatCurrency(template.penaltyChargesPortion, template.currency.code)}
+                    {formatCurrency(repaymentAmounts?.arrears ?? template.penaltyChargesPortion, template.currency.code)}
                   </span>
                 </div>
               </div>
