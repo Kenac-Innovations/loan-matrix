@@ -4751,6 +4751,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
         isOpen={showRepaymentModal}
         onClose={() => setShowRepaymentModal(false)}
         loanId={loanId}
+        outstandingSummary={loan?.summary}
         onSuccess={() => {
           setShowRepaymentModal(false);
           fetchLoanData();
