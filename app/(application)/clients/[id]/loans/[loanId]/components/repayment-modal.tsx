@@ -11,9 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Coins, DollarSign, Percent, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { Calendar, Coins, DollarSign, Percent, AlertCircle, CheckCircle, Loader2, Banknote } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { useReceiptValidation } from "@/hooks/use-receipt-validation";
+import { resolveRepaymentCashierAutoResolveDecision } from "@/lib/repayment-cashier-auto-resolve-policy";
 
 interface RepaymentTemplate {
   type: {
@@ -69,6 +70,18 @@ interface Cashier {
   sessionStatus?: string;
 }
 
+interface CurrentCashierContext {
+  isCashier: boolean;
+  hasActiveSession: boolean;
+  staffName: string | null;
+  cashierId: string | null;
+  tellerId: string | null;
+  tellerName: string | null;
+  tellerOfficeName: string | null;
+  autoResolveApplicable: boolean;
+  reason?: string;
+}
+
 export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: RepaymentModalProps) {
   const [template, setTemplate] = useState<RepaymentTemplate | null>(null);
   const [loading, setLoading] = useState(false);
@@ -94,6 +107,12 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
   const [selectedCashier, setSelectedCashier] = useState<string>("");
   const [loadingTellers, setLoadingTellers] = useState(false);
   const [loadingCashiers, setLoadingCashiers] = useState(false);
+
+  // Logged in user's cashier context, used to auto-resolve teller/cashier
+  // when the tenant has the feature enabled and this user isn't exempted.
+  const [currentCashierContext, setCurrentCashierContext] =
+    useState<CurrentCashierContext | null>(null);
+  const [cashierContextLoaded, setCashierContextLoaded] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -184,6 +203,27 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
     }
   }, [selectedTeller]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    setCashierContextLoaded(false);
+    fetch("/api/auth/current-cashier")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        setCurrentCashierContext(data);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentCashierContext(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCashierContextLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
   const fetchRepaymentTemplate = async () => {
     try {
       setLoading(true);
@@ -231,6 +271,65 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
     );
     return !!option?.isCashPayment;
   }, [formData.paymentTypeId, mergedPaymentTypeOptions]);
+
+  const autoResolveDecision = useMemo(
+    () =>
+      resolveRepaymentCashierAutoResolveDecision({
+        autoResolveApplicable: currentCashierContext?.autoResolveApplicable ?? false,
+        isCashier: currentCashierContext?.isCashier ?? false,
+        hasActiveSession: currentCashierContext?.hasActiveSession ?? false,
+      }),
+    [currentCashierContext]
+  );
+
+  // Hide cash payment types from selection entirely once we know cash is
+  // blocked for this user, rather than letting them pick it and then fail.
+  const visiblePaymentTypeOptions = useMemo(() => {
+    if (autoResolveDecision.mode !== "cash-blocked") return mergedPaymentTypeOptions;
+    return mergedPaymentTypeOptions.filter((option) => !option.isCashPayment);
+  }, [mergedPaymentTypeOptions, autoResolveDecision.mode]);
+
+  // Default the payment type once we know both the available options and
+  // whether auto-resolution applies to this user. Never overrides a choice
+  // the user already made, and does nothing at all in "manual" mode so
+  // tenants without the feature enabled see no behavior change.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!cashierContextLoaded) return;
+    if (mergedPaymentTypeOptions.length === 0) return;
+    if (formData.paymentTypeId) return;
+    if (autoResolveDecision.mode === "manual") return;
+
+    const preferred =
+      autoResolveDecision.mode === "auto-resolved"
+        ? mergedPaymentTypeOptions.find((o) => o.isCashPayment)
+        : mergedPaymentTypeOptions.find((o) => !o.isCashPayment);
+
+    if (preferred) {
+      setFormData((prev) => ({ ...prev, paymentTypeId: String(preferred.id) }));
+    }
+  }, [
+    isOpen,
+    cashierContextLoaded,
+    mergedPaymentTypeOptions,
+    autoResolveDecision.mode,
+    formData.paymentTypeId,
+  ]);
+
+  // Auto-fill teller/cashier from the logged in user's cashier session
+  // whenever a cash payment type is selected and auto-resolution applies.
+  useEffect(() => {
+    if (autoResolveDecision.mode !== "auto-resolved") return;
+    if (!selectedPaymentTypeIsCash) return;
+    if (!currentCashierContext?.tellerId || !currentCashierContext?.cashierId) return;
+    setSelectedTeller(currentCashierContext.tellerId);
+    setSelectedCashier(currentCashierContext.cashierId);
+  }, [
+    autoResolveDecision.mode,
+    selectedPaymentTypeIsCash,
+    currentCashierContext?.tellerId,
+    currentCashierContext?.cashierId,
+  ]);
 
   const handleSubmit = async () => {
     try {
@@ -592,12 +691,12 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                   <SelectValue placeholder="Select payment type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {mergedPaymentTypeOptions.length === 0 ? (
+                  {visiblePaymentTypeOptions.length === 0 ? (
                     <div className="py-4 px-2 text-center text-sm text-muted-foreground">
                       No payment types available
                     </div>
                   ) : (
-                    mergedPaymentTypeOptions.map((option) => (
+                    visiblePaymentTypeOptions.map((option) => (
                       <SelectItem key={option.id} value={option.id.toString()}>
                         {option.name}
                         {option.isCashPayment ? " (Cash)" : ""}
@@ -606,83 +705,123 @@ export function RepaymentModal({ isOpen, onClose, loanId, onSuccess }: Repayment
                   )}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                Required. Select a cash payment method to update the teller balance.
-              </p>
+              {autoResolveDecision.mode === "cash-blocked" ? (
+                <p className="text-xs text-muted-foreground">
+                  {currentCashierContext?.reason ||
+                    "Cash payment is unavailable because you are not linked to an active cashier session. Contact your supervisor."}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Required. Select a cash payment method to update the teller balance.
+                </p>
+              )}
             </div>
 
-            {/* Teller and Cashier selection (for cash payments) */}
-            {selectedPaymentTypeIsCash && (
-              <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
-                <Label className="text-sm font-medium">
-                  Cash till location (required for teller balance)
-                </Label>
-                <div className="space-y-2">
-                  <Label>Teller *</Label>
-                  <Select value={selectedTeller} onValueChange={setSelectedTeller}>
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={
-                          loadingTellers ? "Loading tellers..." : "Select a teller"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tellers.map((teller) => (
-                        <SelectItem
-                          key={teller.id}
-                          value={teller.id}
-                        >
-                          {teller.name}
-                          {teller.officeName ? ` - ${teller.officeName}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            {/* Teller and Cashier (for cash payments): auto-resolved from the
+                logged in user's cashier session, or manual pickers otherwise */}
+            {selectedPaymentTypeIsCash && autoResolveDecision.mode === "auto-resolved" ? (
+              <div className="rounded-lg border border-green-200 bg-green-50/60 dark:border-green-800 dark:bg-green-950/30 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Banknote className="h-4 w-4 text-green-600" />
+                  <span className="text-sm font-medium text-green-800 dark:text-green-300">
+                    Cash repayment will use your logged in cashier session
+                  </span>
                 </div>
-                <div className="space-y-2">
-                  <Label>Cashier *</Label>
-                  <Select
-                    value={selectedCashier}
-                    onValueChange={setSelectedCashier}
-                    disabled={!selectedTeller || loadingCashiers}
-                  >
-                    <SelectTrigger>
-                      <SelectValue
-                        placeholder={
-                          !selectedTeller
-                            ? "Select a teller first"
-                            : loadingCashiers
-                            ? "Loading cashiers..."
-                            : cashiers.length === 0
-                            ? "No cashiers with active sessions"
-                            : "Select a cashier"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {cashiers.map((cashier) => (
-                        <SelectItem
-                          key={cashier.dbId || cashier.id}
-                          value={String(cashier.dbId || cashier.id)}
-                        >
-                          {cashier.staffName}
-                          {cashier.sessionStatus === "ACTIVE" && (
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              (Active)
-                            </span>
-                          )}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="flex justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">Cashier</span>
+                  <span className="font-medium">
+                    {currentCashierContext?.staffName || "Unknown cashier"}
+                  </span>
                 </div>
-                {selectedTeller && cashiers.length === 0 && !loadingCashiers && (
-                  <p className="text-sm text-amber-600">
-                    No cashiers have active sessions. Start a session first.
-                  </p>
-                )}
+                <div className="flex justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">Teller</span>
+                  <span className="font-medium">
+                    {currentCashierContext?.tellerName || "Unknown teller"}
+                    {currentCashierContext?.tellerOfficeName
+                      ? ` - ${currentCashierContext.tellerOfficeName}`
+                      : ""}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">Session</span>
+                  <span className="font-medium text-green-700 dark:text-green-400">
+                    Active
+                  </span>
+                </div>
               </div>
+            ) : (
+              selectedPaymentTypeIsCash && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                  <Label className="text-sm font-medium">
+                    Cash till location (required for teller balance)
+                  </Label>
+                  <div className="space-y-2">
+                    <Label>Teller *</Label>
+                    <Select value={selectedTeller} onValueChange={setSelectedTeller}>
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={
+                            loadingTellers ? "Loading tellers..." : "Select a teller"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tellers.map((teller) => (
+                          <SelectItem
+                            key={teller.id}
+                            value={teller.id}
+                          >
+                            {teller.name}
+                            {teller.officeName ? ` - ${teller.officeName}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Cashier *</Label>
+                    <Select
+                      value={selectedCashier}
+                      onValueChange={setSelectedCashier}
+                      disabled={!selectedTeller || loadingCashiers}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={
+                            !selectedTeller
+                              ? "Select a teller first"
+                              : loadingCashiers
+                              ? "Loading cashiers..."
+                              : cashiers.length === 0
+                              ? "No cashiers with active sessions"
+                              : "Select a cashier"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cashiers.map((cashier) => (
+                          <SelectItem
+                            key={cashier.dbId || cashier.id}
+                            value={String(cashier.dbId || cashier.id)}
+                          >
+                            {cashier.staffName}
+                            {cashier.sessionStatus === "ACTIVE" && (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                (Active)
+                              </span>
+                            )}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {selectedTeller && cashiers.length === 0 && !loadingCashiers && (
+                    <p className="text-sm text-amber-600">
+                      No cashiers have active sessions. Start a session first.
+                    </p>
+                  )}
+                </div>
+              )
             )}
 
             {/* Receipt Number — shown prominently for tenants with receipt ranges on cash payments */}

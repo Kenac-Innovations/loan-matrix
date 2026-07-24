@@ -19,12 +19,6 @@ export async function getFineractTenantId(): Promise<string> {
   try {
     const tenant = await getTenantFromHeaders();
 
-    console.log("Tenant Debug:", {
-      tenant,
-      tenantSlug: tenant?.slug,
-      tenantName: tenant?.name,
-    });
-
   if (!tenant) {
     console.warn(
       "No tenant found, using goodfellow Fineract tenant"
