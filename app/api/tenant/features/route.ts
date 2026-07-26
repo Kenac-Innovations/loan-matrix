@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
-import { DEFAULT_FEATURES, TenantFeatures } from "@/shared/types/tenant";
+import { DEFAULT_FEATURES, getTenantFeatures } from "@/shared/types/tenant";
 
 /**
  * GET /api/tenant/features
@@ -29,12 +29,8 @@ export async function GET(request: NextRequest) {
     }
     
     // Extract features from settings, merging with defaults
-    const settings = tenant.settings as any;
-    const features: TenantFeatures = {
-      ...DEFAULT_FEATURES,
-      ...settings?.features,
-    };
-    
+    const features = getTenantFeatures(tenant);
+
     return NextResponse.json({
       features,
       tenantSlug: tenant.slug,
@@ -84,8 +80,7 @@ export async function PUT(request: NextRequest) {
     const updatedSettings = {
       ...currentSettings,
       features: {
-        ...DEFAULT_FEATURES,
-        ...currentSettings.features,
+        ...getTenantFeatures(tenant),
         ...features,
       },
     };

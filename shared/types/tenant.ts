@@ -32,6 +32,8 @@ export interface TenantFeatures {
   officeScopedAdminLeadsDashboard: boolean;
   /** When showing client active loans for topup, use the foreclosure settlement amount instead of total outstanding (excludes unrealized/future interest) */
   topupLoanBalanceExcludeUnrealizedInterests: boolean;
+  /** Auto-resolve the logged in user's teller/cashier and default payment type to cash on the loan repayment modal, unless the user is individually exempted */
+  autoResolveRepaymentCashier: boolean;
   /** When true, MFA is required for tenant logins. Missing or false disables MFA. */
   usesMFA?: boolean;
   /** Enabled MFA delivery channels for the tenant. */
@@ -133,7 +135,27 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   showAllLeadsByDefault: false,
   officeScopedAdminLeadsDashboard: false,
   topupLoanBalanceExcludeUnrealizedInterests: false,
+  autoResolveRepaymentCashier: false,
 };
+
+/**
+ * Merge a tenant's stored settings.features with the feature defaults.
+ * Accepts a loosely-typed tenant so callers can pass a full Prisma Tenant
+ * row, a partial select, or null/undefined without extra casting.
+ */
+export function getTenantFeatures(
+  tenant: { settings?: unknown } | null | undefined
+): TenantFeatures {
+  const settings = tenant?.settings as
+    | { features?: Partial<TenantFeatures> }
+    | null
+    | undefined;
+
+  return {
+    ...DEFAULT_FEATURES,
+    ...settings?.features,
+  };
+}
 
 export interface TenantInfo {
   id: string;
