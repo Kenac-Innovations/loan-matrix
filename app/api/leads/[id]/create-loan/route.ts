@@ -130,7 +130,7 @@ export async function POST(
       graceOnArrearsAgeing: loanData.onArrearsAgeing ?? 0,
       locale: "en",
       dateFormat: "yyyy-MM-dd",
-      // Use lead ID as initial external ID, will be updated to loan ID after creation
+      // Keep the lead ID as Fineract external ID for cross-system correlation.
       externalId: leadId,
       isEqualAmortization: false,
       charges: requestedCharges.map((charge: any) => {
@@ -182,45 +182,30 @@ export async function POST(
       body: JSON.stringify(payload),
     });
 
-    // Set external ID to loan ID for future reference
     if (result && result.resourceId) {
       const loanId = result.resourceId;
+      const loanLinkedAt = new Date();
 
-      // Update the loan with the external ID set to the loan ID
-      try {
-        await fetchFineractAPI(`/loans/${loanId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            externalId: String(loanId),
-            locale: "en",
-            dateFormat: "yyyy-MM-dd",
-          }),
-        });
-
-        console.log(`Updated loan ${loanId} with external ID set to loan ID`);
-
-        // Update the lead with loan ID, client ID, and submission tracking
-        await prisma.lead.update({
-          where: { id: leadId },
-          data: {
-            fineractLoanId: loanId,
-            loanSubmittedToFineract: true,
-            loanSubmissionDate: new Date(),
-            fineractClientId: loanData.clientId,
-            clientCreatedInFineract: true,
-            clientCreationDate: lead.clientCreationDate || new Date(),
-            stateMetadata: {
-              ...((lead.stateMetadata as any) || {}),
-              loanId: loanId,
-              loanCreatedAt: new Date().toISOString(),
-            },
+      // Persist the local link as soon as Fineract creates the loan. This must
+      // not depend on any secondary Fineract update, otherwise successful loan
+      // creations can be left unlinked in Loan Matrix.
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          fineractLoanId: loanId,
+          loanSubmittedToFineract: true,
+          loanSubmissionDate: loanLinkedAt,
+          fineractClientId: loanData.clientId,
+          clientCreatedInFineract: true,
+          clientCreationDate: lead.clientCreationDate || loanLinkedAt,
+          stateMetadata: {
+            ...((lead.stateMetadata as any) || {}),
+            loanId: loanId,
+            loanExternalId: leadId,
+            loanCreatedAt: loanLinkedAt.toISOString(),
           },
-        });
-      } catch (updateError) {
-        console.error("Failed to update loan external ID:", updateError);
-        // Don't fail the entire operation if external ID update fails
-      }
+        },
+      });
     }
 
     // Send SMS: loan submitted, pending approval (best-effort)
