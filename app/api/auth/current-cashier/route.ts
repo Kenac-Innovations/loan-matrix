@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 
 import { getSession } from "@/lib/auth";
 import { resolveCurrentUserCashierContext } from "@/lib/current-user-cashier";
-import { isAutoResolveApplicableForUser } from "@/lib/repayment-cashier-auto-resolve-policy";
-import { isUserExemptFromAutoCashierResolution } from "@/lib/repayment-cashier-auto-resolve-access";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getTenantFeatures } from "@/shared/types/tenant";
 
@@ -28,15 +26,12 @@ export async function GET() {
       );
     }
 
-    const [context, userExempt] = await Promise.all([
-      resolveCurrentUserCashierContext(tenant.id, session.user.userId),
-      isUserExemptFromAutoCashierResolution(tenant.id, session.user.userId),
-    ]);
+    const context = await resolveCurrentUserCashierContext(
+      tenant.id,
+      session.user.userId
+    );
 
-    const autoResolveApplicable = isAutoResolveApplicableForUser({
-      tenantFeatureEnabled: getTenantFeatures(tenant).autoResolveRepaymentCashier,
-      userExempt,
-    });
+    const autoResolveApplicable = getTenantFeatures(tenant).autoResolveRepaymentCashier;
 
     return NextResponse.json({ ...context, autoResolveApplicable });
   } catch (error) {

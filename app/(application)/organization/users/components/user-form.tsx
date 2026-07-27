@@ -85,7 +85,6 @@ type FormState = {
   canOverrideInitiatorDisbursement: boolean;
   canConfirmPayments: boolean;
   canResetUssdPin: boolean;
-  exemptFromAutoCashierResolution: boolean;
   officeId: string;
   staffId: string;
   visibleLeadOfficeIds: number[];
@@ -114,8 +113,6 @@ function buildInitialState(
       initialUser?.canOverrideInitiatorDisbursement ?? false,
     canConfirmPayments: initialUser?.canConfirmPayments ?? false,
     canResetUssdPin: initialUser?.canResetUssdPin ?? false,
-    exemptFromAutoCashierResolution:
-      initialUser?.exemptFromAutoCashierResolution ?? false,
     officeId: initialUser?.officeId ? String(initialUser.officeId) : "",
     staffId: initialUser?.staff?.id ? String(initialUser.staff.id) : "",
     visibleLeadOfficeIds: initialUser?.visibleLeadOffices.map((office) => office.id) ?? [],
@@ -506,7 +503,6 @@ export function UserForm({
       canOverrideInitiatorDisbursement: form.canOverrideInitiatorDisbursement,
       canConfirmPayments: form.canConfirmPayments,
       canResetUssdPin: form.canResetUssdPin,
-      exemptFromAutoCashierResolution: form.exemptFromAutoCashierResolution,
       officeId: form.officeId,
       staffId: form.staffId || null,
       visibleLeadOfficeIds: visibleLeadOfficeSelection,
@@ -940,35 +936,6 @@ export function UserForm({
             </p>
           )}
         </div>
-      </div>
-
-      <div className="space-y-4 rounded-xl border p-6">
-        <div className="space-y-1">
-          <h3 className="font-semibold">Cashier</h3>
-          <p className="text-sm text-muted-foreground">
-            Controls how this user is treated by cashier-related automation.
-          </p>
-        </div>
-
-        <label className="flex items-start gap-3 rounded-lg border p-4">
-          <Checkbox
-            checked={form.exemptFromAutoCashierResolution}
-            onCheckedChange={(checked) =>
-              handleChange("exemptFromAutoCashierResolution", checked === true)
-            }
-          />
-          <div className="space-y-1">
-            <span className="font-medium">
-              Exempt from automatic cashier resolution
-            </span>
-            <p className="text-sm text-muted-foreground">
-              When the tenant has auto-resolution enabled, this user will still
-              manually select payment type, teller, and cashier on the loan
-              repayment modal instead of having them auto-filled from their
-              login.
-            </p>
-          </div>
-        </label>
       </div>
 
       <Dialog
