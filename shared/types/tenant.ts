@@ -32,7 +32,7 @@ export interface TenantFeatures {
   officeScopedAdminLeadsDashboard: boolean;
   /** When showing client active loans for topup, use the foreclosure settlement amount instead of total outstanding (excludes unrealized/future interest) */
   topupLoanBalanceExcludeUnrealizedInterests: boolean;
-  /** Auto-resolve the logged in user's teller/cashier and default payment type to cash on the loan repayment modal, unless the user is individually exempted */
+  /** Restrict non-exempt users to cash-only loan repayments, auto-resolving their teller/cashier from their cashier session (blocking submission if unresolvable), unless the user is individually exempted */
   autoResolveRepaymentCashier: boolean;
   /** When true, MFA is required for tenant logins. Missing or false disables MFA. */
   usesMFA?: boolean;
