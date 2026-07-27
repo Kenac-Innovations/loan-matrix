@@ -294,17 +294,20 @@ export function RepaymentModal({
       resolveRepaymentCashierAutoResolveDecision({
         autoResolveApplicable: currentCashierContext?.autoResolveApplicable ?? false,
         isCashier: currentCashierContext?.isCashier ?? false,
-        hasActiveSession: currentCashierContext?.hasActiveSession ?? false,
       }),
     [currentCashierContext]
   );
 
-  // Hide cash payment types from selection entirely once we know cash is
-  // blocked for this user, rather than letting them pick it and then fail.
+  // Non-exempt users under tenant policy are restricted to cash only, whether
+  // or not they turn out to be a resolvable cashier.
+  const paymentTypeLockedToCash =
+    autoResolveDecision.mode === "auto-resolved" ||
+    autoResolveDecision.mode === "blocked";
+
   const visiblePaymentTypeOptions = useMemo(() => {
-    if (autoResolveDecision.mode !== "cash-blocked") return mergedPaymentTypeOptions;
-    return mergedPaymentTypeOptions.filter((option) => !option.isCashPayment);
-  }, [mergedPaymentTypeOptions, autoResolveDecision.mode]);
+    if (!paymentTypeLockedToCash) return mergedPaymentTypeOptions;
+    return mergedPaymentTypeOptions.filter((option) => option.isCashPayment);
+  }, [mergedPaymentTypeOptions, paymentTypeLockedToCash]);
 
   // Default the payment type once we know both the available options and
   // whether auto-resolution applies to this user. Never overrides a choice
@@ -317,10 +320,7 @@ export function RepaymentModal({
     if (formData.paymentTypeId) return;
     if (autoResolveDecision.mode === "manual") return;
 
-    const preferred =
-      autoResolveDecision.mode === "auto-resolved"
-        ? mergedPaymentTypeOptions.find((o) => o.isCashPayment)
-        : mergedPaymentTypeOptions.find((o) => !o.isCashPayment);
+    const preferred = mergedPaymentTypeOptions.find((o) => o.isCashPayment);
 
     if (preferred) {
       setFormData((prev) => ({ ...prev, paymentTypeId: String(preferred.id) }));
@@ -352,7 +352,15 @@ export function RepaymentModal({
     try {
       setSubmitting(true);
       setError(null);
-      
+
+      if (autoResolveDecision.mode === "blocked") {
+        setError(
+          currentCashierContext?.reason ||
+            "You are not linked to a cashier account. Contact your supervisor or system administrator."
+        );
+        return;
+      }
+
       // Validate required fields
       if (!formData.transactionDate || !formData.transactionAmount) {
         setError("Transaction Date and Transaction Amount are required");
@@ -695,6 +703,7 @@ export function RepaymentModal({
               <Label htmlFor="payment-type">Payment Type</Label>
               <Select
                 value={formData.paymentTypeId}
+                disabled={paymentTypeLockedToCash}
                 onValueChange={(value) => {
                   setFormData((prev) => ({ ...prev, paymentTypeId: value }));
                   const option = mergedPaymentTypeOptions.find((o) => o.id.toString() === value);
@@ -722,10 +731,9 @@ export function RepaymentModal({
                   )}
                 </SelectContent>
               </Select>
-              {autoResolveDecision.mode === "cash-blocked" ? (
+              {paymentTypeLockedToCash ? (
                 <p className="text-xs text-muted-foreground">
-                  {currentCashierContext?.reason ||
-                    "Cash payment is unavailable because you are not linked to an active cashier session. Contact your supervisor."}
+                  Payment type is locked to cash by tenant policy.
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
@@ -735,8 +743,25 @@ export function RepaymentModal({
             </div>
 
             {/* Teller and Cashier (for cash payments): auto-resolved from the
-                logged in user's cashier session, or manual pickers otherwise */}
-            {selectedPaymentTypeIsCash && autoResolveDecision.mode === "auto-resolved" ? (
+                logged in user's cashier session, blocked entirely if the user
+                isn't linked to a cashier, or manual pickers otherwise */}
+            {autoResolveDecision.mode === "blocked" ? (
+              <div className="rounded-lg border-2 border-destructive bg-destructive/10 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+                  <span className="text-sm font-semibold text-destructive">
+                    Action Required: Cashier Link Missing
+                  </span>
+                </div>
+                <p className="text-sm text-destructive/90">
+                  {currentCashierContext?.reason ||
+                    "You are not linked to a cashier account."}{" "}
+                  Cash repayments require an active cashier link under tenant
+                  policy — contact your supervisor or system administrator to
+                  resolve this before processing repayments.
+                </p>
+              </div>
+            ) : selectedPaymentTypeIsCash && autoResolveDecision.mode === "auto-resolved" ? (
               <div className="rounded-lg border border-green-200 bg-green-50/60 dark:border-green-800 dark:bg-green-950/30 p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <Banknote className="h-4 w-4 text-green-600" />
@@ -761,8 +786,14 @@ export function RepaymentModal({
                 </div>
                 <div className="flex justify-between gap-3 text-sm">
                   <span className="text-muted-foreground">Session</span>
-                  <span className="font-medium text-green-700 dark:text-green-400">
-                    Active
+                  <span
+                    className={
+                      currentCashierContext?.hasActiveSession
+                        ? "font-medium text-green-700 dark:text-green-400"
+                        : "font-medium text-amber-600 dark:text-amber-400"
+                    }
+                  >
+                    {currentCashierContext?.hasActiveSession ? "Active" : "Not Active"}
                   </span>
                 </div>
               </div>
@@ -969,6 +1000,7 @@ export function RepaymentModal({
             onClick={handleSubmit}
             disabled={
               submitting ||
+              autoResolveDecision.mode === "blocked" ||
               !formData.transactionDate ||
               !formData.transactionAmount ||
               !formData.paymentTypeId ||

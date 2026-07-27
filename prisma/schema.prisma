@@ -1215,6 +1215,7 @@ model UserLogin {
   canOverrideInitiatorDisbursement Boolean  @default(false)
   canConfirmPayments   Boolean              @default(false)
   canResetUssdPin      Boolean              @default(false)
+  exemptFromAutoCashierResolution Boolean   @default(false)
   isBlocked            Boolean              @default(false)
   blockedAt            DateTime?
   blockedSource        String?
