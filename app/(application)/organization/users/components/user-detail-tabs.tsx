@@ -387,6 +387,21 @@ export function UserDetailTabs({
 
         <Card>
           <CardHeader>
+            <CardTitle>Cashier</CardTitle>
+            <CardDescription>
+              Controls how this user is treated by cashier-related automation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <DetailField
+              label="Exempt From Automatic Cashier Resolution"
+              value={user.exemptFromAutoCashierResolution ? "Yes" : "No"}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Visible Lead Branches</CardTitle>
             <CardDescription>
               {restrictLeadVisibilityToBranches
