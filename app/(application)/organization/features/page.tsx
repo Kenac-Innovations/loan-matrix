@@ -117,7 +117,7 @@ const FEATURE_CONFIGS: FeatureConfig[] = [
     key: "autoResolveRepaymentCashier",
     label: "Auto-Resolve Repayment Cashier",
     description:
-      "On the loan repayment modal, default the payment type to cash and auto-fill the teller/cashier from the logged in user's active cashier session instead of manual selection. Individual users can be exempted from the Users page.",
+      "On the loan repayment modal, default the payment type to cash and auto-fill the teller/cashier from the logged in user's active cashier session instead of manual selection.",
     tag: "New",
   },
 ];
