@@ -75,6 +75,7 @@ const createUserSchema = z
     canOverrideInitiatorDisbursement: z.boolean().default(false),
     canConfirmPayments: z.boolean().default(false),
     canResetUssdPin: z.boolean().default(false),
+    exemptFromAutoCashierResolution: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
       .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
@@ -178,6 +179,7 @@ const updateUserSchema = z
     canOverrideInitiatorDisbursement: z.boolean().default(false),
     canConfirmPayments: z.boolean().default(false),
     canResetUssdPin: z.boolean().default(false),
+    exemptFromAutoCashierResolution: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
       .union([z.coerce.number().int().positive(), z.literal(""), z.null(), z.undefined()])
@@ -452,6 +454,7 @@ function mapUserDetail(user: unknown): UserDetail {
     canOverrideInitiatorDisbursement: false,
     canConfirmPayments: false,
     canResetUssdPin: false,
+    exemptFromAutoCashierResolution: false,
     visibleLeadOffices: [],
     blockedSource: null,
     blockedNote: null,
@@ -659,6 +662,7 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
       canOverrideInitiatorDisbursement: true,
       canConfirmPayments: true,
       canResetUssdPin: true,
+      exemptFromAutoCashierResolution: true,
       leadBranchAccesses: {
         orderBy: {
           officeId: "asc",
@@ -691,6 +695,8 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
       localLogin?.canOverrideInitiatorDisbursement ?? false,
     canConfirmPayments: localLogin?.canConfirmPayments ?? false,
     canResetUssdPin: localLogin?.canResetUssdPin ?? false,
+    exemptFromAutoCashierResolution:
+      localLogin?.exemptFromAutoCashierResolution ?? false,
     visibleLeadOffices: collapsedVisibleLeadOfficeIds.map((officeId) =>
       mapVisibleLeadOffice(
         officeId,
@@ -884,6 +890,8 @@ export async function createUserAction(
           parsed.data.canOverrideInitiatorDisbursement,
         canConfirmPayments: parsed.data.canConfirmPayments,
         canResetUssdPin: parsed.data.canResetUssdPin,
+        exemptFromAutoCashierResolution:
+          parsed.data.exemptFromAutoCashierResolution,
       });
 
       if (tenant.restrictLeadVisibilityToBranches) {
@@ -961,6 +969,8 @@ export async function updateUserAction(
         parsed.data.canOverrideInitiatorDisbursement,
       canConfirmPayments: parsed.data.canConfirmPayments,
       canResetUssdPin: parsed.data.canResetUssdPin,
+      exemptFromAutoCashierResolution:
+        parsed.data.exemptFromAutoCashierResolution,
     });
 
     if (tenant.restrictLeadVisibilityToBranches) {
