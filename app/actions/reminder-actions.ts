@@ -19,6 +19,7 @@ import type {
 } from "@/shared/types/reminders";
 
 const REMINDERS_PATH = "/system/reminders";
+const TENANT_HEADER_NAME = "X-Tenant-Id";
 
 type ReminderContext = {
   tenantId: string;
@@ -121,7 +122,11 @@ async function readError(response: Response) {
   return text || `${response.status} ${response.statusText}`;
 }
 
-async function backendFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function backendFetch<T>(
+  context: ReminderContext,
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
   const response = await fetch(`${backendBaseUrl()}${path}`, {
     ...init,
     cache: "no-store",
@@ -129,6 +134,7 @@ async function backendFetch<T>(path: string, init: RequestInit = {}): Promise<T>
       Accept: "application/json",
       ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...init.headers,
+      [TENANT_HEADER_NAME]: context.fineractTenantId,
     },
   });
 
@@ -167,23 +173,27 @@ function failure<T = unknown>(error: unknown): ReminderActionResult<T> {
 
 export async function getReminderDashboardAction(): Promise<ReminderDashboardData> {
   const context = await requireReminderContext();
-  const tenantId = context.tenantId;
 
   const [config, templates, rules, runs, messages] = await Promise.all([
     backendFetch<ReminderTenantConfig>(
-      `/api/v1/reminders/tenant-config/${encodeURIComponent(tenantId)}`
+      context,
+      "/api/v1/reminders/tenant-config"
     ),
     backendFetch<ReminderTemplate[]>(
-      `/api/v1/reminders/templates${queryString({ tenantId })}`
+      context,
+      "/api/v1/reminders/templates"
     ),
     backendFetch<ReminderRule[]>(
-      `/api/v1/reminders/rules${queryString({ tenantId })}`
+      context,
+      "/api/v1/reminders/rules"
     ),
     backendFetch<ReminderRunSummary[]>(
-      `/api/v1/reminders/runs${queryString({ tenantId, limit: 50 })}`
+      context,
+      `/api/v1/reminders/runs${queryString({ limit: 50 })}`
     ),
     backendFetch<NotificationMessageSummary[]>(
-      `/api/v1/notifications/messages${queryString({ tenantId, limit: 50 })}`
+      context,
+      `/api/v1/notifications/messages${queryString({ limit: 50 })}`
     ),
   ]);
 
@@ -200,10 +210,10 @@ export async function getReminderDashboardAction(): Promise<ReminderDashboardDat
 export async function getReminderRunsAction(
   filters: ReminderRunFilters = {}
 ): Promise<ReminderRunSummary[]> {
-  const { tenantId } = await requireReminderContext();
+  const context = await requireReminderContext();
   return backendFetch<ReminderRunSummary[]>(
+    context,
     `/api/v1/reminders/runs${queryString({
-      tenantId,
       status: filters.status,
       limit: filters.limit ?? 50,
     })}`
@@ -214,8 +224,9 @@ export async function getReminderRunItemsAction(
   runId: string,
   status?: ReminderRunItemStatus
 ): Promise<ReminderRunItem[]> {
-  await requireReminderContext();
+  const context = await requireReminderContext();
   return backendFetch<ReminderRunItem[]>(
+    context,
     `/api/v1/reminders/runs/${encodeURIComponent(runId)}/items${queryString({
       status,
     })}`
@@ -225,10 +236,10 @@ export async function getReminderRunItemsAction(
 export async function getNotificationMessagesAction(
   filters: NotificationMessageFilters = {}
 ): Promise<NotificationMessageSummary[]> {
-  const { tenantId } = await requireReminderContext();
+  const context = await requireReminderContext();
   return backendFetch<NotificationMessageSummary[]>(
+    context,
     `/api/v1/notifications/messages${queryString({
-      tenantId,
       status: filters.status,
       sourceType: filters.sourceType,
       reminderRunId: filters.reminderRunId,
@@ -242,9 +253,10 @@ export async function saveReminderTenantConfigAction(
   input: SaveReminderTenantConfigInput
 ): Promise<ReminderActionResult<ReminderTenantConfig>> {
   try {
-    const { tenantId } = await requireReminderContext();
+    const context = await requireReminderContext();
     const data = await backendFetch<ReminderTenantConfig>(
-      `/api/v1/reminders/tenant-config/${encodeURIComponent(tenantId)}`,
+      context,
+      "/api/v1/reminders/tenant-config",
       {
         method: "PUT",
         body: JSON.stringify({
@@ -265,9 +277,8 @@ export async function saveReminderTemplateAction(
   input: SaveReminderTemplateInput
 ): Promise<ReminderActionResult<ReminderTemplate>> {
   try {
-    const { tenantId } = await requireReminderContext();
+    const context = await requireReminderContext();
     const payload = {
-      tenantId,
       code: input.code.trim(),
       name: input.name.trim(),
       channel: input.channel,
@@ -277,6 +288,7 @@ export async function saveReminderTemplateAction(
     };
 
     const data = await backendFetch<ReminderTemplate>(
+      context,
       input.id
         ? `/api/v1/reminders/templates/${encodeURIComponent(input.id)}`
         : "/api/v1/reminders/templates",
@@ -296,9 +308,8 @@ export async function saveReminderRuleAction(
   input: SaveReminderRuleInput
 ): Promise<ReminderActionResult<ReminderRule>> {
   try {
-    const { tenantId } = await requireReminderContext();
+    const context = await requireReminderContext();
     const payload = {
-      tenantId,
       code: input.code.trim(),
       name: input.name.trim(),
       type: input.type,
@@ -318,6 +329,7 @@ export async function saveReminderRuleAction(
     };
 
     const data = await backendFetch<ReminderRule>(
+      context,
       input.id
         ? `/api/v1/reminders/rules/${encodeURIComponent(input.id)}`
         : "/api/v1/reminders/rules",
