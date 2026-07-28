@@ -33,7 +33,7 @@ type LookupInput = {
   phoneNumber: string;
 };
 
-function getUssdApiBaseUrl(): string {
+export function getUssdApiBaseUrl(): string {
   const baseUrl = (process.env.USSD_BASE_URL ?? "").replace(/\/$/, "");
 
   if (!baseUrl) {
@@ -53,7 +53,7 @@ function getUssdAdminApiKey(): string {
   return apiKey;
 }
 
-function getAdminHeaders(ussdServiceTenantId: string): Record<string, string> {
+export function getAdminHeaders(ussdServiceTenantId: string): Record<string, string> {
   const tenantId = ussdServiceTenantId.trim();
   if (!tenantId) {
     throw new Error("USSD service tenant id is required");
@@ -66,7 +66,7 @@ function getAdminHeaders(ussdServiceTenantId: string): Record<string, string> {
   };
 }
 
-async function readResponseBody(response: Response): Promise<string> {
+export async function readResponseBody(response: Response): Promise<string> {
   try {
     return await response.text();
   } catch {
