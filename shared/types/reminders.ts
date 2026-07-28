@@ -152,6 +152,16 @@ export interface NotificationMessageSummary {
   updatedAt?: string;
 }
 
+export interface NotificationMessagePage {
+  content: NotificationMessageSummary[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
 export interface ReminderTenantContext {
   tenantId: string;
   tenantName?: string | null;

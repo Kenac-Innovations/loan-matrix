@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { getTenantAndFineractInfo } from "@/lib/fineract-tenant-service";
 import type {
+  NotificationChannel,
+  NotificationMessagePage,
   NotificationMessageSummary,
+  NotificationSource,
   NotificationStatus,
   ReminderActionResult,
   ReminderDashboardData,
@@ -75,6 +78,17 @@ export type NotificationMessageFilters = {
   reminderRunId?: string;
   reminderRuleId?: string;
   limit?: number;
+};
+
+export type NotificationMessagePageFilters = {
+  page?: number;
+  size?: number;
+  status?: NotificationStatus;
+  source?: NotificationSource;
+  sourceType?: string;
+  channel?: NotificationChannel;
+  reminderRunId?: string;
+  reminderRuleId?: string;
 };
 
 function backendBaseUrl() {
@@ -245,6 +259,25 @@ export async function getNotificationMessagesAction(
       reminderRunId: filters.reminderRunId,
       reminderRuleId: filters.reminderRuleId,
       limit: filters.limit ?? 50,
+    })}`
+  );
+}
+
+export async function getNotificationMessagesPageAction(
+  filters: NotificationMessagePageFilters = {}
+): Promise<NotificationMessagePage> {
+  const context = await requireReminderContext();
+  return backendFetch<NotificationMessagePage>(
+    context,
+    `/api/v1/notifications/messages/page${queryString({
+      page: filters.page ?? 0,
+      size: filters.size ?? 25,
+      status: filters.status,
+      source: filters.source,
+      sourceType: filters.sourceType,
+      channel: filters.channel,
+      reminderRunId: filters.reminderRunId,
+      reminderRuleId: filters.reminderRuleId,
     })}`
   );
 }

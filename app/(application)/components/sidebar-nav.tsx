@@ -204,6 +204,7 @@ export function SidebarNav({
               href: "/system/roles-and-permissions",
             },
             { label: "Manage Jobs", href: "/system/manage-jobs" },
+            { label: "Notifications", href: "/system/notifications" },
             { label: "Reminders", href: "/system/reminders" },
             { label: "Audit Trails", href: "/system/audit-trails" },
             {
