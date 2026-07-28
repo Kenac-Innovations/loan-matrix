@@ -432,7 +432,7 @@ export default function TransactionDetailsPage() {
             {isCashRepaymentUndo ? (
               <div className="space-y-3 border rounded-md p-3">
                 <div className="text-sm text-muted-foreground">
-                  This repayment used a cash payment type. Loan Matrix will use the teller and cashier linked to the original repayment to reduce the cashier float after the undo succeeds.
+                  This repayment used a cash payment type. Fineract will remove the original cash-in from the cashier summary when the undo succeeds.
                 </div>
                 {loadingRepaymentLink ? (
                   <div className="text-sm text-muted-foreground">
@@ -457,8 +457,8 @@ export default function TransactionDetailsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-sm text-red-600">
-                    No linked teller/cashier was found for this repayment, so Loan Matrix cannot safely reduce the cashier float for the undo.
+                  <div className="text-sm text-muted-foreground">
+                    No linked teller/cashier was found for this repayment. The Fineract undo can still reverse the cashier summary impact.
                   </div>
                 )}
               </div>
@@ -473,14 +473,6 @@ export default function TransactionDetailsPage() {
                 try {
                   setPostingUndo(true);
                   setUndoError(null);
-                  if (isCashRepaymentUndo) {
-                    if (!repaymentLink?.tellerId || !repaymentLink?.cashierId) {
-                      setUndoError(
-                        "No linked teller/cashier was found for this repayment."
-                      );
-                      return;
-                    }
-                  }
                   const df = "dd MMMM yyyy";
                   const dArr = transaction?.date as number[] | undefined;
                   const formatUndoDate = (a?: number[]) => {
@@ -506,28 +498,6 @@ export default function TransactionDetailsPage() {
                   }
 
                   if (isCashRepaymentUndo) {
-                    const settleResp = await fetch(
-                      `/api/tellers/${repaymentLink!.tellerId}/cashiers/${repaymentLink!.cashierId}/settle`,
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          amount: Number(transaction?.amount || 0),
-                          currency: loanCurrency,
-                          notes: `Repayment reversal - Loan #${loanId} / Txn #${transactionId}`,
-                          date: new Date().toISOString().split("T")[0],
-                          transactionType: "EXPENSE",
-                        }),
-                      }
-                    );
-                    if (!settleResp.ok) {
-                      const err = await settleResp.json().catch(() => ({}));
-                      throw new Error(
-                        err.details ||
-                          err.error ||
-                          "Repayment was undone, but cashier float reduction failed"
-                      );
-                    }
                     await fetch(`/api/loans/${loanId}/repayment-link/${transactionId}`, {
                       method: "PATCH",
                       headers: { "Content-Type": "application/json" },
@@ -541,7 +511,7 @@ export default function TransactionDetailsPage() {
                   toast({
                     title: "Undo successful",
                     description: isCashRepaymentUndo
-                      ? "Transaction was undone and the cashier float was reduced."
+                      ? "Transaction was undone. Fineract updated the cashier summary from the reversed repayment."
                       : "Transaction was undone successfully.",
                   });
                   setShowUndo(false);
