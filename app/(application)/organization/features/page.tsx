@@ -113,6 +113,13 @@ const FEATURE_CONFIGS: FeatureConfig[] = [
       "Enable credit facility tracking on loans. Shows facility toggle on loan creation, facility details card on loan and lead pages, and a Credit Facilities menu item.",
     tag: "New",
   },
+  {
+    key: "autoResolveRepaymentCashier",
+    label: "Auto-Resolve Repayment Cashier",
+    description:
+      "On the loan repayment modal, restrict non-exempt users to cash repayments and auto-fill their teller/cashier from their cashier session, blocking submission if they aren't linked to a cashier. Individual users can be exempted from this restriction on the Users page.",
+    tag: "New",
+  },
 ];
 
 export default function FeaturesSettingsPage() {

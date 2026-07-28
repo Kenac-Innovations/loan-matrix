@@ -559,65 +559,6 @@ export function RecoveriesDashboard() {
     }
   };
 
-  const handleSendReminder = async (row: RecoveryLoanRow) => {
-    const key = `${row.loanId}:reminder`;
-    setActionKey(key);
-    try {
-      const response = await fetch(`/api/recoveries/loans/${row.loanId}/reminder`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bucket: row.bucket }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || result.message || "Failed to send reminder");
-
-      toast({
-        title: "Reminder logged",
-        description: result.message || "Reminder action completed.",
-      });
-      refreshCurrentTab();
-    } catch (error) {
-      toast({
-        title: "Reminder failed",
-        description: error instanceof Error ? error.message : "Failed to send reminder",
-        variant: "destructive",
-      });
-    } finally {
-      setActionKey(null);
-    }
-  };
-
-  const handleTriggerBucket = async () => {
-    if (activeTab !== "30" && activeTab !== "60" && activeTab !== "90") return;
-    const confirmed = window.confirm(`Send ${activeTab === "90" ? "90+" : activeTab}-day reminders for all loans in this bucket?`);
-    if (!confirmed) return;
-
-    setActionKey("trigger");
-    try {
-      const response = await fetch("/api/recoveries/reminders/trigger", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bucket: activeTab }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Failed to trigger reminders");
-
-      toast({
-        title: "Reminder trigger completed",
-        description: `${result.sent || 0} SMS sent from ${result.processed || 0} processed loans.`,
-      });
-      refreshCurrentTab();
-    } catch (error) {
-      toast({
-        title: "Reminder trigger failed",
-        description: error instanceof Error ? error.message : "Failed to trigger reminders",
-        variant: "destructive",
-      });
-    } finally {
-      setActionKey(null);
-    }
-  };
-
   const handleSubmitNote = async () => {
     if (!noteTarget || !noteText.trim()) return;
     setActionKey("note");
@@ -784,17 +725,12 @@ export function RecoveriesDashboard() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {(activeTab === "30" || activeTab === "60" || activeTab === "90") && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleTriggerBucket}
-                  disabled={actionKey === "trigger" || loading}
-                >
-                  {actionKey === "trigger" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
-                  Trigger Bucket
-                </Button>
-              )}
+              <Button asChild variant="outline" size="sm">
+                <Link href="/system/reminders">
+                  <Bell className="h-4 w-4" />
+                  Reminder Rules
+                </Link>
+              </Button>
               <Button variant="outline" size="icon" onClick={refreshCurrentTab} disabled={loading || courtLoading}>
                 <RefreshCw className={cn("h-4 w-4", (loading || courtLoading) && "animate-spin")} />
               </Button>
@@ -830,7 +766,6 @@ export function RecoveriesDashboard() {
                 actionKey={actionKey}
                 isNpaView={activeTab === "npa"}
                 onPageChange={setActiveTabPage}
-                onSendReminder={handleSendReminder}
                 onAddNote={(row) => {
                   setNoteTarget(row);
                   setNoteText("");
@@ -1071,7 +1006,6 @@ function ArrearsTable({
   actionKey,
   isNpaView,
   onPageChange,
-  onSendReminder,
   onAddNote,
   onOpenCourtCase,
   onWriteOff,
@@ -1082,7 +1016,6 @@ function ArrearsTable({
   actionKey: string | null;
   isNpaView: boolean;
   onPageChange: (page: number) => void;
-  onSendReminder: (row: RecoveryLoanRow) => void;
   onAddNote: (row: RecoveryLoanRow) => void;
   onOpenCourtCase: (row: RecoveryLoanRow) => void;
   onWriteOff: (row: RecoveryLoanRow) => void;
@@ -1192,16 +1125,11 @@ function ArrearsTable({
                     </>
                   ) : (
                     <>
-                      <DropdownMenuItem
-                        onClick={() => onSendReminder(row)}
-                        disabled={actionKey === `${row.loanId}:reminder`}
-                      >
-                        {actionKey === `${row.loanId}:reminder` ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
+                      <DropdownMenuItem asChild>
+                        <Link href="/system/reminders">
                           <Bell className="h-4 w-4" />
-                        )}
-                        Send reminder SMS
+                          Reminder rules
+                        </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => onAddNote(row)}>
                         <StickyNote className="h-4 w-4" />
