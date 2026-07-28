@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getSession } from "@/lib/auth";
 import { resolveCurrentUserCashierContext } from "@/lib/current-user-cashier";
-import { isAutoResolveApplicableForUser } from "@/lib/repayment-cashier-auto-resolve-policy";
+import { isPaymentTypeLockedToCashForUser } from "@/lib/repayment-cashier-auto-resolve-policy";
 import { isUserExemptFromAutoCashierResolution } from "@/lib/repayment-cashier-auto-resolve-access";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getTenantFeatures } from "@/shared/types/tenant";
@@ -33,12 +33,17 @@ export async function GET() {
       isUserExemptFromAutoCashierResolution(tenant.id, session.user.userId),
     ]);
 
-    const autoResolveApplicable = isAutoResolveApplicableForUser({
-      tenantFeatureEnabled: getTenantFeatures(tenant).autoResolveRepaymentCashier,
+    const tenantFeatureEnabled = getTenantFeatures(tenant).autoResolveRepaymentCashier;
+    const paymentTypeLockedToCash = isPaymentTypeLockedToCashForUser({
+      tenantFeatureEnabled,
       userExempt,
     });
 
-    return NextResponse.json({ ...context, autoResolveApplicable });
+    return NextResponse.json({
+      ...context,
+      tenantFeatureEnabled,
+      paymentTypeLockedToCash,
+    });
   } catch (error) {
     console.error("Error resolving current cashier context:", error);
     return NextResponse.json(

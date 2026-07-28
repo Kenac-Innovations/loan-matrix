@@ -1,82 +1,90 @@
 import assert from "node:assert/strict";
 import {
-  isAutoResolveApplicableForUser,
+  isPaymentTypeLockedToCashForUser,
   resolveRepaymentCashierAutoResolveDecision,
 } from "./repayment-cashier-auto-resolve-policy";
 
 function run() {
-  // isAutoResolveApplicableForUser
+  // isPaymentTypeLockedToCashForUser: only gates which payment types are
+  // selectable. It must NOT affect whether teller/cashier get auto-resolved.
   assert.equal(
-    isAutoResolveApplicableForUser({
+    isPaymentTypeLockedToCashForUser({
       tenantFeatureEnabled: true,
       userExempt: false,
     }),
     true,
-    "applicable when tenant feature is on and user is not exempt"
+    "locked to cash when tenant feature is on and user is not exempt"
   );
 
   assert.equal(
-    isAutoResolveApplicableForUser({
-      tenantFeatureEnabled: false,
-      userExempt: false,
-    }),
-    false,
-    "not applicable when tenant feature is off, regardless of exemption"
-  );
-
-  assert.equal(
-    isAutoResolveApplicableForUser({
+    isPaymentTypeLockedToCashForUser({
       tenantFeatureEnabled: true,
       userExempt: true,
     }),
     false,
-    "not applicable when user is exempt, even if tenant feature is on"
+    "not locked (free choice of payment methods) when user is exempt, even if tenant feature is on"
   );
 
   assert.equal(
-    isAutoResolveApplicableForUser({
+    isPaymentTypeLockedToCashForUser({
+      tenantFeatureEnabled: false,
+      userExempt: false,
+    }),
+    false,
+    "not locked when tenant feature is off"
+  );
+
+  assert.equal(
+    isPaymentTypeLockedToCashForUser({
       tenantFeatureEnabled: false,
       userExempt: true,
     }),
     false,
-    "not applicable when both tenant feature is off and user is exempt"
+    "not locked when tenant feature is off, regardless of exemption"
   );
 
-  // resolveRepaymentCashierAutoResolveDecision
+  // resolveRepaymentCashierAutoResolveDecision: gated ONLY by the tenant
+  // feature flag. Exemption must have no bearing here — auto-resolution
+  // (or blocking) of teller/cashier applies to every user once the tenant
+  // flag is on, exempt or not.
   assert.deepEqual(
     resolveRepaymentCashierAutoResolveDecision({
-      autoResolveApplicable: false,
+      tenantFeatureEnabled: false,
       isCashier: true,
+      hasActiveSession: true,
     }),
     { mode: "manual" },
-    "falls back to manual pickers when not applicable, even for a cashier"
+    "manual pickers when the tenant feature is off"
   );
 
   assert.deepEqual(
     resolveRepaymentCashierAutoResolveDecision({
-      autoResolveApplicable: false,
-      isCashier: false,
-    }),
-    { mode: "manual" },
-    "falls back to manual pickers when not applicable, for a non-cashier too"
-  );
-
-  assert.deepEqual(
-    resolveRepaymentCashierAutoResolveDecision({
-      autoResolveApplicable: true,
+      tenantFeatureEnabled: true,
       isCashier: true,
+      hasActiveSession: true,
     }),
     { mode: "auto-resolved" },
-    "auto-resolves and locks to cash when applicable and the user is a cashier"
+    "auto-resolves when the tenant feature is on, user is a cashier, and their session is active"
   );
 
   assert.deepEqual(
     resolveRepaymentCashierAutoResolveDecision({
-      autoResolveApplicable: true,
-      isCashier: false,
+      tenantFeatureEnabled: true,
+      isCashier: true,
+      hasActiveSession: false,
     }),
     { mode: "blocked" },
-    "blocks repayment submission entirely when applicable but the user is not a cashier at all"
+    "blocks when the tenant feature is on and the cashier's session is not active"
+  );
+
+  assert.deepEqual(
+    resolveRepaymentCashierAutoResolveDecision({
+      tenantFeatureEnabled: true,
+      isCashier: false,
+      hasActiveSession: false,
+    }),
+    { mode: "blocked" },
+    "blocks when the tenant feature is on and the user is not a cashier at all"
   );
 }
 
