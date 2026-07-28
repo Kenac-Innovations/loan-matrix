@@ -83,7 +83,8 @@ interface CurrentCashierContext {
   tellerId: string | null;
   tellerName: string | null;
   tellerOfficeName: string | null;
-  autoResolveApplicable: boolean;
+  tenantFeatureEnabled: boolean;
+  paymentTypeLockedToCash: boolean;
   reason?: string;
 }
 
@@ -289,20 +290,21 @@ export function RepaymentModal({
     return !!option?.isCashPayment;
   }, [formData.paymentTypeId, mergedPaymentTypeOptions]);
 
+  // Gated ONLY by the tenant flag — applies to every user once it's on,
+  // regardless of their exemption setting. Exemption only affects which
+  // payment types are selectable (see paymentTypeLockedToCash below).
   const autoResolveDecision = useMemo(
     () =>
       resolveRepaymentCashierAutoResolveDecision({
-        autoResolveApplicable: currentCashierContext?.autoResolveApplicable ?? false,
+        tenantFeatureEnabled: currentCashierContext?.tenantFeatureEnabled ?? false,
         isCashier: currentCashierContext?.isCashier ?? false,
+        hasActiveSession: currentCashierContext?.hasActiveSession ?? false,
       }),
     [currentCashierContext]
   );
 
-  // Non-exempt users under tenant policy are restricted to cash only, whether
-  // or not they turn out to be a resolvable cashier.
   const paymentTypeLockedToCash =
-    autoResolveDecision.mode === "auto-resolved" ||
-    autoResolveDecision.mode === "blocked";
+    currentCashierContext?.paymentTypeLockedToCash ?? false;
 
   const visiblePaymentTypeOptions = useMemo(() => {
     if (!paymentTypeLockedToCash) return mergedPaymentTypeOptions;
@@ -353,10 +355,10 @@ export function RepaymentModal({
       setSubmitting(true);
       setError(null);
 
-      if (autoResolveDecision.mode === "blocked") {
+      if (selectedPaymentTypeIsCash && autoResolveDecision.mode === "blocked") {
         setError(
           currentCashierContext?.reason ||
-            "You are not linked to a cashier account. Contact your supervisor or system administrator."
+            "Your cashier session is not active. Start a session before processing repayments."
         );
         return;
       }
@@ -731,35 +733,27 @@ export function RepaymentModal({
                   )}
                 </SelectContent>
               </Select>
-              {paymentTypeLockedToCash ? (
-                <p className="text-xs text-muted-foreground">
-                  Payment type is locked to cash by tenant policy.
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Required. Select a cash payment method to update the teller balance.
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Required. Select a cash payment method to update the teller balance.
+              </p>
             </div>
 
             {/* Teller and Cashier (for cash payments): auto-resolved from the
-                logged in user's cashier session, blocked entirely if the user
-                isn't linked to a cashier, or manual pickers otherwise */}
-            {autoResolveDecision.mode === "blocked" ? (
-              <div className="rounded-lg border-2 border-destructive bg-destructive/10 p-4 space-y-2">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-                  <span className="text-sm font-semibold text-destructive">
-                    Action Required: Cashier Link Missing
-                  </span>
+                logged in user's cashier session, blocked entirely if their
+                session isn't active, or manual pickers otherwise */}
+            {selectedPaymentTypeIsCash && autoResolveDecision.mode === "blocked" ? (
+              <div className="rounded-lg border-2 border-destructive bg-destructive/10 p-4 flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-destructive">
+                    No active cashier session
+                  </p>
+                  <p className="text-sm text-destructive/90">
+                    {currentCashierContext?.reason ||
+                      "Your cashier session is not active."}{" "}
+                    Start a session to process cash repayments.
+                  </p>
                 </div>
-                <p className="text-sm text-destructive/90">
-                  {currentCashierContext?.reason ||
-                    "You are not linked to a cashier account."}{" "}
-                  Cash repayments require an active cashier link under tenant
-                  policy — contact your supervisor or system administrator to
-                  resolve this before processing repayments.
-                </p>
               </div>
             ) : selectedPaymentTypeIsCash && autoResolveDecision.mode === "auto-resolved" ? (
               <div className="rounded-lg border border-green-200 bg-green-50/60 dark:border-green-800 dark:bg-green-950/30 p-4 space-y-2">
@@ -786,19 +780,14 @@ export function RepaymentModal({
                 </div>
                 <div className="flex justify-between gap-3 text-sm">
                   <span className="text-muted-foreground">Session</span>
-                  <span
-                    className={
-                      currentCashierContext?.hasActiveSession
-                        ? "font-medium text-green-700 dark:text-green-400"
-                        : "font-medium text-amber-600 dark:text-amber-400"
-                    }
-                  >
-                    {currentCashierContext?.hasActiveSession ? "Active" : "Not Active"}
+                  <span className="font-medium text-green-700 dark:text-green-400">
+                    Active
                   </span>
                 </div>
               </div>
             ) : (
-              selectedPaymentTypeIsCash && (
+              selectedPaymentTypeIsCash &&
+              autoResolveDecision.mode === "manual" && (
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <Label className="text-sm font-medium">
                     Cash till location (required for teller balance)
@@ -1000,7 +989,7 @@ export function RepaymentModal({
             onClick={handleSubmit}
             disabled={
               submitting ||
-              autoResolveDecision.mode === "blocked" ||
+              (selectedPaymentTypeIsCash && autoResolveDecision.mode === "blocked") ||
               !formData.transactionDate ||
               !formData.transactionAmount ||
               !formData.paymentTypeId ||
