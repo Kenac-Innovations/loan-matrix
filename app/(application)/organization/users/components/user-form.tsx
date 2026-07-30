@@ -567,7 +567,11 @@ export function UserForm({
       }
 
       toast({
-        title: mode === "create" ? "User created" : "User updated",
+        title: result.pending
+          ? "Submitted for approval"
+          : mode === "create"
+            ? "User created"
+            : "User updated",
         description: toastDescription,
         variant: toastVariant,
       });
