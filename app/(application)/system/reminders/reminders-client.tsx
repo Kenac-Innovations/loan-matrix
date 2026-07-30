@@ -776,7 +776,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="min-days-past-due">Min Past Due</Label>
                       <Input
@@ -811,25 +811,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                       />
                       <FieldHint>
                         For recovery rules, optional upper days-past-due value. Blank means no limit.
-                      </FieldHint>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="page-limit">Page Limit</Label>
-                      <Input
-                        id="page-limit"
-                        type="number"
-                        min={1}
-                        max={500}
-                        value={ruleForm.pageLimit}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            pageLimit: Number(event.target.value) || 1,
-                          }))
-                        }
-                      />
-                      <FieldHint>
-                        Maximum candidates fetched per Fineract report page.
                       </FieldHint>
                     </div>
                   </div>
