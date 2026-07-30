@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import { getTenantAndFineractInfo } from "@/lib/fineract-tenant-service";
 import type {
@@ -49,7 +50,7 @@ export type SaveReminderTemplateInput = {
 
 export type SaveReminderRuleInput = {
   id?: string;
-  code: string;
+  code?: string;
   name: string;
   type: ReminderType;
   enabled: boolean;
@@ -343,15 +344,15 @@ export async function saveReminderRuleAction(
   try {
     const context = await requireReminderContext();
     const payload = {
-      code: input.code.trim(),
+      code: input.code?.trim() || input.id || randomUUID(),
       name: input.name.trim(),
       type: input.type,
       enabled: input.enabled,
       channels: input.channels || "SMS",
       templateId: input.templateId || null,
-      reportName: input.reportName?.trim() || null,
+      reportName: "",
       sendTime: input.sendTime,
-      timezone: input.timezone?.trim() || null,
+      timezone: "",
       daysOffset: input.daysOffset,
       lookBackDays: input.lookBackDays,
       lookAheadDays: input.lookAheadDays,
@@ -492,7 +493,7 @@ export async function ensureDefaultReminderSetupAction(): Promise<
     ];
 
     for (const rule of defaultRules) {
-      if (!rulesByCode.has(rule.code)) {
+      if (rule.code && !rulesByCode.has(rule.code)) {
         const result = await saveReminderRuleAction(rule);
         if (!result.success) throw new Error(result.error);
       }

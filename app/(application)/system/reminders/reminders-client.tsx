@@ -195,20 +195,16 @@ function templateToForm(template: ReminderTemplate): TemplateFormState {
   };
 }
 
-function emptyRuleForm(
-  timezone: string,
-  templateId?: string | null
-): RuleFormState {
+function emptyRuleForm(templateId?: string | null): RuleFormState {
   return {
-    code: "",
     name: "",
     type: "LOAN_REPAYMENT_DUE",
     enabled: true,
     channels: "SMS",
     templateId: templateId ?? null,
-    reportName: "",
+    reportName: null,
     sendTime: "09:00",
-    timezone,
+    timezone: null,
     daysOffset: 0,
     lookBackDays: 0,
     lookAheadDays: 0,
@@ -277,7 +273,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
     emptyTemplateForm()
   );
   const [ruleForm, setRuleForm] = useState<RuleFormState>(
-    emptyRuleForm(initialData.config.timezone || "Africa/Harare")
+    emptyRuleForm()
   );
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -356,8 +352,8 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
 
   const handleSaveRule = (event: FormEvent) => {
     event.preventDefault();
-    if (!ruleForm.code.trim() || !ruleForm.name.trim() || !ruleForm.sendTime) {
-      toast.error("Rule code, name, and send time are required");
+    if (!ruleForm.name.trim() || !ruleForm.sendTime) {
+      toast.error("Rule name and send time are required");
       return;
     }
 
@@ -377,7 +373,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
           ...current.rules.filter((rule) => rule.id !== result.data!.id),
         ].sort((first, second) => first.name.localeCompare(second.name)),
       }));
-      setRuleForm(emptyRuleForm(data.config.timezone || "Africa/Harare"));
+      setRuleForm(emptyRuleForm());
       setRuleDialogOpen(false);
       toast.success("Reminder rule saved");
       setPendingLabel(null);
@@ -385,7 +381,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
   };
 
   const openNewRuleDialog = () => {
-    setRuleForm(emptyRuleForm(data.config.timezone || "Africa/Harare"));
+    setRuleForm(emptyRuleForm());
     setRuleDialogOpen(true);
   };
 
@@ -627,16 +623,16 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                 <form className="space-y-4" onSubmit={handleSaveRule}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="rule-code">Code</Label>
+                      <Label htmlFor="rule-name">Name</Label>
                       <Input
-                        id="rule-code"
-                        value={ruleForm.code}
+                        id="rule-name"
+                        value={ruleForm.name}
                         onChange={(event) =>
-                          setRuleForm((current) => ({ ...current, code: event.target.value }))
+                          setRuleForm((current) => ({ ...current, name: event.target.value }))
                         }
                       />
                       <FieldHint>
-                        Unique stable key used in API payloads and run history.
+                        Readable label shown in rule lists, runs, and notification history.
                       </FieldHint>
                     </div>
                     <div className="space-y-2">
@@ -653,20 +649,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         Local time of day used when creating scheduled runs for this rule.
                       </FieldHint>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="rule-name">Name</Label>
-                    <Input
-                      id="rule-name"
-                      value={ruleForm.name}
-                      onChange={(event) =>
-                        setRuleForm((current) => ({ ...current, name: event.target.value }))
-                      }
-                    />
-                    <FieldHint>
-                      Readable label shown in rule lists, runs, and notification history.
-                    </FieldHint>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -719,38 +701,23 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="rule-timezone">Timezone</Label>
-                      <Input
-                        id="rule-timezone"
-                        value={ruleForm.timezone ?? ""}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({ ...current, timezone: event.target.value }))
-                        }
-                      />
-                      <FieldHint>
-                        Timezone used to interpret Send Time and the rule run slot.
-                      </FieldHint>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="rule-cooldown">Cooldown Minutes</Label>
-                      <Input
-                        id="rule-cooldown"
-                        type="number"
-                        min={0}
-                        value={ruleForm.cooldownMinutes}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            cooldownMinutes: Number(event.target.value) || 0,
-                          }))
-                        }
-                      />
-                      <FieldHint>
-                        Minimum wait before the same candidate can receive this reminder again.
-                      </FieldHint>
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="rule-cooldown">Cooldown Minutes</Label>
+                    <Input
+                      id="rule-cooldown"
+                      type="number"
+                      min={0}
+                      value={ruleForm.cooldownMinutes}
+                      onChange={(event) =>
+                        setRuleForm((current) => ({
+                          ...current,
+                          cooldownMinutes: Number(event.target.value) || 0,
+                        }))
+                      }
+                    />
+                    <FieldHint>
+                      Minimum wait before the same candidate can receive this reminder again.
+                    </FieldHint>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-3">
@@ -865,20 +832,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         Maximum candidates fetched per Fineract report page.
                       </FieldHint>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="report-name">Stretchy Report</Label>
-                    <Input
-                      id="report-name"
-                      value={ruleForm.reportName ?? ""}
-                      onChange={(event) =>
-                        setRuleForm((current) => ({ ...current, reportName: event.target.value }))
-                      }
-                    />
-                    <FieldHint>
-                      Fineract stretchy report used to fetch candidates. Blank uses the default report.
-                    </FieldHint>
                   </div>
 
                   <div className="flex items-center justify-between gap-4 rounded-md border p-3">
