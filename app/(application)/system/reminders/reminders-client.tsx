@@ -35,6 +35,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -259,6 +265,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
   const [ruleForm, setRuleForm] = useState<RuleFormState>(
     emptyRuleForm(initialData.config.timezone || "Africa/Harare")
   );
+  const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [messageStatusFilter, setMessageStatusFilter] = useState<NotificationStatus | "ALL">("ALL");
   const [selectedRun, setSelectedRun] = useState<ReminderRunSummary | null>(null);
   const [runItems, setRunItems] = useState<ReminderRunItem[]>([]);
@@ -325,6 +334,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
         ].sort((first, second) => first.name.localeCompare(second.name)),
       }));
       setTemplateForm(emptyTemplateForm());
+      setTemplateDialogOpen(false);
       toast.success("Reminder template saved");
       setPendingLabel(null);
     });
@@ -354,9 +364,30 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
         ].sort((first, second) => first.name.localeCompare(second.name)),
       }));
       setRuleForm(emptyRuleForm(data.config.timezone || "Africa/Harare"));
+      setRuleDialogOpen(false);
       toast.success("Reminder rule saved");
       setPendingLabel(null);
     });
+  };
+
+  const openNewRuleDialog = () => {
+    setRuleForm(emptyRuleForm(data.config.timezone || "Africa/Harare"));
+    setRuleDialogOpen(true);
+  };
+
+  const openEditRuleDialog = (rule: ReminderRule) => {
+    setRuleForm(ruleToForm(rule));
+    setRuleDialogOpen(true);
+  };
+
+  const openNewTemplateDialog = () => {
+    setTemplateForm(emptyTemplateForm());
+    setTemplateDialogOpen(true);
+  };
+
+  const openEditTemplateDialog = (template: ReminderTemplate) => {
+    setTemplateForm(templateToForm(template));
+    setTemplateDialogOpen(true);
   };
 
   const handleDefaults = () => {
@@ -394,6 +425,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
 
   const handleSelectRun = async (run: ReminderRunSummary) => {
     setSelectedRun(run);
+    setRunDialogOpen(true);
     setRunItems([]);
     setRunItemsLoading(true);
     try {
@@ -496,10 +528,13 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
         </TabsContent>
 
         <TabsContent value="rules" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="space-y-4">
             <Card>
-              <CardHeader>
+              <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base">Rules</CardTitle>
+                <Button type="button" onClick={openNewRuleDialog}>
+                  New Rule
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -549,7 +584,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setRuleForm(ruleToForm(rule))}
+                                onClick={() => openEditRuleDialog(rule)}
                               >
                                 <SquarePen className="h-4 w-4" />
                                 Edit
@@ -564,13 +599,13 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {ruleForm.id ? "Edit Rule" : "New Rule"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Dialog open={ruleDialogOpen} onOpenChange={setRuleDialogOpen}>
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {ruleForm.id ? "Edit Rule" : "New Rule"}
+                  </DialogTitle>
+                </DialogHeader>
                 <form className="space-y-4" onSubmit={handleSaveRule}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
@@ -808,24 +843,25 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() =>
-                        setRuleForm(emptyRuleForm(data.config.timezone || "Africa/Harare"))
-                      }
+                      onClick={openNewRuleDialog}
                     >
                       New Rule
                     </Button>
                   </div>
                 </form>
-              </CardContent>
-            </Card>
+              </DialogContent>
+            </Dialog>
           </div>
         </TabsContent>
 
         <TabsContent value="templates" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="space-y-4">
             <Card>
-              <CardHeader>
+              <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base">Templates</CardTitle>
+                <Button type="button" onClick={openNewTemplateDialog}>
+                  New Template
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -865,7 +901,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setTemplateForm(templateToForm(template))}
+                                onClick={() => openEditTemplateDialog(template)}
                               >
                                 <SquarePen className="h-4 w-4" />
                                 Edit
@@ -880,13 +916,13 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {templateForm.id ? "Edit Template" : "New Template"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {templateForm.id ? "Edit Template" : "New Template"}
+                  </DialogTitle>
+                </DialogHeader>
                 <form className="space-y-4" onSubmit={handleSaveTemplate}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
@@ -977,19 +1013,19 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setTemplateForm(emptyTemplateForm())}
+                      onClick={openNewTemplateDialog}
                     >
                       New Template
                     </Button>
                   </div>
                 </form>
-              </CardContent>
-            </Card>
+              </DialogContent>
+            </Dialog>
           </div>
         </TabsContent>
 
         <TabsContent value="runs" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
+          <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -1006,13 +1042,22 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {selectedRun ? "Run Items" : "Select a Run"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Dialog
+              open={runDialogOpen}
+              onOpenChange={(open) => {
+                setRunDialogOpen(open);
+                if (!open) {
+                  setSelectedRun(null);
+                  setRunItems([]);
+                }
+              }}
+            >
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {selectedRun ? "Run Items" : "Select a Run"}
+                  </DialogTitle>
+                </DialogHeader>
                 {!selectedRun ? (
                   <div className="flex min-h-40 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
                     Pick a run to inspect candidates.
@@ -1073,8 +1118,8 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </DialogContent>
+            </Dialog>
           </div>
         </TabsContent>
 
