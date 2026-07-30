@@ -201,20 +201,21 @@ function emptyRuleForm(templateId?: string | null): RuleFormState {
     enabled: true,
     channels: "SMS",
     templateId: templateId ?? null,
-    reportName: null,
     sendTime: "09:00",
-    timezone: null,
-    daysOffset: 0,
-    lookBackDays: 0,
-    lookAheadDays: 0,
-    minDaysPastDue: null,
-    maxDaysPastDue: null,
-    cooldownMinutes: 1440,
-    pageLimit: 100,
+    startRemindingToday: true,
+    daysBeforeDue: 0,
+    daysPastDue: 30,
   };
 }
 
 function ruleToForm(rule: ReminderRule): RuleFormState {
+  const legacyRule = rule as ReminderRule & {
+    daysOffset?: number;
+    minDaysPastDue?: number | null;
+  };
+  const daysBeforeDue = rule.daysBeforeDue ?? Math.max(0, legacyRule.daysOffset ?? 0);
+  const startRemindingToday = rule.startRemindingToday ?? (daysBeforeDue === 0);
+
   return {
     id: rule.id,
     code: rule.code,
@@ -223,23 +224,11 @@ function ruleToForm(rule: ReminderRule): RuleFormState {
     enabled: rule.enabled,
     channels: rule.channels || "SMS",
     templateId: rule.templateId ?? null,
-    reportName: rule.reportName ?? "",
     sendTime: rule.sendTime?.slice(0, 5) || "09:00",
-    timezone: rule.timezone ?? "",
-    daysOffset: rule.daysOffset,
-    lookBackDays: rule.lookBackDays,
-    lookAheadDays: rule.lookAheadDays,
-    minDaysPastDue: rule.minDaysPastDue ?? null,
-    maxDaysPastDue: rule.maxDaysPastDue ?? null,
-    cooldownMinutes: rule.cooldownMinutes,
-    pageLimit: rule.pageLimit,
+    startRemindingToday,
+    daysBeforeDue,
+    daysPastDue: rule.daysPastDue ?? legacyRule.minDaysPastDue ?? 30,
   };
-}
-
-function numberOrNull(value: string) {
-  if (value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function runProgress(run: ReminderRunSummary) {
@@ -263,7 +252,22 @@ function ruleName(rules: ReminderRule[], ruleId?: string | null) {
 
 function templateName(templates: ReminderTemplate[], templateId?: string | null) {
   if (!templateId) return "Missing template";
-  return templates.find((template) => template.id === templateId)?.name ?? "Unknown";
+  return templates.find((template) => template.id === templateId || template.code === templateId)?.name ?? "Unknown";
+}
+
+function ruleTimingSummary(rule: ReminderRule) {
+  const legacyRule = rule as ReminderRule & {
+    daysOffset?: number;
+    minDaysPastDue?: number | null;
+  };
+
+  if (rule.type === "RECOVERY_ARREARS") {
+    return `${rule.daysPastDue ?? legacyRule.minDaysPastDue ?? 30} days past due`;
+  }
+
+  const daysBeforeDue = rule.daysBeforeDue ?? Math.max(0, legacyRule.daysOffset ?? 0);
+  const startsToday = rule.startRemindingToday ?? (daysBeforeDue === 0);
+  return startsToday ? "Due today" : `${daysBeforeDue} days before due`;
 }
 
 function defaultRuleTemplateId(templates: ReminderTemplate[]) {
@@ -358,6 +362,14 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
     event.preventDefault();
     if (!ruleForm.name.trim() || !ruleForm.sendTime || !ruleForm.templateId) {
       toast.error("Rule name, send time, and template are required");
+      return;
+    }
+    if (ruleForm.type === "LOAN_REPAYMENT_DUE" && !ruleForm.startRemindingToday && ruleForm.daysBeforeDue < 1) {
+      toast.error("Days before due date must be at least 1");
+      return;
+    }
+    if (ruleForm.type === "RECOVERY_ARREARS" && ruleForm.daysPastDue < 1) {
+      toast.error("Days past due must be at least 1");
       return;
     }
 
@@ -558,7 +570,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         <TableHead>Name</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Time</TableHead>
-                        <TableHead>Window</TableHead>
+                        <TableHead>Timing</TableHead>
                         <TableHead>Template</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Action</TableHead>
@@ -583,9 +595,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                               {rule.sendTime?.slice(0, 5)}
                             </TableCell>
                             <TableCell className="text-sm">
-                              {rule.type === "RECOVERY_ARREARS"
-                                ? `${rule.minDaysPastDue ?? 0}+ days${rule.maxDaysPastDue ? ` to ${rule.maxDaysPastDue}` : ""}`
-                                : `${rule.lookBackDays} back / ${rule.lookAheadDays} ahead`}
+                              {ruleTimingSummary(rule)}
                             </TableCell>
                             <TableCell>{templateName(data.templates, rule.templateId)}</TableCell>
                             <TableCell>
@@ -661,7 +671,15 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                       <Select
                         value={ruleForm.type}
                         onValueChange={(type: ReminderType) =>
-                          setRuleForm((current) => ({ ...current, type }))
+                          setRuleForm((current) => ({
+                            ...current,
+                            type,
+                            startRemindingToday: type === "LOAN_REPAYMENT_DUE" ? current.startRemindingToday : true,
+                            daysBeforeDue: type === "LOAN_REPAYMENT_DUE" ? current.daysBeforeDue : 0,
+                            daysPastDue: type === "RECOVERY_ARREARS"
+                              ? (current.daysPastDue > 0 ? current.daysPastDue : 30)
+                              : 0,
+                          }))
                         }
                       >
                         <SelectTrigger>
@@ -673,7 +691,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         </SelectContent>
                       </Select>
                       <FieldHint>
-                        Selects the candidate logic: repayment due-date windows or recovery arrears.
+                        Selects whether the rule targets upcoming repayments or overdue recovery loans.
                       </FieldHint>
                     </div>
                     <div className="space-y-2">
@@ -706,119 +724,69 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="rule-cooldown">Cooldown Minutes</Label>
-                    <Input
-                      id="rule-cooldown"
-                      type="number"
-                      min={0}
-                      value={ruleForm.cooldownMinutes}
-                      onChange={(event) =>
-                        setRuleForm((current) => ({
-                          ...current,
-                          cooldownMinutes: Number(event.target.value) || 0,
-                        }))
-                      }
-                    />
-                    <FieldHint>
-                      Minimum wait before the same candidate can receive this reminder again.
-                    </FieldHint>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="days-offset">Days Offset</Label>
+                  {ruleForm.type === "LOAN_REPAYMENT_DUE" ? (
+                    <div className="space-y-3 rounded-md border p-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <Label className="text-sm font-medium">Start Reminding Today</Label>
+                          <FieldHint>
+                            When on, this rule sends once for repayments due today.
+                          </FieldHint>
+                        </div>
+                        <Switch
+                          checked={ruleForm.startRemindingToday}
+                          onCheckedChange={(startRemindingToday) =>
+                            setRuleForm((current) => ({
+                              ...current,
+                              startRemindingToday,
+                              daysBeforeDue: startRemindingToday
+                                ? 0
+                                : Math.max(1, current.daysBeforeDue || 3),
+                            }))
+                          }
+                        />
+                      </div>
+                      {!ruleForm.startRemindingToday ? (
+                        <div className="max-w-xs space-y-2">
+                          <Label htmlFor="days-before-due">Days Before Due Date</Label>
+                          <Input
+                            id="days-before-due"
+                            type="number"
+                            min={1}
+                            value={ruleForm.daysBeforeDue}
+                            onChange={(event) =>
+                              setRuleForm((current) => ({
+                                ...current,
+                                daysBeforeDue: Number(event.target.value) || 0,
+                              }))
+                            }
+                          />
+                          <FieldHint>
+                            Sends once when the repayment due date is this many days away.
+                          </FieldHint>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="max-w-xs space-y-2">
+                      <Label htmlFor="days-past-due">Days Past Due</Label>
                       <Input
-                        id="days-offset"
+                        id="days-past-due"
                         type="number"
-                        value={ruleForm.daysOffset}
+                        min={1}
+                        value={ruleForm.daysPastDue}
                         onChange={(event) =>
                           setRuleForm((current) => ({
                             ...current,
-                            daysOffset: Number(event.target.value) || 0,
+                            daysPastDue: Number(event.target.value) || 0,
                           }))
                         }
                       />
                       <FieldHint>
-                        For repayment rules, shifts the target due date from the run date.
+                        Sends once when the loan reaches this exact overdue age.
                       </FieldHint>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="look-back">Look Back</Label>
-                      <Input
-                        id="look-back"
-                        type="number"
-                        min={0}
-                        value={ruleForm.lookBackDays}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            lookBackDays: Number(event.target.value) || 0,
-                          }))
-                        }
-                      />
-                      <FieldHint>
-                        For repayment rules, includes due dates before the target due date.
-                      </FieldHint>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="look-ahead">Look Ahead</Label>
-                      <Input
-                        id="look-ahead"
-                        type="number"
-                        min={0}
-                        value={ruleForm.lookAheadDays}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            lookAheadDays: Number(event.target.value) || 0,
-                          }))
-                        }
-                      />
-                      <FieldHint>
-                        For repayment rules, includes due dates after the target due date.
-                      </FieldHint>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="min-days-past-due">Min Past Due</Label>
-                      <Input
-                        id="min-days-past-due"
-                        type="number"
-                        min={0}
-                        value={ruleForm.minDaysPastDue ?? ""}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            minDaysPastDue: numberOrNull(event.target.value),
-                          }))
-                        }
-                      />
-                      <FieldHint>
-                        For recovery rules, includes loans at or above this days-past-due value.
-                      </FieldHint>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="max-days-past-due">Max Past Due</Label>
-                      <Input
-                        id="max-days-past-due"
-                        type="number"
-                        min={0}
-                        value={ruleForm.maxDaysPastDue ?? ""}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            maxDaysPastDue: numberOrNull(event.target.value),
-                          }))
-                        }
-                      />
-                      <FieldHint>
-                        For recovery rules, optional upper days-past-due value. Blank means no limit.
-                      </FieldHint>
-                    </div>
-                  </div>
+                  )}
 
                   <div className="flex items-center justify-between gap-4 rounded-md border p-3">
                     <div className="space-y-1">

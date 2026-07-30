@@ -56,16 +56,10 @@ export interface ReminderRule {
   enabled: boolean;
   channels: string;
   templateId?: string | null;
-  reportName?: string | null;
   sendTime: string;
-  timezone?: string | null;
-  daysOffset: number;
-  lookBackDays: number;
-  lookAheadDays: number;
-  minDaysPastDue?: number | null;
-  maxDaysPastDue?: number | null;
-  cooldownMinutes: number;
-  pageLimit: number;
+  startRemindingToday?: boolean;
+  daysBeforeDue?: number;
+  daysPastDue?: number;
   createdAt?: string;
   updatedAt?: string;
 }

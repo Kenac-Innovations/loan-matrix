@@ -56,16 +56,10 @@ export type SaveReminderRuleInput = {
   enabled: boolean;
   channels: string;
   templateId?: string | null;
-  reportName?: string | null;
   sendTime: string;
-  timezone?: string | null;
-  daysOffset: number;
-  lookBackDays: number;
-  lookAheadDays: number;
-  minDaysPastDue?: number | null;
-  maxDaysPastDue?: number | null;
-  cooldownMinutes: number;
-  pageLimit: number;
+  startRemindingToday: boolean;
+  daysBeforeDue: number;
+  daysPastDue: number;
 };
 
 export type ReminderRunFilters = {
@@ -353,17 +347,13 @@ export async function saveReminderRuleAction(
       type: input.type,
       enabled: input.enabled,
       channels: input.channels || "SMS",
-      templateId: input.templateId || null,
-      reportName: "",
+      templateId: input.templateId,
       sendTime: input.sendTime,
-      timezone: "",
-      daysOffset: input.daysOffset,
-      lookBackDays: input.lookBackDays,
-      lookAheadDays: input.lookAheadDays,
-      minDaysPastDue: input.minDaysPastDue ?? null,
-      maxDaysPastDue: input.maxDaysPastDue ?? null,
-      cooldownMinutes: input.cooldownMinutes,
-      pageLimit: input.pageLimit,
+      startRemindingToday: input.type === "LOAN_REPAYMENT_DUE" ? input.startRemindingToday : true,
+      daysBeforeDue: input.type === "LOAN_REPAYMENT_DUE" && !input.startRemindingToday
+        ? Math.max(1, input.daysBeforeDue)
+        : 0,
+      daysPastDue: input.type === "RECOVERY_ARREARS" ? Math.max(1, input.daysPastDue) : 0,
     };
 
     const data = await backendFetch<ReminderRule>(
@@ -431,68 +421,46 @@ export async function ensureDefaultReminderSetupAction(): Promise<
         enabled: true,
         channels: "SMS",
         templateId: repaymentTemplate.id,
-        reportName: "LM Reminder Repayment Candidates",
         sendTime: "09:00",
-        timezone: dashboard.config.timezone || "Africa/Harare",
-        daysOffset: 0,
-        lookBackDays: 0,
-        lookAheadDays: 0,
-        cooldownMinutes: 1440,
-        pageLimit: 100,
+        startRemindingToday: true,
+        daysBeforeDue: 0,
+        daysPastDue: 0,
       },
       {
         code: "recovery_30_days",
-        name: "Recovery 30-59 Days",
+        name: "Recovery 30 Days Past Due",
         type: "RECOVERY_ARREARS",
         enabled: true,
         channels: "SMS",
         templateId: recoveryTemplate.id,
-        reportName: "LM Reminder Recovery Candidates",
         sendTime: "10:00",
-        timezone: dashboard.config.timezone || "Africa/Harare",
-        daysOffset: 0,
-        lookBackDays: 0,
-        lookAheadDays: 0,
-        minDaysPastDue: 30,
-        maxDaysPastDue: 59,
-        cooldownMinutes: 1440,
-        pageLimit: 100,
+        startRemindingToday: true,
+        daysBeforeDue: 0,
+        daysPastDue: 30,
       },
       {
         code: "recovery_60_days",
-        name: "Recovery 60-89 Days",
+        name: "Recovery 60 Days Past Due",
         type: "RECOVERY_ARREARS",
         enabled: true,
         channels: "SMS",
         templateId: recoveryTemplate.id,
-        reportName: "LM Reminder Recovery Candidates",
         sendTime: "10:30",
-        timezone: dashboard.config.timezone || "Africa/Harare",
-        daysOffset: 0,
-        lookBackDays: 0,
-        lookAheadDays: 0,
-        minDaysPastDue: 60,
-        maxDaysPastDue: 89,
-        cooldownMinutes: 1440,
-        pageLimit: 100,
+        startRemindingToday: true,
+        daysBeforeDue: 0,
+        daysPastDue: 60,
       },
       {
         code: "recovery_90_plus",
-        name: "Recovery 90+ Days",
+        name: "Recovery 90 Days Past Due",
         type: "RECOVERY_ARREARS",
         enabled: true,
         channels: "SMS",
         templateId: recoveryTemplate.id,
-        reportName: "LM Reminder Recovery Candidates",
         sendTime: "11:00",
-        timezone: dashboard.config.timezone || "Africa/Harare",
-        daysOffset: 0,
-        lookBackDays: 0,
-        lookAheadDays: 0,
-        minDaysPastDue: 90,
-        maxDaysPastDue: null,
-        cooldownMinutes: 1440,
-        pageLimit: 100,
+        startRemindingToday: true,
+        daysBeforeDue: 0,
+        daysPastDue: 90,
       },
     ];
 
