@@ -726,14 +726,18 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
 
                   {ruleForm.type === "LOAN_REPAYMENT_DUE" ? (
                     <div className="space-y-3 rounded-md border p-3">
-                      <div className="flex items-center justify-between gap-4">
+                      <Label
+                        htmlFor="start-reminding-today"
+                        className="flex w-full cursor-pointer items-center justify-between gap-4 leading-normal"
+                      >
                         <div className="space-y-1">
-                          <Label className="text-sm font-medium">Start Reminding Today</Label>
+                          <span className="text-sm font-medium">Start Reminding Today</span>
                           <FieldHint>
                             When on, this rule sends once for repayments due today.
                           </FieldHint>
                         </div>
                         <Switch
+                          id="start-reminding-today"
                           checked={ruleForm.startRemindingToday}
                           onCheckedChange={(startRemindingToday) =>
                             setRuleForm((current) => ({
@@ -745,7 +749,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                             }))
                           }
                         />
-                      </div>
+                      </Label>
                       {!ruleForm.startRemindingToday ? (
                         <div className="max-w-xs space-y-2">
                           <Label htmlFor="days-before-due">Days Before Due Date</Label>
@@ -788,20 +792,24 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <Label
+                    htmlFor="rule-enabled"
+                    className="flex cursor-pointer items-center justify-between gap-4 rounded-md border p-3 leading-normal"
+                  >
                     <div className="space-y-1">
-                      <Label className="text-sm font-medium">Enabled</Label>
+                      <span className="text-sm font-medium">Enabled</span>
                       <FieldHint>
                         When off, the rule is saved but new runs are not created for it.
                       </FieldHint>
                     </div>
                     <Switch
+                      id="rule-enabled"
                       checked={ruleForm.enabled}
                       onCheckedChange={(enabled) =>
                         setRuleForm((current) => ({ ...current, enabled }))
                       }
                     />
-                  </div>
+                  </Label>
 
                   <div className="flex flex-wrap gap-2">
                     <Button type="submit" disabled={isPending}>
