@@ -40,10 +40,7 @@ export type SaveReminderTenantConfigInput = {
 
 export type SaveReminderTemplateInput = {
   id?: string;
-  code: string;
   name: string;
-  channel: "SMS" | "EMAIL";
-  subject?: string | null;
   body: string;
   active: boolean;
 };
@@ -307,10 +304,7 @@ export async function saveReminderTemplateAction(
   try {
     const context = await requireReminderContext();
     const payload = {
-      code: input.code.trim(),
       name: input.name.trim(),
-      channel: input.channel,
-      subject: input.subject?.trim() || null,
       body: input.body.trim(),
       active: input.active,
     };
@@ -378,18 +372,14 @@ export async function ensureDefaultReminderSetupAction(): Promise<
 > {
   try {
     const dashboard = await getReminderDashboardAction();
-    const templatesByCode = new Map(
-      dashboard.templates.map((template) => [template.code, template])
-    );
+    const findTemplate = (names: string[]) =>
+      dashboard.templates.find((template) => names.includes(template.name));
     const rulesByCode = new Map(dashboard.rules.map((rule) => [rule.code, rule]));
 
-    let repaymentTemplate = templatesByCode.get("repayment_due_sms");
+    let repaymentTemplate = findTemplate(["Repayment Due Reminder", "Repayment Due SMS"]);
     if (!repaymentTemplate) {
       const result = await saveReminderTemplateAction({
-        code: "repayment_due_sms",
-        name: "Repayment Due SMS",
-        channel: "SMS",
-        subject: null,
+        name: "Repayment Due Reminder",
         body:
           "Dear {{clientName}}, your loan {{loanAccountNo}} repayment of {{amountDue}} is due on {{dueDate}}. Please pay on time.",
         active: true,
@@ -398,13 +388,10 @@ export async function ensureDefaultReminderSetupAction(): Promise<
       repaymentTemplate = result.data;
     }
 
-    let recoveryTemplate = templatesByCode.get("recovery_arrears_sms");
+    let recoveryTemplate = findTemplate(["Recovery Arrears Reminder", "Recovery Arrears SMS"]);
     if (!recoveryTemplate) {
       const result = await saveReminderTemplateAction({
-        code: "recovery_arrears_sms",
-        name: "Recovery Arrears SMS",
-        channel: "SMS",
-        subject: null,
+        name: "Recovery Arrears Reminder",
         body:
           "Dear {{clientName}}, your loan {{loanAccountNo}} is {{daysPastDue}} days overdue. Amount due: {{amountDue}}. Please contact us to regularise your account.",
         active: true,

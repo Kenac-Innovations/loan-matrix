@@ -37,10 +37,7 @@ export interface ReminderTenantConfig {
 export interface ReminderTemplate {
   id?: string;
   tenantId: string;
-  code: string;
   name: string;
-  channel: NotificationChannel;
-  subject?: string | null;
   body: string;
   active: boolean;
   createdAt?: string;
@@ -100,11 +97,13 @@ export interface ReminderRunItem {
   ruleId: string;
   candidateKey: string;
   globalDedupeKey: string;
+  channel?: NotificationChannel;
   loanId?: number | null;
   clientId?: number | null;
   loanAccountNo?: string | null;
   clientName?: string | null;
   recipientPhone?: string | null;
+  recipientEmail?: string | null;
   dueDate?: string | null;
   amountDue?: number | string | null;
   daysPastDue?: number | null;

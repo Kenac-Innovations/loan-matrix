@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import {
   BellRing,
@@ -35,6 +35,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +73,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type {
   NotificationMessageSummary,
+  NotificationChannel,
   NotificationStatus,
   ReminderDashboardData,
   ReminderRule,
@@ -87,6 +89,49 @@ type RemindersClientProps = {
 
 type RuleFormState = SaveReminderRuleInput;
 type TemplateFormState = SaveReminderTemplateInput;
+
+const RULE_CHANNEL_OPTIONS: Array<{ value: NotificationChannel; label: string }> = [
+  { value: "SMS", label: "SMS" },
+  { value: "EMAIL", label: "Email" },
+];
+
+const TEMPLATE_VARIABLES = [
+  {
+    token: "{{clientName}}",
+    label: "Client Name",
+    hint: "Client display name from the candidate report.",
+  },
+  {
+    token: "{{loanAccountNo}}",
+    label: "Loan Account",
+    hint: "Fineract loan account number.",
+  },
+  {
+    token: "{{amountDue}}",
+    label: "Amount Due",
+    hint: "Amount due formatted by the backend.",
+  },
+  {
+    token: "{{dueDate}}",
+    label: "Due Date",
+    hint: "Repayment due date from the candidate report.",
+  },
+  {
+    token: "{{daysPastDue}}",
+    label: "Days Past Due",
+    hint: "Overdue age for recovery reminders.",
+  },
+  {
+    token: "{{recipientPhone}}",
+    label: "Phone",
+    hint: "Recipient phone number from the candidate report.",
+  },
+  {
+    token: "{{recipientEmail}}",
+    label: "Email",
+    hint: "Recipient email address from the candidate report.",
+  },
+];
 
 function formatDateTime(value?: string | null) {
   if (!value) return "N/A";
@@ -173,10 +218,7 @@ function FieldHint({ children }: { children: ReactNode }) {
 
 function emptyTemplateForm(): TemplateFormState {
   return {
-    code: "",
     name: "",
-    channel: "SMS",
-    subject: "",
     body: "",
     active: true,
   };
@@ -185,13 +227,29 @@ function emptyTemplateForm(): TemplateFormState {
 function templateToForm(template: ReminderTemplate): TemplateFormState {
   return {
     id: template.id,
-    code: template.code,
     name: template.name,
-    channel: template.channel,
-    subject: template.subject ?? "",
     body: template.body,
     active: template.active,
   };
+}
+
+function parseRuleChannels(channels?: string | null): NotificationChannel[] {
+  const values = (channels || "SMS")
+    .split(",")
+    .map((channel) => channel.trim().toUpperCase())
+    .filter((channel): channel is NotificationChannel =>
+      RULE_CHANNEL_OPTIONS.some((option) => option.value === channel)
+    );
+
+  const uniqueValues = Array.from(new Set(values));
+  return uniqueValues.length > 0 ? uniqueValues : ["SMS"];
+}
+
+function formatRuleChannels(channels?: string | null) {
+  const selectedChannels = parseRuleChannels(channels);
+  return selectedChannels
+    .map((channel) => RULE_CHANNEL_OPTIONS.find((option) => option.value === channel)?.label ?? channel)
+    .join(", ");
 }
 
 function emptyRuleForm(templateId?: string | null): RuleFormState {
@@ -222,7 +280,7 @@ function ruleToForm(rule: ReminderRule): RuleFormState {
     name: rule.name,
     type: rule.type,
     enabled: rule.enabled,
-    channels: rule.channels || "SMS",
+    channels: parseRuleChannels(rule.channels).join(","),
     templateId: rule.templateId ?? null,
     sendTime: rule.sendTime?.slice(0, 5) || "09:00",
     startRemindingToday,
@@ -252,7 +310,7 @@ function ruleName(rules: ReminderRule[], ruleId?: string | null) {
 
 function templateName(templates: ReminderTemplate[], templateId?: string | null) {
   if (!templateId) return "Missing template";
-  return templates.find((template) => template.id === templateId || template.code === templateId)?.name ?? "Unknown";
+  return templates.find((template) => template.id === templateId)?.name ?? "Unknown";
 }
 
 function ruleTimingSummary(rule: ReminderRule) {
@@ -272,7 +330,7 @@ function ruleTimingSummary(rule: ReminderRule) {
 
 function defaultRuleTemplateId(templates: ReminderTemplate[]) {
   const template = templates.find((item) => item.active) ?? templates[0];
-  return template?.id ?? template?.code ?? null;
+  return template?.id ?? null;
 }
 
 export function RemindersClient({ initialData }: RemindersClientProps) {
@@ -292,6 +350,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
   const [runItemsLoading, setRunItemsLoading] = useState(false);
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const templateBodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   const activeRules = useMemo(
     () => data.rules.filter((rule) => rule.enabled).length,
@@ -328,10 +387,49 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
     });
   };
 
+  const insertTemplateVariable = (token: string) => {
+    const textarea = templateBodyRef.current;
+    setTemplateForm((current) => {
+      const body = current.body ?? "";
+      const selectionStart = textarea?.selectionStart ?? body.length;
+      const selectionEnd = textarea?.selectionEnd ?? body.length;
+      const before = body.slice(0, selectionStart);
+      const after = body.slice(selectionEnd);
+      const spaceBefore = before && !/\s$/.test(before) ? " " : "";
+      const spaceAfter = after && !/^\s/.test(after) ? " " : "";
+      const nextBody = `${before}${spaceBefore}${token}${spaceAfter}${after}`;
+      const cursorPosition = before.length + spaceBefore.length + token.length + spaceAfter.length;
+
+      requestAnimationFrame(() => {
+        templateBodyRef.current?.focus();
+        templateBodyRef.current?.setSelectionRange(cursorPosition, cursorPosition);
+      });
+
+      return {
+        ...current,
+        body: nextBody,
+      };
+    });
+  };
+
+  const handleRuleChannelToggle = (channel: NotificationChannel, checked: boolean) => {
+    setRuleForm((current) => {
+      const selectedChannels = parseRuleChannels(current.channels);
+      const nextChannels = checked
+        ? Array.from(new Set([...selectedChannels, channel]))
+        : selectedChannels.filter((selectedChannel) => selectedChannel !== channel);
+
+      return {
+        ...current,
+        channels: (nextChannels.length > 0 ? nextChannels : selectedChannels).join(","),
+      };
+    });
+  };
+
   const handleSaveTemplate = (event: FormEvent) => {
     event.preventDefault();
-    if (!templateForm.code.trim() || !templateForm.name.trim() || !templateForm.body.trim()) {
-      toast.error("Template code, name, and message are required");
+    if (!templateForm.name.trim() || !templateForm.body.trim()) {
+      toast.error("Template name and message are required");
       return;
     }
 
@@ -360,8 +458,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
 
   const handleSaveRule = (event: FormEvent) => {
     event.preventDefault();
-    if (!ruleForm.name.trim() || !ruleForm.sendTime || !ruleForm.templateId) {
-      toast.error("Rule name, send time, and template are required");
+    const selectedChannels = parseRuleChannels(ruleForm.channels);
+    if (!ruleForm.name.trim() || !ruleForm.sendTime || !ruleForm.templateId || selectedChannels.length === 0) {
+      toast.error("Rule name, channel, send time, and template are required");
       return;
     }
     if (ruleForm.type === "LOAN_REPAYMENT_DUE" && !ruleForm.startRemindingToday && ruleForm.daysBeforeDue < 1) {
@@ -569,6 +668,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                       <TableRow>
                         <TableHead>Name</TableHead>
                         <TableHead>Type</TableHead>
+                        <TableHead>Channel</TableHead>
                         <TableHead>Time</TableHead>
                         <TableHead>Timing</TableHead>
                         <TableHead>Template</TableHead>
@@ -579,7 +679,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <TableBody>
                       {data.rules.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
+                          <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
                             No reminder rules configured.
                           </TableCell>
                         </TableRow>
@@ -588,9 +688,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           <TableRow key={rule.id ?? rule.code}>
                             <TableCell>
                               <div className="font-medium">{rule.name}</div>
-                              <div className="text-xs text-muted-foreground">{rule.code}</div>
                             </TableCell>
                             <TableCell>{formatReminderType(rule.type)}</TableCell>
+                            <TableCell>{formatRuleChannels(rule.channels)}</TableCell>
                             <TableCell className="tabular-nums">
                               {rule.sendTime?.slice(0, 5)}
                             </TableCell>
@@ -665,7 +765,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-3">
                     <div className="space-y-2">
                       <Label>Type</Label>
                       <Select
@@ -695,6 +795,36 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                       </FieldHint>
                     </div>
                     <div className="space-y-2">
+                      <Label>Channels</Label>
+                      <div className="space-y-2 rounded-md border p-2">
+                        {RULE_CHANNEL_OPTIONS.map((channel) => {
+                          const selectedChannels = parseRuleChannels(ruleForm.channels);
+                          const checked = selectedChannels.includes(channel.value);
+                          return (
+                            <Label
+                              key={channel.value}
+                              htmlFor={`rule-channel-${channel.value.toLowerCase()}`}
+                              className="flex cursor-pointer items-center gap-3 rounded-sm px-2 py-1.5 leading-normal hover:bg-muted/50"
+                            >
+                              <Checkbox
+                                id={`rule-channel-${channel.value.toLowerCase()}`}
+                                checked={checked}
+                                onCheckedChange={(value) =>
+                                  handleRuleChannelToggle(channel.value, value === true)
+                                }
+                              />
+                              <span className="text-sm font-medium">
+                                {channel.label}
+                              </span>
+                            </Label>
+                          );
+                        })}
+                      </div>
+                      <FieldHint>
+                        Select one or more delivery channels for this rule.
+                      </FieldHint>
+                    </div>
+                    <div className="space-y-2">
                       <Label>Template</Label>
                       <Select
                         value={ruleForm.templateId ?? ""}
@@ -710,8 +840,8 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {data.templates.map((template) => (
-                              <SelectItem key={template.id ?? template.code} value={template.id ?? template.code}>
+                            {data.templates.filter((template) => template.id).map((template) => (
+                              <SelectItem key={template.id} value={template.id!}>
                                 {template.name}
                               </SelectItem>
                             ))}
@@ -849,7 +979,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Name</TableHead>
-                        <TableHead>Channel</TableHead>
                         <TableHead>Message</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Action</TableHead>
@@ -858,18 +987,16 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <TableBody>
                       {data.templates.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="h-24 text-center text-sm text-muted-foreground">
+                          <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
                             No reminder templates configured.
                           </TableCell>
                         </TableRow>
                       ) : (
                         data.templates.map((template) => (
-                          <TableRow key={template.id ?? template.code}>
+                          <TableRow key={template.id ?? template.name}>
                             <TableCell>
                               <div className="font-medium">{template.name}</div>
-                              <div className="text-xs text-muted-foreground">{template.code}</div>
                             </TableCell>
-                            <TableCell>{template.channel}</TableCell>
                             <TableCell className="max-w-xl truncate">{template.body}</TableCell>
                             <TableCell>
                               <Badge className={cn("border", statusBadgeClass(template.active ? "SENT" : "SKIPPED"))}>
@@ -908,36 +1035,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                   </DialogTitle>
                 </DialogHeader>
                 <form className="space-y-4" onSubmit={handleSaveTemplate}>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="template-code">Code</Label>
-                      <Input
-                        id="template-code"
-                        value={templateForm.code}
-                        onChange={(event) =>
-                          setTemplateForm((current) => ({ ...current, code: event.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Channel</Label>
-                      <Select
-                        value={templateForm.channel}
-                        onValueChange={(channel: "SMS" | "EMAIL") =>
-                          setTemplateForm((current) => ({ ...current, channel }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="SMS">SMS</SelectItem>
-                          <SelectItem value="EMAIL">Email</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="template-name">Name</Label>
                     <Input
@@ -947,43 +1044,64 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         setTemplateForm((current) => ({ ...current, name: event.target.value }))
                       }
                     />
+                    <FieldHint>
+                      Readable label used when selecting this template for reminder rules.
+                    </FieldHint>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="template-subject">Subject</Label>
-                    <Input
-                      id="template-subject"
-                      value={templateForm.subject ?? ""}
-                      onChange={(event) =>
-                        setTemplateForm((current) => ({ ...current, subject: event.target.value }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="template-body">Message</Label>
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="template-body">Message</Label>
+                      <FieldHint>
+                        Pick variables below to insert safe tokens into the message body.
+                      </FieldHint>
+                    </div>
+                    <div className="flex flex-wrap gap-2 rounded-md border bg-muted/20 p-2">
+                      {TEMPLATE_VARIABLES.map((variable) => (
+                        <Button
+                          key={variable.token}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          title={variable.hint}
+                          onClick={() => insertTemplateVariable(variable.token)}
+                        >
+                          {variable.label}
+                        </Button>
+                      ))}
+                    </div>
                     <Textarea
                       id="template-body"
+                      ref={templateBodyRef}
                       value={templateForm.body}
                       rows={7}
                       onChange={(event) =>
                         setTemplateForm((current) => ({ ...current, body: event.target.value }))
                       }
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Variables: {"{{clientName}}"}, {"{{loanAccountNo}}"}, {"{{amountDue}}"}, {"{{dueDate}}"}, {"{{daysPastDue}}"}.
-                    </p>
+                    <FieldHint>
+                      The backend replaces these tokens with values from each reminder candidate.
+                    </FieldHint>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                    <Label className="text-sm font-medium">Active</Label>
+                  <Label
+                    htmlFor="template-active"
+                    className="flex cursor-pointer items-center justify-between gap-4 rounded-md border p-3 leading-normal"
+                  >
+                    <div className="space-y-1">
+                      <span className="text-sm font-medium">Active</span>
+                      <FieldHint>
+                        When off, rules can reference this template but no messages are sent with it.
+                      </FieldHint>
+                    </div>
                     <Switch
+                      id="template-active"
                       checked={templateForm.active}
                       onCheckedChange={(active) =>
                         setTemplateForm((current) => ({ ...current, active }))
                       }
                     />
-                  </div>
+                  </Label>
 
                   <div className="flex flex-wrap gap-2">
                     <Button type="submit" disabled={isPending}>
@@ -1063,6 +1181,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Client</TableHead>
+                            <TableHead>Channel</TableHead>
                             <TableHead>Due</TableHead>
                             <TableHead>Status</TableHead>
                           </TableRow>
@@ -1070,7 +1189,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         <TableBody>
                           {runItems.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={3} className="h-24 text-center text-sm text-muted-foreground">
+                              <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
                                 No candidates loaded.
                               </TableCell>
                             </TableRow>
@@ -1083,6 +1202,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                                     {item.loanAccountNo || item.loanId || "No loan reference"}
                                   </div>
                                 </TableCell>
+                                <TableCell>{item.channel ?? "SMS"}</TableCell>
                                 <TableCell>
                                   <div>{formatDate(item.dueDate)}</div>
                                   <div className="text-xs text-muted-foreground">
