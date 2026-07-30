@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getFineractServiceWithServiceAuth } from "@/lib/fineract-api";
+import { prisma } from "@/lib/prisma";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
+import {
+  enrichDisbursalReportWithPayoutAttribution,
+  getDisbursalLoanIds,
+  type PayoutAttribution,
+} from "@/lib/report-payout-attribution";
 
 const isPentahoReport = (report: unknown) => {
   if (!report || typeof report !== "object") {
@@ -12,6 +19,82 @@ const isPentahoReport = (report: unknown) => {
     reportType.toLowerCase().includes("pentaho")
   );
 };
+
+async function enrichDisbursalReport(
+  reportData: unknown,
+  tenantId: string,
+  fineractService: Awaited<ReturnType<typeof getFineractServiceWithServiceAuth>>
+) {
+  const loanIds = getDisbursalLoanIds(reportData as Record<string, unknown>);
+  if (loanIds.length === 0) {
+    return reportData;
+  }
+
+  const payouts = await prisma.loanPayout.findMany({
+    where: {
+      tenantId,
+      fineractLoanId: { in: loanIds },
+    },
+    select: {
+      fineractLoanId: true,
+      cashierId: true,
+      paidBy: true,
+    },
+  });
+
+  if (payouts.length === 0) {
+    return reportData;
+  }
+
+  const cashierIds = payouts
+    .map((payout) => payout.cashierId)
+    .filter((cashierId): cashierId is string => Boolean(cashierId));
+  const cashiers = cashierIds.length
+    ? await prisma.cashier.findMany({
+        where: { id: { in: cashierIds } },
+        select: { id: true, staffName: true },
+      })
+    : [];
+  const cashierNameById = new Map(
+    cashiers.map((cashier) => [cashier.id, cashier.staffName])
+  );
+
+  let fineractUserNameById = new Map<string, string>();
+  if (payouts.some((payout) => payout.paidBy)) {
+    try {
+      const users = await fineractService.getUsers();
+      fineractUserNameById = new Map(
+        users.map((user: any) => {
+          const displayName =
+            [user.firstname, user.lastname].filter(Boolean).join(" ") ||
+            user.displayName ||
+            user.username ||
+            `User ${user.id}`;
+          return [String(user.id), displayName];
+        })
+      );
+    } catch (error) {
+      console.error("Unable to load Fineract users for payout attribution:", error);
+    }
+  }
+
+  const attributionByLoanId = new Map<number, PayoutAttribution>();
+  for (const payout of payouts) {
+    attributionByLoanId.set(payout.fineractLoanId, {
+      cashierName: payout.cashierId
+        ? cashierNameById.get(payout.cashierId) || null
+        : null,
+      paidByName: payout.paidBy
+        ? fineractUserNameById.get(String(payout.paidBy)) || null
+        : null,
+    });
+  }
+
+  return enrichDisbursalReportWithPayoutAttribution(
+    reportData as Record<string, unknown>,
+    attributionByLoanId
+  );
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -130,10 +213,20 @@ export async function GET(request: NextRequest) {
       });
 
       try {
-        const reportData = await fineractService.runReport(
+        let reportData = await fineractService.runReport(
           reportName,
           reportParams
         );
+        if (reportName === "Disbursal by payment type") {
+          const tenant = await getTenantFromHeaders();
+          if (tenant) {
+            reportData = await enrichDisbursalReport(
+              reportData,
+              tenant.id,
+              fineractService
+            );
+          }
+        }
         return NextResponse.json(reportData);
       } catch (error: any) {
         console.error("Error running report:", {
