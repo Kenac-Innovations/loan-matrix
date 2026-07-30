@@ -245,11 +245,23 @@ export function RescheduleModal({ isOpen, onClose, loanId }: RescheduleModalProp
         throw new Error(errorMessage);
       }
 
-      toast({
-        title: "Success",
-        description: "Loan rescheduled successfully",
-        variant: "default",
-      });
+      const result = await response.json().catch(() => ({}));
+
+      toast(
+        result?.rollbackTransaction === true
+          ? {
+              title: "Awaiting checker approval",
+              description:
+                "This reschedule request requires checker approval before it's applied.",
+              variant: "warning",
+              duration: Infinity,
+            }
+          : {
+              title: "Success",
+              description: "Loan rescheduled successfully",
+              variant: "default",
+            }
+      );
 
       onClose();
       window.location.reload();

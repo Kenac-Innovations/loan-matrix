@@ -164,7 +164,7 @@ export function RoleDetailClient({ initialRole }: RoleDetailClientProps) {
       }
 
       if (result.pending) {
-        toast.info("Submitted - awaiting checker approval");
+        toast.info("Submitted - awaiting checker approval", { duration: Infinity });
         setIsEditingPermissions(false);
         return;
       }
@@ -190,7 +190,7 @@ export function RoleDetailClient({ initialRole }: RoleDetailClientProps) {
       }
 
       if (result.pending) {
-        toast.info("Submitted - awaiting checker approval");
+        toast.info("Submitted - awaiting checker approval", { duration: Infinity });
         setIsEditRoleOpen(false);
         return;
       }
@@ -218,7 +218,7 @@ export function RoleDetailClient({ initialRole }: RoleDetailClientProps) {
       setConfirmAction(null);
 
       if (result.pending) {
-        toast.info("Submitted - awaiting checker approval");
+        toast.info("Submitted - awaiting checker approval", { duration: Infinity });
         return;
       }
 

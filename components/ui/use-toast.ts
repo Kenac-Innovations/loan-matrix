@@ -6,21 +6,24 @@ type ToastProps = {
   description?: string | React.ReactNode;
   variant?: "default" | "destructive" | "success" | "info" | "warning";
   icon?: React.ReactNode;
+  duration?: number;
   action?: {
     label: string;
     onClick: () => void;
   };
 };
 
-export function toast({ 
-  title, 
-  description, 
+export function toast({
+  title,
+  description,
   variant = "default",
   icon,
-  action 
+  duration,
+  action
 }: ToastProps) {
   const baseOptions = {
     description,
+    duration,
     action: action ? {
       label: action.label,
       onClick: action.onClick,

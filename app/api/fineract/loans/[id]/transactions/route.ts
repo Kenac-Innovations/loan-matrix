@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchFineractAPI } from '@/lib/api';
+import { fetchFineractAPI, isFineractCommandPendingApproval } from '@/lib/api';
 import { isPaymentTypeCash } from '@/lib/cash-repayment-teller';
 import { upsertRepaymentCashLink } from '@/lib/repayment-cash-link';
 import { getTenantFromHeaders } from '@/lib/tenant-service';
@@ -234,6 +234,10 @@ export async function POST(
       method: 'POST',
       body: JSON.stringify(repaymentBody),
     });
+    // Maker-checker may have queued this instead of applying it - Fineract still
+    // reports a resourceId in that case, so nothing below (cash-link bookkeeping,
+    // cashier allocation, SMS) should run against a transaction that doesn't exist yet.
+    const isPendingApproval = isFineractCommandPendingApproval(data);
     const fineractTransactionId = Number(
       data?.resourceId ?? data?.transactionId ?? data?.id
     );
@@ -242,6 +246,7 @@ export async function POST(
 
     // After successful repayment: if payment is cash, call allocate to update cashier balance
     if (
+      !isPendingApproval &&
       command === 'repayment' &&
       body.paymentTypeId != null &&
       body.transactionAmount != null &&
@@ -289,6 +294,7 @@ export async function POST(
     }
 
     if (
+      !isPendingApproval &&
       command === "repayment" &&
       tenant &&
       Number.isFinite(loanId) &&

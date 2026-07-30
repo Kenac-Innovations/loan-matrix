@@ -574,6 +574,7 @@ export function UserForm({
             : "User updated",
         description: toastDescription,
         variant: toastVariant,
+        duration: result.pending ? Infinity : undefined,
       });
 
       if (userId) {

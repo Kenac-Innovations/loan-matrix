@@ -436,9 +436,15 @@ export function RepaymentModal({
 
       const result = await response.json();
       console.log("Repayment submitted successfully:", result);
+      const isPendingApproval = result?.rollbackTransaction === true;
 
-      // Mark receipt number as used
-      if (receiptRangesEnabled && formData.receiptNumber.trim()) {
+      // Mark receipt number as used - skip if the transaction is only queued for
+      // checker approval, since it hasn't actually been recorded in Fineract yet.
+      if (
+        !isPendingApproval &&
+        receiptRangesEnabled &&
+        formData.receiptNumber.trim()
+      ) {
         await markReceiptUsed({
           receiptNumber: formData.receiptNumber.trim(),
           transactionType: "REPAYMENT",
@@ -508,10 +514,20 @@ export function RepaymentModal({
        */
 
       setSuccess(true);
-      toast({
-        title: "Repayment submitted",
-        description: "Repayment was recorded successfully.",
-      });
+      toast(
+        isPendingApproval
+          ? {
+              title: "Awaiting checker approval",
+              description:
+                "This repayment requires checker approval before it's applied and won't appear on the loan until then.",
+              variant: "warning",
+              duration: Infinity,
+            }
+          : {
+              title: "Repayment submitted",
+              description: "Repayment was recorded successfully.",
+            }
+      );
 
       // Close modal after a short delay
       setTimeout(() => {

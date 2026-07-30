@@ -91,7 +91,7 @@ export function RolesAndPermissionsClient({
       setIsCreateOpen(false);
 
       if (result.pending) {
-        toast.info("Submitted - awaiting checker approval");
+        toast.info("Submitted - awaiting checker approval", { duration: Infinity });
         return;
       }
 
