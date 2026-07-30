@@ -3,7 +3,6 @@
 import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  AlertCircle,
   BellRing,
   CalendarClock,
   Clock3,
@@ -13,7 +12,6 @@ import {
   RefreshCw,
   Save,
   Send,
-  Settings2,
   ShieldCheck,
   SquarePen,
   XCircle,
@@ -26,12 +24,9 @@ import {
   getReminderRunItemsAction,
   saveReminderRuleAction,
   saveReminderTemplateAction,
-  saveReminderTenantConfigAction,
   type SaveReminderRuleInput,
   type SaveReminderTemplateInput,
-  type SaveReminderTenantConfigInput,
 } from "@/app/actions/reminder-actions";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -258,11 +253,6 @@ function templateName(templates: ReminderTemplate[], templateId?: string | null)
 
 export function RemindersClient({ initialData }: RemindersClientProps) {
   const [data, setData] = useState(initialData);
-  const [configForm, setConfigForm] = useState<SaveReminderTenantConfigInput>({
-    enabled: initialData.config.enabled,
-    timezone: initialData.config.timezone || "Africa/Harare",
-    defaultCountryCode: initialData.config.defaultCountryCode || "+263",
-  });
   const [templateForm, setTemplateForm] = useState<TemplateFormState>(
     emptyTemplateForm()
   );
@@ -302,33 +292,12 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
       try {
         const next = await getReminderDashboardAction();
         setData(next);
-        setConfigForm({
-          enabled: next.config.enabled,
-          timezone: next.config.timezone || "Africa/Harare",
-          defaultCountryCode: next.config.defaultCountryCode || "+263",
-        });
         toast.success("Reminders refreshed");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to refresh reminders");
       } finally {
         setPendingLabel(null);
       }
-    });
-  };
-
-  const handleSaveConfig = (event: FormEvent) => {
-    event.preventDefault();
-    setPendingLabel("config");
-    startTransition(async () => {
-      const result = await saveReminderTenantConfigAction(configForm);
-      if (!result.success || !result.data) {
-        toast.error(result.error || "Failed to save reminder settings");
-        setPendingLabel(null);
-        return;
-      }
-      setData((current) => ({ ...current, config: result.data! }));
-      toast.success("Reminder settings saved");
-      setPendingLabel(null);
     });
   };
 
@@ -445,15 +414,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
           <p className="mt-1 text-sm text-muted-foreground">
             Central scheduling, templates, run progress, and delivery history.
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{data.tenant.fineractTenantId}</Badge>
-            {data.tenant.tenantName && (
-              <Badge variant="outline">{data.tenant.tenantName}</Badge>
-            )}
-            <Badge className={cn("border", statusBadgeClass(data.config.enabled ? "SENT" : "SKIPPED"))}>
-              {data.config.enabled ? "Enabled" : "Disabled"}
-            </Badge>
-          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -479,15 +439,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
           </Button>
         </div>
       </div>
-
-      {!data.config.enabled && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Reminder runs will not be created for this tenant until reminders are enabled.
-          </AlertDescription>
-        </Alert>
-      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -526,88 +477,22 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,420px)_1fr]">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Settings2 className="h-4 w-4" />
-                  Tenant Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form className="space-y-4" onSubmit={handleSaveConfig}>
-                  <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                    <div>
-                      <Label className="text-sm font-medium">Reminders</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Tenant-level scheduler switch.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={configForm.enabled}
-                      onCheckedChange={(enabled) =>
-                        setConfigForm((current) => ({ ...current, enabled }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="timezone">Timezone</Label>
-                    <Input
-                      id="timezone"
-                      value={configForm.timezone}
-                      onChange={(event) =>
-                        setConfigForm((current) => ({
-                          ...current,
-                          timezone: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="default-country-code">Default Country Code</Label>
-                    <Input
-                      id="default-country-code"
-                      value={configForm.defaultCountryCode ?? ""}
-                      onChange={(event) =>
-                        setConfigForm((current) => ({
-                          ...current,
-                          defaultCountryCode: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <Button type="submit" disabled={isPending} className="w-full">
-                    {pendingLabel === "config" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
-                    Save Settings
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <BellRing className="h-4 w-4" />
-                  Recent Runs
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RunsTable
-                  runs={data.runs.slice(0, 5)}
-                  rules={data.rules}
-                  compact
-                  onSelectRun={handleSelectRun}
-                />
-              </CardContent>
-            </Card>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BellRing className="h-4 w-4" />
+                Recent Runs
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RunsTable
+                runs={data.runs.slice(0, 5)}
+                rules={data.rules}
+                compact
+                onSelectRun={handleSelectRun}
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="rules" className="space-y-4">
