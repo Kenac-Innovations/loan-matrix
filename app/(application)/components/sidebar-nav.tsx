@@ -5,6 +5,7 @@ import {
   BarChart3,
   Bot,
   Building2,
+  ClipboardCheck,
   CreditCard,
   FileText,
   Receipt,
@@ -214,6 +215,14 @@ export function SidebarNav({
           ]}
         />
       )}
+
+      <Link
+        href="/checker-inbox"
+        className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+      >
+        <ClipboardCheck className="h-4 w-4" />
+        Checker Inbox &amp; Tasks
+      </Link>
 
       {isEnabled("reports") && (
         <Link
