@@ -164,6 +164,14 @@ function StatCard({
   );
 }
 
+function FieldHint({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-xs leading-relaxed text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 function emptyTemplateForm(): TemplateFormState {
   return {
     code: "",
@@ -627,6 +635,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           setRuleForm((current) => ({ ...current, code: event.target.value }))
                         }
                       />
+                      <FieldHint>
+                        Unique stable key used in API payloads and run history.
+                      </FieldHint>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="rule-time">Send Time</Label>
@@ -638,6 +649,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           setRuleForm((current) => ({ ...current, sendTime: event.target.value }))
                         }
                       />
+                      <FieldHint>
+                        Local time of day used when creating scheduled runs for this rule.
+                      </FieldHint>
                     </div>
                   </div>
 
@@ -650,6 +664,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         setRuleForm((current) => ({ ...current, name: event.target.value }))
                       }
                     />
+                    <FieldHint>
+                      Readable label shown in rule lists, runs, and notification history.
+                    </FieldHint>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -669,6 +686,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           <SelectItem value="RECOVERY_ARREARS">Recovery Arrears</SelectItem>
                         </SelectContent>
                       </Select>
+                      <FieldHint>
+                        Selects the candidate logic: repayment due-date windows or recovery arrears.
+                      </FieldHint>
                     </div>
                     <div className="space-y-2">
                       <Label>Template</Label>
@@ -693,6 +713,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           ))}
                         </SelectContent>
                       </Select>
+                      <FieldHint>
+                        Message template used for notifications produced by this rule.
+                      </FieldHint>
                     </div>
                   </div>
 
@@ -706,6 +729,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           setRuleForm((current) => ({ ...current, timezone: event.target.value }))
                         }
                       />
+                      <FieldHint>
+                        Timezone used to interpret Send Time and the rule run slot.
+                      </FieldHint>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="rule-cooldown">Cooldown Minutes</Label>
@@ -721,6 +747,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           }))
                         }
                       />
+                      <FieldHint>
+                        Minimum wait before the same candidate can receive this reminder again.
+                      </FieldHint>
                     </div>
                   </div>
 
@@ -738,6 +767,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           }))
                         }
                       />
+                      <FieldHint>
+                        For repayment rules, shifts the target due date from the run date.
+                      </FieldHint>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="look-back">Look Back</Label>
@@ -753,6 +785,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           }))
                         }
                       />
+                      <FieldHint>
+                        For repayment rules, includes due dates before the target due date.
+                      </FieldHint>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="look-ahead">Look Ahead</Label>
@@ -768,6 +803,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           }))
                         }
                       />
+                      <FieldHint>
+                        For repayment rules, includes due dates after the target due date.
+                      </FieldHint>
                     </div>
                   </div>
 
@@ -786,6 +824,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           }))
                         }
                       />
+                      <FieldHint>
+                        For recovery rules, includes loans at or above this days-past-due value.
+                      </FieldHint>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="max-days-past-due">Max Past Due</Label>
@@ -801,6 +842,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           }))
                         }
                       />
+                      <FieldHint>
+                        For recovery rules, optional upper days-past-due value. Blank means no limit.
+                      </FieldHint>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="page-limit">Page Limit</Label>
@@ -817,6 +861,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           }))
                         }
                       />
+                      <FieldHint>
+                        Maximum candidates fetched per Fineract report page.
+                      </FieldHint>
                     </div>
                   </div>
 
@@ -829,10 +876,18 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         setRuleForm((current) => ({ ...current, reportName: event.target.value }))
                       }
                     />
+                    <FieldHint>
+                      Fineract stretchy report used to fetch candidates. Blank uses the default report.
+                    </FieldHint>
                   </div>
 
                   <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                    <Label className="text-sm font-medium">Enabled</Label>
+                    <div className="space-y-1">
+                      <Label className="text-sm font-medium">Enabled</Label>
+                      <FieldHint>
+                        When off, the rule is saved but new runs are not created for it.
+                      </FieldHint>
+                    </div>
                     <Switch
                       checked={ruleForm.enabled}
                       onCheckedChange={(enabled) =>
