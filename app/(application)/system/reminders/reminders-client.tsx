@@ -53,6 +53,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -79,8 +80,6 @@ import type {
   ReminderTemplate,
   ReminderType,
 } from "@/shared/types/reminders";
-
-const NONE = "__none";
 
 type RemindersClientProps = {
   initialData: ReminderDashboardData;
@@ -263,8 +262,13 @@ function ruleName(rules: ReminderRule[], ruleId?: string | null) {
 }
 
 function templateName(templates: ReminderTemplate[], templateId?: string | null) {
-  if (!templateId) return "None";
+  if (!templateId) return "Missing template";
   return templates.find((template) => template.id === templateId)?.name ?? "Unknown";
+}
+
+function defaultRuleTemplateId(templates: ReminderTemplate[]) {
+  const template = templates.find((item) => item.active) ?? templates[0];
+  return template?.id ?? template?.code ?? null;
 }
 
 export function RemindersClient({ initialData }: RemindersClientProps) {
@@ -273,7 +277,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
     emptyTemplateForm()
   );
   const [ruleForm, setRuleForm] = useState<RuleFormState>(
-    emptyRuleForm()
+    emptyRuleForm(defaultRuleTemplateId(initialData.templates))
   );
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -352,8 +356,8 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
 
   const handleSaveRule = (event: FormEvent) => {
     event.preventDefault();
-    if (!ruleForm.name.trim() || !ruleForm.sendTime) {
-      toast.error("Rule name and send time are required");
+    if (!ruleForm.name.trim() || !ruleForm.sendTime || !ruleForm.templateId) {
+      toast.error("Rule name, send time, and template are required");
       return;
     }
 
@@ -373,7 +377,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
           ...current.rules.filter((rule) => rule.id !== result.data!.id),
         ].sort((first, second) => first.name.localeCompare(second.name)),
       }));
-      setRuleForm(emptyRuleForm());
+      setRuleForm(emptyRuleForm(defaultRuleTemplateId(data.templates)));
       setRuleDialogOpen(false);
       toast.success("Reminder rule saved");
       setPendingLabel(null);
@@ -381,7 +385,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
   };
 
   const openNewRuleDialog = () => {
-    setRuleForm(emptyRuleForm());
+    setRuleForm(emptyRuleForm(defaultRuleTemplateId(data.templates)));
     setRuleDialogOpen(true);
   };
 
@@ -675,28 +679,29 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <div className="space-y-2">
                       <Label>Template</Label>
                       <Select
-                        value={ruleForm.templateId || NONE}
+                        value={ruleForm.templateId ?? ""}
                         onValueChange={(templateId) =>
                           setRuleForm((current) => ({
                             ...current,
-                            templateId: templateId === NONE ? null : templateId,
+                            templateId,
                           }))
                         }
                       >
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select template" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NONE}>None</SelectItem>
-                          {data.templates.map((template) => (
-                            <SelectItem key={template.id ?? template.code} value={template.id ?? template.code}>
-                              {template.name}
-                            </SelectItem>
-                          ))}
+                          <SelectGroup>
+                            {data.templates.map((template) => (
+                              <SelectItem key={template.id ?? template.code} value={template.id ?? template.code}>
+                                {template.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
                         </SelectContent>
                       </Select>
                       <FieldHint>
-                        Message template used for notifications produced by this rule.
+                        Required message template used for notifications produced by this rule.
                       </FieldHint>
                     </div>
                   </div>

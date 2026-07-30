@@ -342,6 +342,10 @@ export async function saveReminderRuleAction(
   input: SaveReminderRuleInput
 ): Promise<ReminderActionResult<ReminderRule>> {
   try {
+    if (!input.templateId) {
+      return failure(new Error("Template is required for reminder rules"));
+    }
+
     const context = await requireReminderContext();
     const payload = {
       code: input.code?.trim() || input.id || randomUUID(),
