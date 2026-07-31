@@ -24,6 +24,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -147,6 +154,31 @@ function messageTimestamp(message: NotificationMessageSummary) {
   );
 }
 
+function detailValue(value?: string | number | null) {
+  if (value == null || value === "") {
+    return "N/A";
+  }
+
+  return String(value);
+}
+
+function DetailItem({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | number | null;
+}) {
+  return (
+    <div className="space-y-1">
+      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="break-words text-sm">{detailValue(value)}</dd>
+    </div>
+  );
+}
+
 function pageRange(page: NotificationMessagePage) {
   if (page.totalElements === 0) {
     return { start: 0, end: 0 };
@@ -162,6 +194,8 @@ export function NotificationsClient({ initialPage }: NotificationsClientProps) {
   const [notificationPage, setNotificationPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(initialPage.size || DEFAULT_PAGE_SIZE);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedMessage, setSelectedMessage] =
+    useState<NotificationMessageSummary | null>(null);
 
   const totalPages = Math.max(1, notificationPage.totalPages);
   const currentPage = notificationPage.page + 1;
@@ -386,19 +420,26 @@ export function NotificationsClient({ initialPage }: NotificationsClientProps) {
                   </TableRow>
                 ) : (
                   notificationPage.content.map((message) => (
-                    <TableRow key={message.id}>
+                    <TableRow
+                      key={message.id}
+                      role="button"
+                      tabIndex={0}
+                      className="cursor-pointer transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => setSelectedMessage(message)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedMessage(message);
+                        }
+                      }}
+                    >
                       <TableCell className="min-w-[360px] max-w-[460px]">
                         <div className="font-medium">
                           {message.subject || compactLabel(message.sourceType)}
                         </div>
-                        <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                        <div className="mt-1 max-w-[520px] truncate text-sm text-muted-foreground">
                           {message.body}
                         </div>
-                        {message.errorMessage && (
-                          <div className="mt-1 text-xs text-red-600 dark:text-red-400">
-                            {message.errorMessage}
-                          </div>
-                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {message.recipient}
@@ -470,6 +511,117 @@ export function NotificationsClient({ initialPage }: NotificationsClientProps) {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={Boolean(selectedMessage)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedMessage(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          {selectedMessage && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {selectedMessage.subject ||
+                    compactLabel(selectedMessage.sourceType)}
+                </DialogTitle>
+                <DialogDescription>
+                  {selectedMessage.messageId}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    className={cn(
+                      "border",
+                      statusBadgeClass(selectedMessage.status)
+                    )}
+                  >
+                    {compactLabel(selectedMessage.status)}
+                  </Badge>
+                  <Badge variant="outline">{selectedMessage.channel}</Badge>
+                  <Badge variant="outline">
+                    {compactLabel(selectedMessage.source)}
+                  </Badge>
+                  <Badge variant="outline">
+                    {compactLabel(selectedMessage.sourceType)}
+                  </Badge>
+                </div>
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">Message</h3>
+                  <div className="rounded-md border bg-muted/30 p-3 text-sm leading-6 whitespace-pre-wrap">
+                    {selectedMessage.body || "N/A"}
+                  </div>
+                </section>
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">Delivery</h3>
+                  <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <DetailItem
+                      label="Recipient"
+                      value={selectedMessage.recipient}
+                    />
+                    <DetailItem
+                      label="Channel"
+                      value={selectedMessage.channel}
+                    />
+                    <DetailItem
+                      label="Status"
+                      value={compactLabel(selectedMessage.status)}
+                    />
+                    <DetailItem
+                      label="Scheduled For"
+                      value={formatDateTime(selectedMessage.scheduledFor)}
+                    />
+                    <DetailItem
+                      label="Accepted At"
+                      value={formatDateTime(selectedMessage.acceptedAt)}
+                    />
+                    <DetailItem
+                      label="Sent At"
+                      value={formatDateTime(selectedMessage.sentAt)}
+                    />
+                  </dl>
+                </section>
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">Loan Context</h3>
+                  <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <DetailItem
+                      label="Loan Account"
+                      value={selectedMessage.loanAccountNo}
+                    />
+                    <DetailItem
+                      label="Due Date"
+                      value={selectedMessage.dueDate}
+                    />
+                  </dl>
+                </section>
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold">Error Message</h3>
+                  <div
+                    className={cn(
+                      "rounded-md border p-3 text-sm leading-6 whitespace-pre-wrap",
+                      selectedMessage.errorMessage
+                        ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200"
+                        : "bg-muted/30 text-muted-foreground"
+                    )}
+                  >
+                    {selectedMessage.errorMessage ||
+                      "No error message recorded."}
+                  </div>
+                </section>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
