@@ -1,7 +1,6 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -12,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { LoanProductFormData, LoanProductTemplate } from "@/shared/types/loan-product";
+import { FieldLabel } from "./field-label";
+import { LOAN_PRODUCT_TOOLTIPS as T } from "./loan-product-tooltips";
 
 interface StepDetailsProps {
   form: LoanProductFormData;
@@ -31,9 +32,7 @@ export function StepDetails({ form, template, onChange }: StepDetailsProps) {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="name">
-            Product Name <span className="text-destructive">*</span>
-          </Label>
+          <FieldLabel htmlFor="name" label="Product Name" required tooltip={T.name} />
           <Input
             id="name"
             placeholder="e.g. Personal Loan"
@@ -44,9 +43,7 @@ export function StepDetails({ form, template, onChange }: StepDetailsProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="shortName">
-            Short Name <span className="text-destructive">*</span>
-          </Label>
+          <FieldLabel htmlFor="shortName" label="Short Name" required tooltip={T.shortName} />
           <Input
             id="shortName"
             placeholder="e.g. PL"
@@ -59,7 +56,7 @@ export function StepDetails({ form, template, onChange }: StepDetailsProps) {
         </div>
 
         <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor="description">Description</Label>
+          <FieldLabel htmlFor="description" label="Description" tooltip={T.description} />
           <Textarea
             id="description"
             placeholder="Describe the loan product..."
@@ -70,7 +67,7 @@ export function StepDetails({ form, template, onChange }: StepDetailsProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="externalId">External ID</Label>
+          <FieldLabel htmlFor="externalId" label="External ID" tooltip={T.externalId} />
           <Input
             id="externalId"
             placeholder="Optional external reference"
@@ -80,7 +77,7 @@ export function StepDetails({ form, template, onChange }: StepDetailsProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="fundId">Fund</Label>
+          <FieldLabel htmlFor="fundId" label="Fund" tooltip={T.fundId} />
           <Select
             value={form.fundId === "" ? "__none__" : String(form.fundId)}
             onValueChange={(v) => onChange({ fundId: v === "__none__" ? "" : Number(v) })}
@@ -100,7 +97,7 @@ export function StepDetails({ form, template, onChange }: StepDetailsProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="startDate">Start Date</Label>
+          <FieldLabel htmlFor="startDate" label="Start Date" tooltip={T.startDate} />
           <Input
             id="startDate"
             type="date"
@@ -110,7 +107,7 @@ export function StepDetails({ form, template, onChange }: StepDetailsProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="closeDate">Close Date</Label>
+          <FieldLabel htmlFor="closeDate" label="Close Date" tooltip={T.closeDate} />
           <Input
             id="closeDate"
             type="date"
@@ -125,9 +122,12 @@ export function StepDetails({ form, template, onChange }: StepDetailsProps) {
         onClick={() => onChange({ includeInBorrowerCycle: !form.includeInBorrowerCycle })}
       >
         <div className="space-y-1">
-          <Label htmlFor="includeInBorrowerCycle" className="pointer-events-none text-sm font-medium">
-            Include in Borrower Cycle
-          </Label>
+          <FieldLabel
+            htmlFor="includeInBorrowerCycle"
+            label="Include in Borrower Cycle"
+            tooltip={T.includeInBorrowerCycle}
+            labelClassName="pointer-events-none text-sm font-medium"
+          />
           <p className="text-xs text-muted-foreground">
             Track the number of times a client has taken this loan product.
           </p>
@@ -149,9 +149,12 @@ export function StepDetails({ form, template, onChange }: StepDetailsProps) {
         onClick={() => onChange({ isInvoiceDiscounting: !form.isInvoiceDiscounting })}
       >
         <div className="space-y-1">
-          <Label htmlFor="isInvoiceDiscounting" className="pointer-events-none text-sm font-medium">
-            Invoice Discounting Product
-          </Label>
+          <FieldLabel
+            htmlFor="isInvoiceDiscounting"
+            label="Invoice Discounting Product"
+            tooltip={T.isInvoiceDiscounting}
+            labelClassName="pointer-events-none text-sm font-medium"
+          />
           <p className="text-xs text-muted-foreground">
             Mark this as an invoice discounting loan product. Interest rate will be locked
             to 0% — discounting fees are handled separately as charges.
