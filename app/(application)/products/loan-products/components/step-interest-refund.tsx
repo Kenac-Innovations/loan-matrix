@@ -3,6 +3,8 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { LoanProductFormData, LoanProductTemplate } from "@/shared/types/loan-product";
+import { TooltipHelp } from "./field-label";
+import { LOAN_PRODUCT_TOOLTIPS as T } from "./loan-product-tooltips";
 
 interface StepInterestRefundProps {
   form: LoanProductFormData;
@@ -22,7 +24,13 @@ export function StepInterestRefund({ form, template, onChange }: StepInterestRef
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Interest Refund</h2>
+        <div className="flex items-center gap-1">
+          <h2 className="text-lg font-semibold">Interest Refund</h2>
+          <TooltipHelp
+            tooltip={T.supportedInterestRefundTypes}
+            ariaLabel="More information about interest refunds"
+          />
+        </div>
         <p className="text-sm text-muted-foreground">
           Select which transaction types are eligible for interest refunds on this product.
         </p>
