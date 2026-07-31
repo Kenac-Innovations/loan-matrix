@@ -169,34 +169,34 @@ export default function ClosingEntriesPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Closing Entries</h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-1">
+            <h1 className="text-2xl font-bold text-foreground">Closing Entries</h1>
+            <p className="text-muted-foreground mt-1">
               Manage GL closures and period-end procedures
             </p>
           </div>
-          <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded w-32 animate-pulse"></div>
+          <div className="h-10 bg-muted rounded w-32 animate-pulse"></div>
         </div>
 
         {/* Filters */}
-        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <Card>
           <CardContent className="pt-6">
             <div className="flex flex-col sm:flex-row gap-4">
-              <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded w-full animate-pulse"></div>
-              <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded w-48 animate-pulse"></div>
+              <div className="h-10 bg-muted rounded w-full animate-pulse"></div>
+              <div className="h-10 bg-muted rounded w-48 animate-pulse"></div>
             </div>
           </CardContent>
         </Card>
 
         {/* Table */}
-        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <Card>
           <CardContent className="pt-6">
             <div className="space-y-4">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex items-center gap-4">
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/4 animate-pulse"></div>
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/4 animate-pulse"></div>
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3 animate-pulse"></div>
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/6 animate-pulse"></div>
+                  <div className="h-4 bg-muted rounded w-1/4 animate-pulse"></div>
+                  <div className="h-4 bg-muted rounded w-1/4 animate-pulse"></div>
+                  <div className="h-4 bg-muted rounded w-1/3 animate-pulse"></div>
+                  <div className="h-4 bg-muted rounded w-1/6 animate-pulse"></div>
                 </div>
               ))}
             </div>
@@ -211,13 +211,13 @@ export default function ClosingEntriesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Closing Entries</h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Closing Entries</h1>
+          <p className="text-muted-foreground mt-1">
             Manage GL closures and period-end procedures
           </p>
         </div>
         <Link href="/accounting/closing-entries/new">
-          <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg">
+          <Button>
             <Plus className="w-4 h-4 mr-2" />
             Create Closure
           </Button>
@@ -225,32 +225,32 @@ export default function ClosingEntriesPage() {
       </div>
 
       {/* Filters */}
-      <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+      <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 dark:text-slate-500 h-4 w-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
                 placeholder="Search by office, comments, or user..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                className="pl-10"
               />
             </div>
                           <Select
                 value={selectedOffice}
                 onValueChange={setSelectedOffice}
               >
-                <SelectTrigger className="w-48 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
-                  <Filter className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
+                <SelectTrigger className="w-48">
+                  <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
                   <SelectValue placeholder="Filter by office" />
                 </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
-                  <SelectItem value="all" className="text-slate-900 dark:text-slate-100">
+                <SelectContent>
+                  <SelectItem value="all">
                     All Offices
                   </SelectItem>
                   {offices.map((office) => (
-                    <SelectItem key={office.id} value={office.id.toString()} className="text-slate-900 dark:text-slate-100">
+                    <SelectItem key={office.id} value={office.id.toString()}>
                       {office.name}
                     </SelectItem>
                   ))}
@@ -259,7 +259,6 @@ export default function ClosingEntriesPage() {
             <Button
               variant="outline"
               onClick={fetchData}
-              className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
@@ -269,22 +268,22 @@ export default function ClosingEntriesPage() {
       </Card>
 
       {/* Table */}
-      <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          <CardTitle className="text-lg">
             Closing Entries ({filteredClosures.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
           {filteredClosures.length === 0 ? (
             <div className="text-center py-12">
-              <div className="h-12 w-12 mx-auto mb-4 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center">
-                <Calendar className="h-6 w-6 text-slate-400 dark:text-slate-500" />
+              <div className="h-12 w-12 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
+                <Calendar className="h-6 w-6 text-primary" />
               </div>
-              <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+              <h3 className="text-lg font-medium text-foreground mb-2">
                 No closing entries found
               </h3>
-              <p className="text-slate-600 dark:text-slate-400 mb-6">
+              <p className="text-muted-foreground mb-6">
                 {searchTerm || (selectedOffice && selectedOffice !== 'all')
                   ? 'Try adjusting your search or filter criteria.'
                   : 'Get started by creating your first closing entry.'
@@ -292,7 +291,7 @@ export default function ClosingEntriesPage() {
               </p>
               {!searchTerm && (selectedOffice === 'all' || !selectedOffice) && (
                 <Link href="/accounting/closing-entries/new">
-                  <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
+                  <Button>
                     <Plus className="w-4 h-4 mr-2" />
                     Create First Closure
                   </Button>
@@ -303,35 +302,35 @@ export default function ClosingEntriesPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-slate-200 dark:border-slate-700">
-                    <TableHead className="text-slate-700 dark:text-slate-300 font-medium">Office</TableHead>
-                    <TableHead className="text-slate-700 dark:text-slate-300 font-medium">Closure Date</TableHead>
-                    <TableHead className="text-slate-700 dark:text-slate-300 font-medium">Comments</TableHead>
-                    <TableHead className="text-slate-700 dark:text-slate-300 font-medium">Created By</TableHead>
-                    <TableHead className="text-slate-700 dark:text-slate-300 font-medium text-right">Actions</TableHead>
+                  <TableRow>
+                    <TableHead>Office</TableHead>
+                    <TableHead>Closure Date</TableHead>
+                    <TableHead>Comments</TableHead>
+                    <TableHead>Created By</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredClosures.map((closure) => (
-                    <TableRow key={closure.id} className="border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700">
-                      <TableCell className="text-slate-900 dark:text-slate-100">
+                    <TableRow key={closure.id}>
+                      <TableCell>
                         <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
                           <span className="font-medium">{closure.officeName}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-slate-900 dark:text-slate-100">
+                      <TableCell>
                         <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
                           <span>{formatDate(closure.closingDate)}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-slate-600 dark:text-slate-400 max-w-xs truncate">
+                      <TableCell className="text-muted-foreground max-w-xs truncate">
                         {closure.comments || 'No comments'}
                       </TableCell>
-                      <TableCell className="text-slate-900 dark:text-slate-100">
+                      <TableCell>
                         <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                          <User className="h-4 w-4 text-muted-foreground" />
                           <span>{closure.createdByUsername}</span>
                         </div>
                       </TableCell>
@@ -341,7 +340,7 @@ export default function ClosingEntriesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 p-0 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                              className="h-8 w-8 p-0"
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
@@ -350,7 +349,7 @@ export default function ClosingEntriesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 p-0 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                              className="h-8 w-8 p-0"
                             >
                               <Edit className="w-4 h-4" />
                             </Button>
@@ -360,7 +359,7 @@ export default function ClosingEntriesPage() {
                             size="sm"
                             onClick={() => handleDelete(closure.id)}
                             disabled={isDeleting === closure.id}
-                            className="h-8 w-8 p-0 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950"
+                            className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

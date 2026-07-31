@@ -197,38 +197,37 @@ export default function NewAccountingRulePage() {
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Basic Information */}
-        <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Settings className="h-5 w-5" />
               Basic Information
             </CardTitle>
-            <CardDescription className="text-slate-600 dark:text-slate-400">
+            <CardDescription className="text-muted-foreground">
               Define the rule name, description, and office
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-slate-900 dark:text-slate-100">Rule Name *</Label>
+                <Label htmlFor="name">Rule Name *</Label>
                 <Input
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="Enter rule name"
-                  className="bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="office" className="text-slate-900 dark:text-slate-100">Office *</Label>
+                <Label htmlFor="office">Office *</Label>
                 <Select value={formData.officeId} onValueChange={(value) => setFormData(prev => ({ ...prev, officeId: value }))}>
-                  <SelectTrigger className="bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select office" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                  <SelectContent>
                     {template.allowedOffices.map((office) => (
-                      <SelectItem key={office.id} value={office.id.toString()} className="text-slate-900 dark:text-slate-100">
+                      <SelectItem key={office.id} value={office.id.toString()}>
                         {office.name}
                       </SelectItem>
                     ))}
@@ -237,13 +236,12 @@ export default function NewAccountingRulePage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description" className="text-slate-900 dark:text-slate-100">Description</Label>
+              <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Enter rule description"
-                className="bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
                 rows={3}
               />
             </div>
@@ -251,42 +249,42 @@ export default function NewAccountingRulePage() {
         </Card>
 
         {/* Debit Rule Configuration */}
-        <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Minus className="h-5 w-5 text-red-500" />
               Affected GL Entry (Debit) Rule Type *
             </CardTitle>
-            <CardDescription className="text-slate-600 dark:text-slate-400">
+            <CardDescription className="text-muted-foreground">
               Configure the debit side of the accounting rule
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <RadioGroup 
-              value={formData.debitRuleType} 
+            <RadioGroup
+              value={formData.debitRuleType}
               onValueChange={(value) => setFormData(prev => ({ ...prev, debitRuleType: value }))}
               className="space-y-3"
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="fixed" id="debit-fixed" />
-                <Label htmlFor="debit-fixed" className="text-slate-900 dark:text-slate-100">Fixed Account</Label>
+                <Label htmlFor="debit-fixed">Fixed Account</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="list" id="debit-list" />
-                <Label htmlFor="debit-list" className="text-slate-900 dark:text-slate-100">List of Accounts</Label>
+                <Label htmlFor="debit-list">List of Accounts</Label>
               </div>
             </RadioGroup>
 
             {formData.debitRuleType === 'fixed' ? (
               <div className="space-y-2">
-                <Label htmlFor="debitAccount" className="text-slate-900 dark:text-slate-100">Debit Account *</Label>
+                <Label htmlFor="debitAccount">Debit Account *</Label>
                 <Select value={formData.accountToDebit} onValueChange={(value) => setFormData(prev => ({ ...prev, accountToDebit: value }))}>
-                  <SelectTrigger className="bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select debit account" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                  <SelectContent>
                     {template.allowedAccounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id.toString()} className="text-slate-900 dark:text-slate-100">
+                      <SelectItem key={account.id} value={account.id.toString()}>
                         {account.name} ({account.glCode})
                       </SelectItem>
                     ))}
@@ -296,7 +294,7 @@ export default function NewAccountingRulePage() {
             ) : (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-slate-900 dark:text-slate-100">Debit Tags</Label>
+                  <Label>Debit Tags</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {template.allowedDebitTagOptions.map((tag) => (
                       <div key={tag.id} className="flex items-center space-x-2">
@@ -305,7 +303,7 @@ export default function NewAccountingRulePage() {
                           checked={formData.debitTags.includes(tag.id)}
                           onCheckedChange={(checked) => handleTagChange(tag.id, 'debit', checked as boolean)}
                         />
-                        <Label htmlFor={`debit-tag-${tag.id}`} className="text-sm text-slate-900 dark:text-slate-100">
+                        <Label htmlFor={`debit-tag-${tag.id}`} className="text-sm">
                           {tag.name}
                         </Label>
                       </div>
@@ -318,7 +316,7 @@ export default function NewAccountingRulePage() {
                     checked={formData.allowMultipleDebitEntries}
                     onCheckedChange={(checked) => setFormData(prev => ({ ...prev, allowMultipleDebitEntries: checked as boolean }))}
                   />
-                  <Label htmlFor="multipleDebit" className="text-slate-900 dark:text-slate-100">
+                  <Label htmlFor="multipleDebit">
                     Multiple Debit Entries Allowed
                   </Label>
                 </div>
@@ -328,42 +326,42 @@ export default function NewAccountingRulePage() {
         </Card>
 
         {/* Credit Rule Configuration */}
-        <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
               <CreditCard className="h-5 w-5 text-green-500" />
               Affected GL Entry (Credit) Rule Type *
             </CardTitle>
-            <CardDescription className="text-slate-600 dark:text-slate-400">
+            <CardDescription className="text-muted-foreground">
               Configure the credit side of the accounting rule
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <RadioGroup 
-              value={formData.creditRuleType} 
+            <RadioGroup
+              value={formData.creditRuleType}
               onValueChange={(value) => setFormData(prev => ({ ...prev, creditRuleType: value }))}
               className="space-y-3"
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="fixed" id="credit-fixed" />
-                <Label htmlFor="credit-fixed" className="text-slate-900 dark:text-slate-100">Fixed Account</Label>
+                <Label htmlFor="credit-fixed">Fixed Account</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="list" id="credit-list" />
-                <Label htmlFor="credit-list" className="text-slate-900 dark:text-slate-100">List of Accounts</Label>
+                <Label htmlFor="credit-list">List of Accounts</Label>
               </div>
             </RadioGroup>
 
             {formData.creditRuleType === 'fixed' ? (
               <div className="space-y-2">
-                <Label htmlFor="creditAccount" className="text-slate-900 dark:text-slate-100">Credit Account *</Label>
+                <Label htmlFor="creditAccount">Credit Account *</Label>
                 <Select value={formData.accountToCredit} onValueChange={(value) => setFormData(prev => ({ ...prev, accountToCredit: value }))}>
-                  <SelectTrigger className="bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select credit account" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                  <SelectContent>
                     {template.allowedAccounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id.toString()} className="text-slate-900 dark:text-slate-100">
+                      <SelectItem key={account.id} value={account.id.toString()}>
                         {account.name} ({account.glCode})
                       </SelectItem>
                     ))}
@@ -373,7 +371,7 @@ export default function NewAccountingRulePage() {
             ) : (
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-slate-900 dark:text-slate-100">Credit Tags</Label>
+                  <Label>Credit Tags</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {template.allowedCreditTagOptions.map((tag) => (
                       <div key={tag.id} className="flex items-center space-x-2">
@@ -382,7 +380,7 @@ export default function NewAccountingRulePage() {
                           checked={formData.creditTags.includes(tag.id)}
                           onCheckedChange={(checked) => handleTagChange(tag.id, 'credit', checked as boolean)}
                         />
-                        <Label htmlFor={`credit-tag-${tag.id}`} className="text-sm text-slate-900 dark:text-slate-100">
+                        <Label htmlFor={`credit-tag-${tag.id}`} className="text-sm">
                           {tag.name}
                         </Label>
                       </div>
@@ -395,7 +393,7 @@ export default function NewAccountingRulePage() {
                     checked={formData.allowMultipleCreditEntries}
                     onCheckedChange={(checked) => setFormData(prev => ({ ...prev, allowMultipleCreditEntries: checked as boolean }))}
                   />
-                  <Label htmlFor="multipleCredit" className="text-slate-900 dark:text-slate-100">
+                  <Label htmlFor="multipleCredit">
                     Multiple Credit Entries Allowed
                   </Label>
                 </div>
@@ -411,10 +409,9 @@ export default function NewAccountingRulePage() {
               Cancel
             </Button>
           </Link>
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={isLoading}
-            className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white"
           >
             {isLoading ? (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>

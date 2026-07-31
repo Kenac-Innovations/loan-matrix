@@ -147,16 +147,16 @@ export default function CreateClosurePage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded w-20 animate-pulse"></div>
-          <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-48 animate-pulse"></div>
+          <div className="h-10 bg-muted rounded w-20 animate-pulse"></div>
+          <div className="h-8 bg-muted rounded w-48 animate-pulse"></div>
         </div>
-        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <Card>
           <CardContent className="pt-6">
             <div className="space-y-4">
               {[...Array(3)].map((_, i) => (
                 <div key={i}>
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-24 mb-2 animate-pulse"></div>
-                  <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded w-full animate-pulse"></div>
+                  <div className="h-4 bg-muted rounded w-24 mb-2 animate-pulse"></div>
+                  <div className="h-10 bg-muted rounded w-full animate-pulse"></div>
                 </div>
               ))}
             </div>
@@ -175,8 +175,8 @@ export default function CreateClosurePage() {
           Back
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Create Closing Entry</h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Create Closing Entry</h1>
+          <p className="text-muted-foreground mt-1">
             Create a new GL closure for period-end procedures
           </p>
         </div>
@@ -184,26 +184,26 @@ export default function CreateClosurePage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Form Card */}
-        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 max-w-2xl">
+        <Card className="max-w-2xl">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            <CardTitle className="text-lg">
               Closure Information
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Office Selection */}
             <div>
-              <Label htmlFor="office" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              <Label htmlFor="office">
                 Office *
               </Label>
               <Select value={officeId} onValueChange={setOfficeId} required>
-                <SelectTrigger className="mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600">
-                  <Building2 className="w-4 h-4 mr-2 text-slate-400" />
+                <SelectTrigger className="mt-1">
+                  <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
                   <SelectValue placeholder="Select office" />
                 </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                <SelectContent>
                   {offices.map((office) => (
-                    <SelectItem key={office.id} value={office.id.toString()} className="text-slate-900 dark:text-slate-100">
+                    <SelectItem key={office.id} value={office.id.toString()}>
                       {office.name}
                     </SelectItem>
                   ))}
@@ -213,7 +213,7 @@ export default function CreateClosurePage() {
 
             {/* Closing Date */}
             <div>
-              <Label htmlFor="closingDate" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              <Label htmlFor="closingDate">
                 Closing Date *
               </Label>
               <Popover>
@@ -221,15 +221,15 @@ export default function CreateClosurePage() {
                   <Button
                     variant="outline"
                     className={cn(
-                      "w-full justify-start text-left font-normal mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600",
-                      !closingDate && "text-slate-500 dark:text-slate-400"
+                      "w-full justify-start text-left font-normal mt-1",
+                      !closingDate && "text-muted-foreground"
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {closingDate ? format(closingDate, "PPP") : <span>Pick a date</span>}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                <PopoverContent className="w-auto p-0">
                   <Calendar
                     mode="single"
                     selected={closingDate}
@@ -242,16 +242,16 @@ export default function CreateClosurePage() {
 
             {/* Comments */}
             <div>
-              <Label htmlFor="comments" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              <Label htmlFor="comments">
                 Comments
               </Label>
               <div className="relative mt-1">
-                <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                 <textarea
                   id="comments"
                   value={comments}
                   onChange={(e) => setComments(e.target.value)}
-                  className="w-full pl-10 pr-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-900 dark:text-slate-100 resize-none"
+                  className="w-full pl-10 pr-3 py-2 border rounded-md bg-transparent resize-none"
                   rows={3}
                   placeholder="Enter comments about this closure"
                 />
@@ -261,21 +261,19 @@ export default function CreateClosurePage() {
         </Card>
 
         {/* Action Buttons */}
-        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 max-w-2xl">
+        <Card className="max-w-2xl">
           <CardContent className="pt-6">
             <div className="flex justify-end gap-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => router.back()}
-                className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 disabled={isSubmitting || !officeId || !closingDate}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isSubmitting ? 'Creating...' : 'Create Closure'}
