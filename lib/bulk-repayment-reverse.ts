@@ -12,7 +12,7 @@ export function formatDateForFineractUndo(d: Date): string {
   return `${day} ${month} ${year}`;
 }
 
-type FineractLoanTransaction = {
+export type FineractLoanTransaction = {
   id?: number | string;
   amount?: number;
   manuallyReversed?: boolean;
@@ -33,6 +33,27 @@ type LoanWithTransactionsResponse = {
   transactions?: FineractLoanTransaction[];
 };
 
+export type RepaymentUndoResolution =
+  | {
+      status: "UNDOABLE";
+      transactionId: string;
+    }
+  | {
+      status: "ALREADY_REVERSED";
+      transactionId: string;
+    };
+
+export type RepaymentUndoResult =
+  | {
+      status: "UNDONE";
+      transactionId: string;
+      response: unknown;
+    }
+  | {
+      status: "ALREADY_REVERSED";
+      transactionId: string;
+    };
+
 function normalizeTxnId(value: string | number | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
@@ -45,6 +66,7 @@ function normalizeTxnDate(value: string | [number, number, number] | null | unde
     const [year, month, day] = value;
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
+  if (typeof value !== "string") return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
@@ -60,6 +82,45 @@ async function getLoanTransactionsForUndo(
     tenantSlug
   )) as LoanWithTransactionsResponse;
   return Array.isArray(loan.transactions) ? loan.transactions : [];
+}
+
+function isRepaymentTransaction(tx: FineractLoanTransaction): boolean {
+  return Boolean(tx.type?.repayment || tx.type?.recoveryRepayment);
+}
+
+function sortNewestFirst(
+  transactions: FineractLoanTransaction[]
+): FineractLoanTransaction[] {
+  return [...transactions].sort((a, b) => {
+    const aDate = normalizeTxnDate(a.date) ?? "";
+    const bDate = normalizeTxnDate(b.date) ?? "";
+    if (aDate !== bDate) return bDate.localeCompare(aDate);
+    return Number(b.id ?? 0) - Number(a.id ?? 0);
+  });
+}
+
+function toUndoResolution(tx: FineractLoanTransaction): RepaymentUndoResolution {
+  if (tx.id === undefined) {
+    throw new Error("Matched Fineract transaction is missing an id");
+  }
+
+  return {
+    status: tx.manuallyReversed ? "ALREADY_REVERSED" : "UNDOABLE",
+    transactionId: String(tx.id),
+  };
+}
+
+function matchesReplayRelation(
+  tx: FineractLoanTransaction,
+  storedTransactionId: string
+): boolean {
+  return Boolean(
+    tx.transactionRelations?.some(
+      (relation) =>
+        relation.relationType === "REPLAYED" &&
+        normalizeTxnId(relation.toLoanTransaction) === storedTransactionId
+    )
+  );
 }
 
 async function fetchFineractAPIForTenant(
@@ -146,46 +207,47 @@ async function fetchFineractAPIForTenant(
   return JSON.parse(text) as unknown;
 }
 
-function pickUndoableRepaymentTransaction(params: {
+export function resolveRepaymentTransactionForUndoFromTransactions(params: {
   transactions: FineractLoanTransaction[];
   storedTransactionId: string;
   transactionDate?: Date;
   amount?: number;
-}): string {
+}): RepaymentUndoResolution {
   const targetDate = params.transactionDate?.toISOString().slice(0, 10) ?? null;
   const targetAmount =
     typeof params.amount === "number" && Number.isFinite(params.amount)
       ? Number(params.amount.toFixed(2))
       : null;
 
-  const candidates = params.transactions
-    .filter((tx) => (tx.type?.repayment || tx.type?.recoveryRepayment) && !tx.manuallyReversed)
-    .sort((a, b) => {
-      const aDate = normalizeTxnDate(a.date) ?? "";
-      const bDate = normalizeTxnDate(b.date) ?? "";
-      if (aDate !== bDate) return bDate.localeCompare(aDate);
-      return Number(b.id ?? 0) - Number(a.id ?? 0);
-    });
+  const repayments = sortNewestFirst(
+    params.transactions.filter(isRepaymentTransaction)
+  );
+  const activeRepayments = repayments.filter((tx) => !tx.manuallyReversed);
 
-  const exactId = candidates.find(
+  const exactId = repayments.find(
     (tx) => normalizeTxnId(tx.id) === params.storedTransactionId
   );
   if (exactId?.id !== undefined) {
-    return String(exactId.id);
+    return toUndoResolution(exactId);
   }
 
-  const replayReplacement = candidates.find((tx) =>
-    tx.transactionRelations?.some(
-      (relation) =>
-        relation.relationType === "REPLAYED" &&
-        normalizeTxnId(relation.toLoanTransaction) === params.storedTransactionId
-    )
+  const activeReplayReplacement = activeRepayments.find((tx) =>
+    matchesReplayRelation(tx, params.storedTransactionId)
   );
-  if (replayReplacement?.id !== undefined) {
-    return String(replayReplacement.id);
+  if (activeReplayReplacement?.id !== undefined) {
+    return toUndoResolution(activeReplayReplacement);
   }
 
-  const amountAndDateMatch = candidates.find((tx) => {
+  const reversedReplayReplacement = repayments.find(
+    (tx) =>
+      tx.manuallyReversed &&
+      matchesReplayRelation(tx, params.storedTransactionId)
+  );
+  if (reversedReplayReplacement?.id !== undefined) {
+    return toUndoResolution(reversedReplayReplacement);
+  }
+
+  const amountAndDateMatch = activeRepayments.find((tx) => {
     const sameDate = !targetDate || normalizeTxnDate(tx.date) === targetDate;
     const sameAmount =
       targetAmount === null ||
@@ -193,21 +255,35 @@ function pickUndoableRepaymentTransaction(params: {
     return sameDate && sameAmount;
   });
   if (amountAndDateMatch?.id !== undefined) {
-    return String(amountAndDateMatch.id);
+    return toUndoResolution(amountAndDateMatch);
+  }
+
+  if (targetDate && targetAmount !== null) {
+    const reversedAmountAndDateMatches = repayments.filter((tx) => {
+      const sameDate = normalizeTxnDate(tx.date) === targetDate;
+      const sameAmount =
+        typeof tx.amount === "number" &&
+        Number(tx.amount.toFixed(2)) === targetAmount;
+      return tx.manuallyReversed && sameDate && sameAmount;
+    });
+
+    if (reversedAmountAndDateMatches.length === 1) {
+      return toUndoResolution(reversedAmountAndDateMatches[0]);
+    }
   }
 
   throw new Error(
-    `Could not find an active repayment transaction to undo for stored transaction ${params.storedTransactionId}`
+    `Could not find an active or already-reversed repayment transaction for stored transaction ${params.storedTransactionId}`
   );
 }
 
-export async function resolveUndoableRepaymentTransactionId(params: {
+export async function resolveRepaymentTransactionForUndo(params: {
   tenantSlug?: string;
   loanId: number;
   fineractTransactionId: string;
   transactionDate?: Date;
   amount?: number;
-}): Promise<string> {
+}): Promise<RepaymentUndoResolution> {
   const storedTransactionId = normalizeTxnId(params.fineractTransactionId);
   if (!storedTransactionId) {
     throw new Error("Missing Fineract transaction id");
@@ -217,12 +293,28 @@ export async function resolveUndoableRepaymentTransactionId(params: {
     params.loanId,
     params.tenantSlug
   );
-  return pickUndoableRepaymentTransaction({
+  return resolveRepaymentTransactionForUndoFromTransactions({
     transactions,
     storedTransactionId,
     transactionDate: params.transactionDate,
     amount: params.amount,
   });
+}
+
+export async function resolveUndoableRepaymentTransactionId(params: {
+  tenantSlug?: string;
+  loanId: number;
+  fineractTransactionId: string;
+  transactionDate?: Date;
+  amount?: number;
+}): Promise<string> {
+  const resolution = await resolveRepaymentTransactionForUndo(params);
+  if (resolution.status === "ALREADY_REVERSED") {
+    throw new Error(
+      `Stored transaction ${resolution.transactionId} is already reversed in Fineract`
+    );
+  }
+  return resolution.transactionId;
 }
 
 /**
@@ -237,8 +329,8 @@ export async function undoLoanRepaymentTransaction(params: {
   transactionDate: Date;
   /** Original repayment amount, used to locate the active replayed transaction when ids have drifted. */
   amount?: number;
-}): Promise<unknown> {
-  const undoTransactionId = await resolveUndoableRepaymentTransactionId({
+}): Promise<RepaymentUndoResult> {
+  const resolution = await resolveRepaymentTransactionForUndo({
     tenantSlug: params.tenantSlug,
     loanId: params.loanId,
     fineractTransactionId: params.fineractTransactionId,
@@ -246,19 +338,28 @@ export async function undoLoanRepaymentTransaction(params: {
     amount: params.amount,
   });
 
+  if (resolution.status === "ALREADY_REVERSED") {
+    return resolution;
+  }
+
   const body = {
     dateFormat: "dd MMMM yyyy",
     locale: "en",
     transactionAmount: 0,
     transactionDate: formatDateForFineractUndo(params.transactionDate),
   };
-  return fetchFineractAPIForTenant(
-    `/loans/${params.loanId}/transactions/${undoTransactionId}?command=undo`,
+  const response = await fetchFineractAPIForTenant(
+    `/loans/${params.loanId}/transactions/${resolution.transactionId}?command=undo`,
     {
       method: "POST",
       body: JSON.stringify(body),
     },
     params.tenantSlug
   );
+  return {
+    status: "UNDONE",
+    transactionId: resolution.transactionId,
+    response,
+  };
 }
 import https from "https";
