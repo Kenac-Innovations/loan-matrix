@@ -53,7 +53,7 @@ export default function ViewAccountPage() {
       <div className="container mx-auto p-6">
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
-            <CardTitle className="text-red-600 flex items-center gap-2">
+            <CardTitle className="text-destructive flex items-center gap-2">
               <XCircle className="h-5 w-5" />
               Failed to Load Account
             </CardTitle>
@@ -177,9 +177,9 @@ export default function ViewAccountPage() {
   // Get status badge
   const getStatusBadge = () => {
     if (acc.disabled) {
-      return <Badge variant="secondary" className="bg-orange-100 text-orange-800 hover:bg-orange-100">Inactive</Badge>;
+      return <Badge variant="secondary" className="bg-orange-500/20 text-orange-500 hover:bg-orange-500/20">Inactive</Badge>;
     }
-    return <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>;
+    return <Badge variant="default" className="bg-green-500/20 text-green-500 hover:bg-green-500/20">Active</Badge>;
   };
 
   // Get type badge color
@@ -238,7 +238,7 @@ export default function ViewAccountPage() {
                     size="sm"
                     variant={acc.disabled ? "default" : "outline"}
                     onClick={handleDisableToggle}
-                    className={acc.disabled ? "bg-green-600 hover:bg-green-700" : ""}
+                    className={acc.disabled ? "bg-green-500 hover:bg-green-600" : ""}
                   >
                     {acc.disabled ? (
                       <>

@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  AlertCircle,
   BellRing,
   CalendarClock,
   Clock3,
@@ -13,7 +12,6 @@ import {
   RefreshCw,
   Save,
   Send,
-  Settings2,
   ShieldCheck,
   SquarePen,
   XCircle,
@@ -26,12 +24,9 @@ import {
   getReminderRunItemsAction,
   saveReminderRuleAction,
   saveReminderTemplateAction,
-  saveReminderTenantConfigAction,
   type SaveReminderRuleInput,
   type SaveReminderTemplateInput,
-  type SaveReminderTenantConfigInput,
 } from "@/app/actions/reminder-actions";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,12 +35,26 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -64,6 +73,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type {
   NotificationMessageSummary,
+  NotificationChannel,
   NotificationStatus,
   ReminderDashboardData,
   ReminderRule,
@@ -73,14 +83,55 @@ import type {
   ReminderType,
 } from "@/shared/types/reminders";
 
-const NONE = "__none";
-
 type RemindersClientProps = {
   initialData: ReminderDashboardData;
 };
 
 type RuleFormState = SaveReminderRuleInput;
 type TemplateFormState = SaveReminderTemplateInput;
+
+const RULE_CHANNEL_OPTIONS: Array<{ value: NotificationChannel; label: string }> = [
+  { value: "SMS", label: "SMS" },
+  { value: "EMAIL", label: "Email" },
+];
+
+const TEMPLATE_VARIABLES = [
+  {
+    token: "{{clientName}}",
+    label: "Client Name",
+    hint: "Client display name from the candidate report.",
+  },
+  {
+    token: "{{loanAccountNo}}",
+    label: "Loan Account",
+    hint: "Fineract loan account number.",
+  },
+  {
+    token: "{{amountDue}}",
+    label: "Amount Due",
+    hint: "Amount due formatted by the backend.",
+  },
+  {
+    token: "{{dueDate}}",
+    label: "Due Date",
+    hint: "Repayment due date from the candidate report.",
+  },
+  {
+    token: "{{daysPastDue}}",
+    label: "Days Past Due",
+    hint: "Overdue age for recovery reminders.",
+  },
+  {
+    token: "{{recipientPhone}}",
+    label: "Phone",
+    hint: "Recipient phone number from the candidate report.",
+  },
+  {
+    token: "{{recipientEmail}}",
+    label: "Email",
+    hint: "Recipient email address from the candidate report.",
+  },
+];
 
 function formatDateTime(value?: string | null) {
   if (!value) return "N/A";
@@ -157,12 +208,17 @@ function StatCard({
   );
 }
 
+function FieldHint({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-xs leading-relaxed text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 function emptyTemplateForm(): TemplateFormState {
   return {
-    code: "",
     name: "",
-    channel: "SMS",
-    subject: "",
     body: "",
     active: true,
   };
@@ -171,65 +227,66 @@ function emptyTemplateForm(): TemplateFormState {
 function templateToForm(template: ReminderTemplate): TemplateFormState {
   return {
     id: template.id,
-    code: template.code,
     name: template.name,
-    channel: template.channel,
-    subject: template.subject ?? "",
     body: template.body,
     active: template.active,
   };
 }
 
-function emptyRuleForm(
-  timezone: string,
-  templateId?: string | null
-): RuleFormState {
+function parseRuleChannels(channels?: string | null): NotificationChannel[] {
+  const values = (channels || "SMS")
+    .split(",")
+    .map((channel) => channel.trim().toUpperCase())
+    .filter((channel): channel is NotificationChannel =>
+      RULE_CHANNEL_OPTIONS.some((option) => option.value === channel)
+    );
+
+  const uniqueValues = Array.from(new Set(values));
+  return uniqueValues.length > 0 ? uniqueValues : ["SMS"];
+}
+
+function formatRuleChannels(channels?: string | null) {
+  const selectedChannels = parseRuleChannels(channels);
+  return selectedChannels
+    .map((channel) => RULE_CHANNEL_OPTIONS.find((option) => option.value === channel)?.label ?? channel)
+    .join(", ");
+}
+
+function emptyRuleForm(templateId?: string | null): RuleFormState {
   return {
-    code: "",
     name: "",
     type: "LOAN_REPAYMENT_DUE",
     enabled: true,
     channels: "SMS",
     templateId: templateId ?? null,
-    reportName: "",
     sendTime: "09:00",
-    timezone,
-    daysOffset: 0,
-    lookBackDays: 0,
-    lookAheadDays: 0,
-    minDaysPastDue: null,
-    maxDaysPastDue: null,
-    cooldownMinutes: 1440,
-    pageLimit: 100,
+    startRemindingToday: true,
+    daysBeforeDue: 0,
+    daysPastDue: 30,
   };
 }
 
 function ruleToForm(rule: ReminderRule): RuleFormState {
+  const legacyRule = rule as ReminderRule & {
+    daysOffset?: number;
+    minDaysPastDue?: number | null;
+  };
+  const daysBeforeDue = rule.daysBeforeDue ?? Math.max(0, legacyRule.daysOffset ?? 0);
+  const startRemindingToday = rule.startRemindingToday ?? (daysBeforeDue === 0);
+
   return {
     id: rule.id,
     code: rule.code,
     name: rule.name,
     type: rule.type,
     enabled: rule.enabled,
-    channels: rule.channels || "SMS",
+    channels: parseRuleChannels(rule.channels).join(","),
     templateId: rule.templateId ?? null,
-    reportName: rule.reportName ?? "",
     sendTime: rule.sendTime?.slice(0, 5) || "09:00",
-    timezone: rule.timezone ?? "",
-    daysOffset: rule.daysOffset,
-    lookBackDays: rule.lookBackDays,
-    lookAheadDays: rule.lookAheadDays,
-    minDaysPastDue: rule.minDaysPastDue ?? null,
-    maxDaysPastDue: rule.maxDaysPastDue ?? null,
-    cooldownMinutes: rule.cooldownMinutes,
-    pageLimit: rule.pageLimit,
+    startRemindingToday,
+    daysBeforeDue,
+    daysPastDue: rule.daysPastDue ?? legacyRule.minDaysPastDue ?? 30,
   };
-}
-
-function numberOrNull(value: string) {
-  if (value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function runProgress(run: ReminderRunSummary) {
@@ -252,29 +309,48 @@ function ruleName(rules: ReminderRule[], ruleId?: string | null) {
 }
 
 function templateName(templates: ReminderTemplate[], templateId?: string | null) {
-  if (!templateId) return "None";
+  if (!templateId) return "Missing template";
   return templates.find((template) => template.id === templateId)?.name ?? "Unknown";
+}
+
+function ruleTimingSummary(rule: ReminderRule) {
+  const legacyRule = rule as ReminderRule & {
+    daysOffset?: number;
+    minDaysPastDue?: number | null;
+  };
+
+  if (rule.type === "RECOVERY_ARREARS") {
+    return `${rule.daysPastDue ?? legacyRule.minDaysPastDue ?? 30} days past due`;
+  }
+
+  const daysBeforeDue = rule.daysBeforeDue ?? Math.max(0, legacyRule.daysOffset ?? 0);
+  const startsToday = rule.startRemindingToday ?? (daysBeforeDue === 0);
+  return startsToday ? "Due today" : `${daysBeforeDue} days before due`;
+}
+
+function defaultRuleTemplateId(templates: ReminderTemplate[]) {
+  const template = templates.find((item) => item.active) ?? templates[0];
+  return template?.id ?? null;
 }
 
 export function RemindersClient({ initialData }: RemindersClientProps) {
   const [data, setData] = useState(initialData);
-  const [configForm, setConfigForm] = useState<SaveReminderTenantConfigInput>({
-    enabled: initialData.config.enabled,
-    timezone: initialData.config.timezone || "Africa/Harare",
-    defaultCountryCode: initialData.config.defaultCountryCode || "+263",
-  });
   const [templateForm, setTemplateForm] = useState<TemplateFormState>(
     emptyTemplateForm()
   );
   const [ruleForm, setRuleForm] = useState<RuleFormState>(
-    emptyRuleForm(initialData.config.timezone || "Africa/Harare")
+    emptyRuleForm(defaultRuleTemplateId(initialData.templates))
   );
+  const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [messageStatusFilter, setMessageStatusFilter] = useState<NotificationStatus | "ALL">("ALL");
   const [selectedRun, setSelectedRun] = useState<ReminderRunSummary | null>(null);
   const [runItems, setRunItems] = useState<ReminderRunItem[]>([]);
   const [runItemsLoading, setRunItemsLoading] = useState(false);
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const templateBodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   const activeRules = useMemo(
     () => data.rules.filter((rule) => rule.enabled).length,
@@ -302,11 +378,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
       try {
         const next = await getReminderDashboardAction();
         setData(next);
-        setConfigForm({
-          enabled: next.config.enabled,
-          timezone: next.config.timezone || "Africa/Harare",
-          defaultCountryCode: next.config.defaultCountryCode || "+263",
-        });
         toast.success("Reminders refreshed");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to refresh reminders");
@@ -316,26 +387,49 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
     });
   };
 
-  const handleSaveConfig = (event: FormEvent) => {
-    event.preventDefault();
-    setPendingLabel("config");
-    startTransition(async () => {
-      const result = await saveReminderTenantConfigAction(configForm);
-      if (!result.success || !result.data) {
-        toast.error(result.error || "Failed to save reminder settings");
-        setPendingLabel(null);
-        return;
-      }
-      setData((current) => ({ ...current, config: result.data! }));
-      toast.success("Reminder settings saved");
-      setPendingLabel(null);
+  const insertTemplateVariable = (token: string) => {
+    const textarea = templateBodyRef.current;
+    setTemplateForm((current) => {
+      const body = current.body ?? "";
+      const selectionStart = textarea?.selectionStart ?? body.length;
+      const selectionEnd = textarea?.selectionEnd ?? body.length;
+      const before = body.slice(0, selectionStart);
+      const after = body.slice(selectionEnd);
+      const spaceBefore = before && !/\s$/.test(before) ? " " : "";
+      const spaceAfter = after && !/^\s/.test(after) ? " " : "";
+      const nextBody = `${before}${spaceBefore}${token}${spaceAfter}${after}`;
+      const cursorPosition = before.length + spaceBefore.length + token.length + spaceAfter.length;
+
+      requestAnimationFrame(() => {
+        templateBodyRef.current?.focus();
+        templateBodyRef.current?.setSelectionRange(cursorPosition, cursorPosition);
+      });
+
+      return {
+        ...current,
+        body: nextBody,
+      };
+    });
+  };
+
+  const handleRuleChannelToggle = (channel: NotificationChannel, checked: boolean) => {
+    setRuleForm((current) => {
+      const selectedChannels = parseRuleChannels(current.channels);
+      const nextChannels = checked
+        ? Array.from(new Set([...selectedChannels, channel]))
+        : selectedChannels.filter((selectedChannel) => selectedChannel !== channel);
+
+      return {
+        ...current,
+        channels: (nextChannels.length > 0 ? nextChannels : selectedChannels).join(","),
+      };
     });
   };
 
   const handleSaveTemplate = (event: FormEvent) => {
     event.preventDefault();
-    if (!templateForm.code.trim() || !templateForm.name.trim() || !templateForm.body.trim()) {
-      toast.error("Template code, name, and message are required");
+    if (!templateForm.name.trim() || !templateForm.body.trim()) {
+      toast.error("Template name and message are required");
       return;
     }
 
@@ -356,6 +450,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
         ].sort((first, second) => first.name.localeCompare(second.name)),
       }));
       setTemplateForm(emptyTemplateForm());
+      setTemplateDialogOpen(false);
       toast.success("Reminder template saved");
       setPendingLabel(null);
     });
@@ -363,8 +458,17 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
 
   const handleSaveRule = (event: FormEvent) => {
     event.preventDefault();
-    if (!ruleForm.code.trim() || !ruleForm.name.trim() || !ruleForm.sendTime) {
-      toast.error("Rule code, name, and send time are required");
+    const selectedChannels = parseRuleChannels(ruleForm.channels);
+    if (!ruleForm.name.trim() || !ruleForm.sendTime || !ruleForm.templateId || selectedChannels.length === 0) {
+      toast.error("Rule name, channel, send time, and template are required");
+      return;
+    }
+    if (ruleForm.type === "LOAN_REPAYMENT_DUE" && !ruleForm.startRemindingToday && ruleForm.daysBeforeDue < 1) {
+      toast.error("Days before due date must be at least 1");
+      return;
+    }
+    if (ruleForm.type === "RECOVERY_ARREARS" && ruleForm.daysPastDue < 1) {
+      toast.error("Days past due must be at least 1");
       return;
     }
 
@@ -384,10 +488,31 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
           ...current.rules.filter((rule) => rule.id !== result.data!.id),
         ].sort((first, second) => first.name.localeCompare(second.name)),
       }));
-      setRuleForm(emptyRuleForm(data.config.timezone || "Africa/Harare"));
+      setRuleForm(emptyRuleForm(defaultRuleTemplateId(data.templates)));
+      setRuleDialogOpen(false);
       toast.success("Reminder rule saved");
       setPendingLabel(null);
     });
+  };
+
+  const openNewRuleDialog = () => {
+    setRuleForm(emptyRuleForm(defaultRuleTemplateId(data.templates)));
+    setRuleDialogOpen(true);
+  };
+
+  const openEditRuleDialog = (rule: ReminderRule) => {
+    setRuleForm(ruleToForm(rule));
+    setRuleDialogOpen(true);
+  };
+
+  const openNewTemplateDialog = () => {
+    setTemplateForm(emptyTemplateForm());
+    setTemplateDialogOpen(true);
+  };
+
+  const openEditTemplateDialog = (template: ReminderTemplate) => {
+    setTemplateForm(templateToForm(template));
+    setTemplateDialogOpen(true);
   };
 
   const handleDefaults = () => {
@@ -425,6 +550,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
 
   const handleSelectRun = async (run: ReminderRunSummary) => {
     setSelectedRun(run);
+    setRunDialogOpen(true);
     setRunItems([]);
     setRunItemsLoading(true);
     try {
@@ -445,15 +571,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
           <p className="mt-1 text-sm text-muted-foreground">
             Central scheduling, templates, run progress, and delivery history.
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{data.tenant.fineractTenantId}</Badge>
-            {data.tenant.tenantName && (
-              <Badge variant="outline">{data.tenant.tenantName}</Badge>
-            )}
-            <Badge className={cn("border", statusBadgeClass(data.config.enabled ? "SENT" : "SKIPPED"))}>
-              {data.config.enabled ? "Enabled" : "Disabled"}
-            </Badge>
-          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -479,15 +596,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
           </Button>
         </div>
       </div>
-
-      {!data.config.enabled && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Reminder runs will not be created for this tenant until reminders are enabled.
-          </AlertDescription>
-        </Alert>
-      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -526,95 +634,32 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,420px)_1fr]">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Settings2 className="h-4 w-4" />
-                  Tenant Settings
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form className="space-y-4" onSubmit={handleSaveConfig}>
-                  <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                    <div>
-                      <Label className="text-sm font-medium">Reminders</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Tenant-level scheduler switch.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={configForm.enabled}
-                      onCheckedChange={(enabled) =>
-                        setConfigForm((current) => ({ ...current, enabled }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="timezone">Timezone</Label>
-                    <Input
-                      id="timezone"
-                      value={configForm.timezone}
-                      onChange={(event) =>
-                        setConfigForm((current) => ({
-                          ...current,
-                          timezone: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="default-country-code">Default Country Code</Label>
-                    <Input
-                      id="default-country-code"
-                      value={configForm.defaultCountryCode ?? ""}
-                      onChange={(event) =>
-                        setConfigForm((current) => ({
-                          ...current,
-                          defaultCountryCode: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <Button type="submit" disabled={isPending} className="w-full">
-                    {pendingLabel === "config" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
-                    Save Settings
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <BellRing className="h-4 w-4" />
-                  Recent Runs
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RunsTable
-                  runs={data.runs.slice(0, 5)}
-                  rules={data.rules}
-                  compact
-                  onSelectRun={handleSelectRun}
-                />
-              </CardContent>
-            </Card>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BellRing className="h-4 w-4" />
+                Recent Runs
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RunsTable
+                runs={data.runs.slice(0, 5)}
+                rules={data.rules}
+                compact
+                onSelectRun={handleSelectRun}
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="rules" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="space-y-4">
             <Card>
-              <CardHeader>
+              <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base">Rules</CardTitle>
+                <Button type="button" onClick={openNewRuleDialog}>
+                  New Rule
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -623,8 +668,9 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                       <TableRow>
                         <TableHead>Name</TableHead>
                         <TableHead>Type</TableHead>
+                        <TableHead>Channel</TableHead>
                         <TableHead>Time</TableHead>
-                        <TableHead>Window</TableHead>
+                        <TableHead>Timing</TableHead>
                         <TableHead>Template</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Action</TableHead>
@@ -633,7 +679,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <TableBody>
                       {data.rules.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="h-24 text-center text-sm text-muted-foreground">
+                          <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
                             No reminder rules configured.
                           </TableCell>
                         </TableRow>
@@ -642,16 +688,14 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           <TableRow key={rule.id ?? rule.code}>
                             <TableCell>
                               <div className="font-medium">{rule.name}</div>
-                              <div className="text-xs text-muted-foreground">{rule.code}</div>
                             </TableCell>
                             <TableCell>{formatReminderType(rule.type)}</TableCell>
+                            <TableCell>{formatRuleChannels(rule.channels)}</TableCell>
                             <TableCell className="tabular-nums">
                               {rule.sendTime?.slice(0, 5)}
                             </TableCell>
                             <TableCell className="text-sm">
-                              {rule.type === "RECOVERY_ARREARS"
-                                ? `${rule.minDaysPastDue ?? 0}+ days${rule.maxDaysPastDue ? ` to ${rule.maxDaysPastDue}` : ""}`
-                                : `${rule.lookBackDays} back / ${rule.lookAheadDays} ahead`}
+                              {ruleTimingSummary(rule)}
                             </TableCell>
                             <TableCell>{templateName(data.templates, rule.templateId)}</TableCell>
                             <TableCell>
@@ -660,15 +704,19 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setRuleForm(ruleToForm(rule))}
-                              >
-                                <SquarePen className="h-4 w-4" />
-                                Edit
-                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button type="button" variant="outline" size="sm">
+                                    ...Action
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => openEditRuleDialog(rule)}>
+                                    <SquarePen className="h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </TableCell>
                           </TableRow>
                         ))
@@ -679,24 +727,27 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {ruleForm.id ? "Edit Rule" : "New Rule"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Dialog open={ruleDialogOpen} onOpenChange={setRuleDialogOpen}>
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {ruleForm.id ? "Edit Rule" : "New Rule"}
+                  </DialogTitle>
+                </DialogHeader>
                 <form className="space-y-4" onSubmit={handleSaveRule}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="rule-code">Code</Label>
+                      <Label htmlFor="rule-name">Name</Label>
                       <Input
-                        id="rule-code"
-                        value={ruleForm.code}
+                        id="rule-name"
+                        value={ruleForm.name}
                         onChange={(event) =>
-                          setRuleForm((current) => ({ ...current, code: event.target.value }))
+                          setRuleForm((current) => ({ ...current, name: event.target.value }))
                         }
                       />
+                      <FieldHint>
+                        Readable label shown in rule lists, runs, and notification history.
+                      </FieldHint>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="rule-time">Send Time</Label>
@@ -708,27 +759,27 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           setRuleForm((current) => ({ ...current, sendTime: event.target.value }))
                         }
                       />
+                      <FieldHint>
+                        Local time of day used when creating scheduled runs for this rule.
+                      </FieldHint>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="rule-name">Name</Label>
-                    <Input
-                      id="rule-name"
-                      value={ruleForm.name}
-                      onChange={(event) =>
-                        setRuleForm((current) => ({ ...current, name: event.target.value }))
-                      }
-                    />
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-3">
                     <div className="space-y-2">
                       <Label>Type</Label>
                       <Select
                         value={ruleForm.type}
                         onValueChange={(type: ReminderType) =>
-                          setRuleForm((current) => ({ ...current, type }))
+                          setRuleForm((current) => ({
+                            ...current,
+                            type,
+                            startRemindingToday: type === "LOAN_REPAYMENT_DUE" ? current.startRemindingToday : true,
+                            daysBeforeDue: type === "LOAN_REPAYMENT_DUE" ? current.daysBeforeDue : 0,
+                            daysPastDue: type === "RECOVERY_ARREARS"
+                              ? (current.daysPastDue > 0 ? current.daysPastDue : 30)
+                              : 0,
+                          }))
                         }
                       >
                         <SelectTrigger>
@@ -739,177 +790,156 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                           <SelectItem value="RECOVERY_ARREARS">Recovery Arrears</SelectItem>
                         </SelectContent>
                       </Select>
+                      <FieldHint>
+                        Selects whether the rule targets upcoming repayments or overdue recovery loans.
+                      </FieldHint>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Channels</Label>
+                      <div className="space-y-2 rounded-md border p-2">
+                        {RULE_CHANNEL_OPTIONS.map((channel) => {
+                          const selectedChannels = parseRuleChannels(ruleForm.channels);
+                          const checked = selectedChannels.includes(channel.value);
+                          return (
+                            <Label
+                              key={channel.value}
+                              htmlFor={`rule-channel-${channel.value.toLowerCase()}`}
+                              className="flex cursor-pointer items-center gap-3 rounded-sm px-2 py-1.5 leading-normal hover:bg-muted/50"
+                            >
+                              <Checkbox
+                                id={`rule-channel-${channel.value.toLowerCase()}`}
+                                checked={checked}
+                                onCheckedChange={(value) =>
+                                  handleRuleChannelToggle(channel.value, value === true)
+                                }
+                              />
+                              <span className="text-sm font-medium">
+                                {channel.label}
+                              </span>
+                            </Label>
+                          );
+                        })}
+                      </div>
+                      <FieldHint>
+                        Select one or more delivery channels for this rule.
+                      </FieldHint>
                     </div>
                     <div className="space-y-2">
                       <Label>Template</Label>
                       <Select
-                        value={ruleForm.templateId || NONE}
+                        value={ruleForm.templateId ?? ""}
                         onValueChange={(templateId) =>
                           setRuleForm((current) => ({
                             ...current,
-                            templateId: templateId === NONE ? null : templateId,
+                            templateId,
                           }))
                         }
                       >
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select template" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NONE}>None</SelectItem>
-                          {data.templates.map((template) => (
-                            <SelectItem key={template.id ?? template.code} value={template.id ?? template.code}>
-                              {template.name}
-                            </SelectItem>
-                          ))}
+                          <SelectGroup>
+                            {data.templates.filter((template) => template.id).map((template) => (
+                              <SelectItem key={template.id} value={template.id!}>
+                                {template.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
                         </SelectContent>
                       </Select>
+                      <FieldHint>
+                        Required message template used for notifications produced by this rule.
+                      </FieldHint>
                     </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="rule-timezone">Timezone</Label>
-                      <Input
-                        id="rule-timezone"
-                        value={ruleForm.timezone ?? ""}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({ ...current, timezone: event.target.value }))
-                        }
-                      />
+                  {ruleForm.type === "LOAN_REPAYMENT_DUE" ? (
+                    <div className="space-y-3 rounded-md border p-3">
+                      <Label
+                        htmlFor="start-reminding-today"
+                        className="flex w-full cursor-pointer items-center justify-between gap-4 leading-normal"
+                      >
+                        <div className="space-y-1">
+                          <span className="text-sm font-medium">Start Reminding Today</span>
+                          <FieldHint>
+                            When on, this rule sends once for repayments due today.
+                          </FieldHint>
+                        </div>
+                        <Switch
+                          id="start-reminding-today"
+                          checked={ruleForm.startRemindingToday}
+                          onCheckedChange={(startRemindingToday) =>
+                            setRuleForm((current) => ({
+                              ...current,
+                              startRemindingToday,
+                              daysBeforeDue: startRemindingToday
+                                ? 0
+                                : Math.max(1, current.daysBeforeDue || 3),
+                            }))
+                          }
+                        />
+                      </Label>
+                      {!ruleForm.startRemindingToday ? (
+                        <div className="max-w-xs space-y-2">
+                          <Label htmlFor="days-before-due">Days Before Due Date</Label>
+                          <Input
+                            id="days-before-due"
+                            type="number"
+                            min={1}
+                            value={ruleForm.daysBeforeDue}
+                            onChange={(event) =>
+                              setRuleForm((current) => ({
+                                ...current,
+                                daysBeforeDue: Number(event.target.value) || 0,
+                              }))
+                            }
+                          />
+                          <FieldHint>
+                            Sends once when the repayment due date is this many days away.
+                          </FieldHint>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="rule-cooldown">Cooldown Minutes</Label>
+                  ) : (
+                    <div className="max-w-xs space-y-2">
+                      <Label htmlFor="days-past-due">Days Past Due</Label>
                       <Input
-                        id="rule-cooldown"
-                        type="number"
-                        min={0}
-                        value={ruleForm.cooldownMinutes}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            cooldownMinutes: Number(event.target.value) || 0,
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="days-offset">Days Offset</Label>
-                      <Input
-                        id="days-offset"
-                        type="number"
-                        value={ruleForm.daysOffset}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            daysOffset: Number(event.target.value) || 0,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="look-back">Look Back</Label>
-                      <Input
-                        id="look-back"
-                        type="number"
-                        min={0}
-                        value={ruleForm.lookBackDays}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            lookBackDays: Number(event.target.value) || 0,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="look-ahead">Look Ahead</Label>
-                      <Input
-                        id="look-ahead"
-                        type="number"
-                        min={0}
-                        value={ruleForm.lookAheadDays}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            lookAheadDays: Number(event.target.value) || 0,
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="min-days-past-due">Min Past Due</Label>
-                      <Input
-                        id="min-days-past-due"
-                        type="number"
-                        min={0}
-                        value={ruleForm.minDaysPastDue ?? ""}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            minDaysPastDue: numberOrNull(event.target.value),
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="max-days-past-due">Max Past Due</Label>
-                      <Input
-                        id="max-days-past-due"
-                        type="number"
-                        min={0}
-                        value={ruleForm.maxDaysPastDue ?? ""}
-                        onChange={(event) =>
-                          setRuleForm((current) => ({
-                            ...current,
-                            maxDaysPastDue: numberOrNull(event.target.value),
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="page-limit">Page Limit</Label>
-                      <Input
-                        id="page-limit"
+                        id="days-past-due"
                         type="number"
                         min={1}
-                        max={500}
-                        value={ruleForm.pageLimit}
+                        value={ruleForm.daysPastDue}
                         onChange={(event) =>
                           setRuleForm((current) => ({
                             ...current,
-                            pageLimit: Number(event.target.value) || 1,
+                            daysPastDue: Number(event.target.value) || 0,
                           }))
                         }
                       />
+                      <FieldHint>
+                        Sends once when the loan reaches this exact overdue age.
+                      </FieldHint>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="report-name">Stretchy Report</Label>
-                    <Input
-                      id="report-name"
-                      value={ruleForm.reportName ?? ""}
-                      onChange={(event) =>
-                        setRuleForm((current) => ({ ...current, reportName: event.target.value }))
-                      }
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                    <Label className="text-sm font-medium">Enabled</Label>
+                  <Label
+                    htmlFor="rule-enabled"
+                    className="flex cursor-pointer items-center justify-between gap-4 rounded-md border p-3 leading-normal"
+                  >
+                    <div className="space-y-1">
+                      <span className="text-sm font-medium">Enabled</span>
+                      <FieldHint>
+                        When off, the rule is saved but new runs are not created for it.
+                      </FieldHint>
+                    </div>
                     <Switch
+                      id="rule-enabled"
                       checked={ruleForm.enabled}
                       onCheckedChange={(enabled) =>
                         setRuleForm((current) => ({ ...current, enabled }))
                       }
                     />
-                  </div>
+                  </Label>
 
                   <div className="flex flex-wrap gap-2">
                     <Button type="submit" disabled={isPending}>
@@ -923,24 +953,25 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() =>
-                        setRuleForm(emptyRuleForm(data.config.timezone || "Africa/Harare"))
-                      }
+                      onClick={openNewRuleDialog}
                     >
                       New Rule
                     </Button>
                   </div>
                 </form>
-              </CardContent>
-            </Card>
+              </DialogContent>
+            </Dialog>
           </div>
         </TabsContent>
 
         <TabsContent value="templates" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="space-y-4">
             <Card>
-              <CardHeader>
+              <CardHeader className="gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base">Templates</CardTitle>
+                <Button type="button" onClick={openNewTemplateDialog}>
+                  New Template
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -948,7 +979,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Name</TableHead>
-                        <TableHead>Channel</TableHead>
                         <TableHead>Message</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Action</TableHead>
@@ -957,18 +987,16 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <TableBody>
                       {data.templates.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="h-24 text-center text-sm text-muted-foreground">
+                          <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
                             No reminder templates configured.
                           </TableCell>
                         </TableRow>
                       ) : (
                         data.templates.map((template) => (
-                          <TableRow key={template.id ?? template.code}>
+                          <TableRow key={template.id ?? template.name}>
                             <TableCell>
                               <div className="font-medium">{template.name}</div>
-                              <div className="text-xs text-muted-foreground">{template.code}</div>
                             </TableCell>
-                            <TableCell>{template.channel}</TableCell>
                             <TableCell className="max-w-xl truncate">{template.body}</TableCell>
                             <TableCell>
                               <Badge className={cn("border", statusBadgeClass(template.active ? "SENT" : "SKIPPED"))}>
@@ -976,15 +1004,19 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setTemplateForm(templateToForm(template))}
-                              >
-                                <SquarePen className="h-4 w-4" />
-                                Edit
-                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button type="button" variant="outline" size="sm">
+                                    ...Action
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => openEditTemplateDialog(template)}>
+                                    <SquarePen className="h-4 w-4" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </TableCell>
                           </TableRow>
                         ))
@@ -995,44 +1027,14 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {templateForm.id ? "Edit Template" : "New Template"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {templateForm.id ? "Edit Template" : "New Template"}
+                  </DialogTitle>
+                </DialogHeader>
                 <form className="space-y-4" onSubmit={handleSaveTemplate}>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="template-code">Code</Label>
-                      <Input
-                        id="template-code"
-                        value={templateForm.code}
-                        onChange={(event) =>
-                          setTemplateForm((current) => ({ ...current, code: event.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Channel</Label>
-                      <Select
-                        value={templateForm.channel}
-                        onValueChange={(channel: "SMS" | "EMAIL") =>
-                          setTemplateForm((current) => ({ ...current, channel }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="SMS">SMS</SelectItem>
-                          <SelectItem value="EMAIL">Email</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="template-name">Name</Label>
                     <Input
@@ -1042,43 +1044,64 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         setTemplateForm((current) => ({ ...current, name: event.target.value }))
                       }
                     />
+                    <FieldHint>
+                      Readable label used when selecting this template for reminder rules.
+                    </FieldHint>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="template-subject">Subject</Label>
-                    <Input
-                      id="template-subject"
-                      value={templateForm.subject ?? ""}
-                      onChange={(event) =>
-                        setTemplateForm((current) => ({ ...current, subject: event.target.value }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="template-body">Message</Label>
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="template-body">Message</Label>
+                      <FieldHint>
+                        Pick variables below to insert safe tokens into the message body.
+                      </FieldHint>
+                    </div>
+                    <div className="flex flex-wrap gap-2 rounded-md border bg-muted/20 p-2">
+                      {TEMPLATE_VARIABLES.map((variable) => (
+                        <Button
+                          key={variable.token}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          title={variable.hint}
+                          onClick={() => insertTemplateVariable(variable.token)}
+                        >
+                          {variable.label}
+                        </Button>
+                      ))}
+                    </div>
                     <Textarea
                       id="template-body"
+                      ref={templateBodyRef}
                       value={templateForm.body}
                       rows={7}
                       onChange={(event) =>
                         setTemplateForm((current) => ({ ...current, body: event.target.value }))
                       }
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Variables: {"{{clientName}}"}, {"{{loanAccountNo}}"}, {"{{amountDue}}"}, {"{{dueDate}}"}, {"{{daysPastDue}}"}.
-                    </p>
+                    <FieldHint>
+                      The backend replaces these tokens with values from each reminder candidate.
+                    </FieldHint>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 rounded-md border p-3">
-                    <Label className="text-sm font-medium">Active</Label>
+                  <Label
+                    htmlFor="template-active"
+                    className="flex cursor-pointer items-center justify-between gap-4 rounded-md border p-3 leading-normal"
+                  >
+                    <div className="space-y-1">
+                      <span className="text-sm font-medium">Active</span>
+                      <FieldHint>
+                        When off, rules can reference this template but no messages are sent with it.
+                      </FieldHint>
+                    </div>
                     <Switch
+                      id="template-active"
                       checked={templateForm.active}
                       onCheckedChange={(active) =>
                         setTemplateForm((current) => ({ ...current, active }))
                       }
                     />
-                  </div>
+                  </Label>
 
                   <div className="flex flex-wrap gap-2">
                     <Button type="submit" disabled={isPending}>
@@ -1092,19 +1115,19 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setTemplateForm(emptyTemplateForm())}
+                      onClick={openNewTemplateDialog}
                     >
                       New Template
                     </Button>
                   </div>
                 </form>
-              </CardContent>
-            </Card>
+              </DialogContent>
+            </Dialog>
           </div>
         </TabsContent>
 
         <TabsContent value="runs" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
+          <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -1121,13 +1144,22 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {selectedRun ? "Run Items" : "Select a Run"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <Dialog
+              open={runDialogOpen}
+              onOpenChange={(open) => {
+                setRunDialogOpen(open);
+                if (!open) {
+                  setSelectedRun(null);
+                  setRunItems([]);
+                }
+              }}
+            >
+              <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+                <DialogHeader>
+                  <DialogTitle>
+                    {selectedRun ? "Run Items" : "Select a Run"}
+                  </DialogTitle>
+                </DialogHeader>
                 {!selectedRun ? (
                   <div className="flex min-h-40 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
                     Pick a run to inspect candidates.
@@ -1149,6 +1181,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Client</TableHead>
+                            <TableHead>Channel</TableHead>
                             <TableHead>Due</TableHead>
                             <TableHead>Status</TableHead>
                           </TableRow>
@@ -1156,7 +1189,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         <TableBody>
                           {runItems.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={3} className="h-24 text-center text-sm text-muted-foreground">
+                              <TableCell colSpan={4} className="h-24 text-center text-sm text-muted-foreground">
                                 No candidates loaded.
                               </TableCell>
                             </TableRow>
@@ -1169,6 +1202,7 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                                     {item.loanAccountNo || item.loanId || "No loan reference"}
                                   </div>
                                 </TableCell>
+                                <TableCell>{item.channel ?? "SMS"}</TableCell>
                                 <TableCell>
                                   <div>{formatDate(item.dueDate)}</div>
                                   <div className="text-xs text-muted-foreground">
@@ -1188,8 +1222,8 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </DialogContent>
+            </Dialog>
           </div>
         </TabsContent>
 
@@ -1305,14 +1339,19 @@ function RunsTable({
                     </TableCell>
                   )}
                   <TableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onSelectRun(run)}
-                    >
-                      Inspect
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" variant="outline" size="sm">
+                          ...Action
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => onSelectRun(run)}>
+                          <Database className="h-4 w-4" />
+                          Inspect
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               );
