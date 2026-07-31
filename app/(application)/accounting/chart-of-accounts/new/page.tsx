@@ -211,8 +211,8 @@ export default function NewAccountPage() {
         <Card className="border-0 shadow-sm">
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-blue-600" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Basic Information</CardTitle>
@@ -309,8 +309,8 @@ export default function NewAccountPage() {
         <Card className="border-0 shadow-sm">
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Settings className="h-5 w-5 text-purple-600" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Settings className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Advanced Settings</CardTitle>
@@ -389,8 +389,8 @@ export default function NewAccountPage() {
         <Card className="border-0 shadow-sm">
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-green-600" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Description</CardTitle>
