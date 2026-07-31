@@ -172,7 +172,7 @@ export default function EditAccountPage() {
       <div className="container mx-auto p-6">
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
-            <CardTitle className="text-red-600">Error Loading Account</CardTitle>
+            <CardTitle className="text-destructive">Error Loading Account</CardTitle>
             <CardDescription>Failed to load the GL account data. Please try again.</CardDescription>
           </CardHeader>
           <CardContent>
