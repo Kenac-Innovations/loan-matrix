@@ -256,7 +256,6 @@ export default function ChartOfAccountsPage() {
             <Card key={acc.id} className="group hover:shadow-lg hover:scale-[1.02] transition-all duration-300">
               <CardContent className="p-4">
                 <div className="flex items-center gap-4">
-                  {/* Icon with gradient background */}
                   <div className={`h-10 w-10 rounded-xl ${config.bgColor} flex items-center justify-center flex-shrink-0 shadow-sm group-hover:shadow-md transition-shadow duration-300`}>
                     <IconComponent className={`h-5 w-5 ${config.color}`} />
                   </div>
@@ -286,7 +285,6 @@ export default function ChartOfAccountsPage() {
                       
                       {/* Right side info with enhanced badges */}
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {/* Type Badge with gradient */}
                         <Badge
                           variant="outline"
                           className={`text-xs h-6 px-3 ${config.color} border-current ${config.bgColor} hover:shadow-sm transition-all duration-200`}

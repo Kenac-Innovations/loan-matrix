@@ -208,7 +208,7 @@ export default function NewAccountPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information Card */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -306,7 +306,7 @@ export default function NewAccountPage() {
         </Card>
 
         {/* Advanced Settings Card */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -336,7 +336,7 @@ export default function NewAccountPage() {
                     {chartAccounts.map((p: any) => (
                       <SelectItem key={p.id} value={p.id.toString()}>
                         <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-gray-400" />
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
                           <span>{p.name}</span>
                         </div>
                       </SelectItem>
@@ -359,7 +359,7 @@ export default function NewAccountPage() {
                     {tagOptions.map((t: any) => (
                       <SelectItem key={t.id} value={t.id.toString()}>
                         <div className="flex items-center gap-2">
-                          <Tag className="h-4 w-4 text-gray-400" />
+                          <Tag className="h-4 w-4 text-muted-foreground" />
                           <span>{t.name}</span>
                         </div>
                       </SelectItem>
@@ -370,7 +370,7 @@ export default function NewAccountPage() {
             </div>
 
             {/* Manual Entries Allowed */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
               <div className="space-y-1">
                 <Label className="text-sm font-medium">Manual Entries Allowed</Label>
                 <p className="text-xs text-muted-foreground">
@@ -386,7 +386,7 @@ export default function NewAccountPage() {
         </Card>
 
         {/* Description Card */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -418,7 +418,7 @@ export default function NewAccountPage() {
         </Card>
 
         {/* Actions */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
