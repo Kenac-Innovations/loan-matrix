@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { fetchFineractAPI } from "@/lib/api";
+import { fetchFineractAPI, isFineractCommandPendingApproval } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { hasPermissionServer } from "@/lib/authorization";
 import {
@@ -874,6 +874,16 @@ export async function createUserAction(
       body: JSON.stringify(payload),
     });
 
+    if (isFineractCommandPendingApproval(response)) {
+      // Nothing was actually created yet - skip the local bookkeeping below, it
+      // would otherwise be keyed to a Fineract user that doesn't exist yet.
+      return {
+        success: true,
+        pending: true,
+        message: "User creation submitted - awaiting checker approval",
+      };
+    }
+
     const userId = Number(
       response?.resourceId ?? response?.subResourceId ?? response?.id
     );
@@ -951,10 +961,18 @@ export async function updateUserAction(
       roles: parsed.data.roles,
     };
 
-    await fetchFineractAPI(`/users/${parsed.data.userId}`, {
+    const response = await fetchFineractAPI(`/users/${parsed.data.userId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     });
+
+    if (isFineractCommandPendingApproval(response)) {
+      return {
+        success: true,
+        pending: true,
+        message: "User update submitted - awaiting checker approval",
+      };
+    }
 
     const userLogin = await upsertUserLogin({
       tenantId: tenant.id,
@@ -1015,9 +1033,17 @@ export async function deleteUserAction(input: {
     }
 
     const tenant = await requireCurrentTenant();
-    await fetchFineractAPI(`/users/${parsed.data.userId}`, {
+    const response = await fetchFineractAPI(`/users/${parsed.data.userId}`, {
       method: "DELETE",
     });
+
+    if (isFineractCommandPendingApproval(response)) {
+      return {
+        success: true,
+        pending: true,
+        message: "User deletion submitted - awaiting checker approval",
+      };
+    }
 
     await deleteUserLogin(tenant.id, parsed.data.userId);
     await prisma.mfaChallenge.deleteMany({

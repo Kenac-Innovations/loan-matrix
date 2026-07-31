@@ -163,6 +163,23 @@ export function MakerCheckerSkeleton() {
   );
 }
 
+export function CheckerInboxSkeleton() {
+  return (
+    <div className="space-y-6">
+      <PageHeaderSkeleton actions={1} />
+      <Card className="rounded-lg">
+        <CardHeader className="gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Skeleton className="h-6 w-24" />
+          <Skeleton className="h-6 w-28" />
+        </CardHeader>
+        <CardContent>
+          <TableSkeleton columns={6} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function AuditTrailsSkeleton() {
   return (
     <div className="space-y-6">

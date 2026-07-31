@@ -120,4 +120,6 @@ export interface UserActionResult<T = undefined> {
   fieldErrors?: Partial<Record<string, string[]>>;
   message?: string;
   data?: T;
+  /** True when a maker-checker-enabled task queued the request instead of applying it. */
+  pending?: boolean;
 }

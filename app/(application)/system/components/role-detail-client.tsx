@@ -163,6 +163,12 @@ export function RoleDetailClient({ initialRole }: RoleDetailClientProps) {
         return;
       }
 
+      if (result.pending) {
+        toast.info("Submitted - awaiting checker approval");
+        setIsEditingPermissions(false);
+        return;
+      }
+
       toast.success("Role permissions updated");
       setIsEditingPermissions(false);
       const nextRole = await getSystemRoleAction(role.id);
@@ -180,6 +186,12 @@ export function RoleDetailClient({ initialRole }: RoleDetailClientProps) {
 
       if (!result.success) {
         toast.error(result.error ?? "Failed to update role");
+        return;
+      }
+
+      if (result.pending) {
+        toast.info("Submitted - awaiting checker approval");
+        setIsEditRoleOpen(false);
         return;
       }
 
@@ -203,12 +215,18 @@ export function RoleDetailClient({ initialRole }: RoleDetailClientProps) {
         return;
       }
 
+      setConfirmAction(null);
+
+      if (result.pending) {
+        toast.info("Submitted - awaiting checker approval");
+        return;
+      }
+
       toast.success(
         confirmAction === "delete"
           ? "Role deleted"
           : `Role ${confirmAction === "enable" ? "enabled" : "disabled"}`
       );
-      setConfirmAction(null);
 
       if (confirmAction === "delete") {
         router.push("/system/roles-and-permissions");
