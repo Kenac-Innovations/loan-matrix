@@ -3,6 +3,8 @@ export type SystemActionResult<T = undefined> = {
   data?: T;
   error?: string;
   fieldErrors?: Record<string, string[] | undefined>;
+  /** True when a maker-checker-enabled task queued the request instead of applying it. */
+  pending?: boolean;
 };
 
 export type SystemPermission = {
@@ -152,4 +154,29 @@ export type LockedLoan = {
 
 export type LockedLoansPage = {
   content: LockedLoan[];
+};
+
+export type LoadFailure = {
+  status?: number;
+  message: string;
+};
+
+export type MakerCheckerSearchInput = {
+  actionName?: string;
+  entityName?: string;
+  resourceId?: string;
+  makerDateTimeFrom?: string;
+  makerDateTimeTo?: string;
+};
+
+export type RescheduleLoanRequest = {
+  id: number;
+  loanId?: number;
+  clientId?: number;
+  clientName?: string;
+  loanAccountNumber?: string;
+  rescheduleReasonComment?: string;
+  rescheduleReasonName?: string;
+  submittedOnDate?: string | number | number[] | null;
+  submittedByUsername?: string;
 };

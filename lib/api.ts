@@ -244,6 +244,30 @@ export async function fetchFineractAPI(
   }
 }
 
+/**
+ * Fineract returns HTTP 200 with a normal-looking CommandProcessingResult even when a
+ * maker-checker-enabled command was intercepted and rolled back rather than applied -
+ * the only signal is `rollbackTransaction: true`. Callers of actions that touch
+ * maker-checker-eligible tasks must check this before treating the call as a success.
+ */
+export function isFineractCommandPendingApproval(result: unknown): boolean {
+  const record = result as { rollbackTransaction?: unknown } | null | undefined;
+  return Boolean(record && record.rollbackTransaction === true);
+}
+
+/**
+ * Extracts the HTTP status Fineract responded with, if the given error came from
+ * readFineractResponse. Lets callers distinguish "you don't have permission" (403)
+ * from other failures (network errors, validation errors, 500s, ...).
+ */
+export function getFineractErrorStatus(error: unknown): number | undefined {
+  if (error && typeof error === "object" && "status" in error) {
+    const status = (error as FineractError).status;
+    return typeof status === "number" ? status : undefined;
+  }
+  return undefined;
+}
+
 export async function fetchFineractAPIAsCurrentUser(
   endpoint: string,
   options: RequestInit = {},

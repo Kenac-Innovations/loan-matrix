@@ -87,9 +87,15 @@ export function RolesAndPermissionsClient({
         return;
       }
 
-      toast.success("Role created");
       setCreateForm(emptyCreateForm);
       setIsCreateOpen(false);
+
+      if (result.pending) {
+        toast.info("Submitted - awaiting checker approval");
+        return;
+      }
+
+      toast.success("Role created");
       setRoles(await listSystemRolesAction());
     });
   }
