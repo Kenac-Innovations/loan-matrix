@@ -139,7 +139,7 @@ export default function AccountingRulesPage() {
           </p>
         </div>
         <Link href="/accounting/accounting-rules/new">
-          <Button className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white">
+          <Button>
             <Plus className="h-4 w-4 mr-2" />
             Add Rule
           </Button>
@@ -147,9 +147,9 @@ export default function AccountingRulesPage() {
       </div>
 
       {/* Filters */}
-      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          <CardTitle className="text-lg font-semibold text-foreground">
             Filters & Search
           </CardTitle>
         </CardHeader>
@@ -157,12 +157,12 @@ export default function AccountingRulesPage() {
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search rules by name, description, or office..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                  className="pl-10"
                 />
               </div>
             </div>
@@ -171,16 +171,16 @@ export default function AccountingRulesPage() {
                 value={selectedOffice}
                 onValueChange={setSelectedOffice}
               >
-                <SelectTrigger className="w-full bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100">
-                  <Filter className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
+                <SelectTrigger className="w-full">
+                  <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
                   <SelectValue placeholder="Filter by office" />
                 </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
-                  <SelectItem value="all" className="text-slate-900 dark:text-slate-100">
+                <SelectContent>
+                  <SelectItem value="all">
                     All Offices
                   </SelectItem>
                   {offices.map((office) => (
-                    <SelectItem key={office.id} value={office.id.toString()} className="text-slate-900 dark:text-slate-100">
+                    <SelectItem key={office.id} value={office.id.toString()}>
                       {office.name}
                     </SelectItem>
                   ))}
@@ -193,12 +193,12 @@ export default function AccountingRulesPage() {
 
 
       {/* Rules Table */}
-      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          <CardTitle className="text-lg font-semibold text-foreground">
             Accounting Rules
           </CardTitle>
-          <CardDescription className="text-slate-600 dark:text-slate-400">
+          <CardDescription className="text-muted-foreground">
             {filteredRules.length} rule{filteredRules.length !== 1 ? 's' : ''} found
           </CardDescription>
         </CardHeader>
@@ -209,11 +209,11 @@ export default function AccountingRulesPage() {
             </div>
           ) : filteredRules.length === 0 ? (
             <div className="text-center py-12">
-              <Settings className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+              <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-2">
                 No accounting rules found
               </h3>
-              <p className="text-slate-600 dark:text-slate-400 mb-6">
+              <p className="text-muted-foreground mb-6">
                 {searchTerm || (selectedOffice && selectedOffice !== 'all')
                   ? 'Try adjusting your search or filter criteria.'
                   : 'Get started by creating your first accounting rule.'
@@ -221,7 +221,7 @@ export default function AccountingRulesPage() {
               </p>
               {!searchTerm && (selectedOffice === 'all' || !selectedOffice) && (
                 <Link href="/accounting/accounting-rules/new">
-                  <Button className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white">
+                  <Button>
                     <Plus className="h-4 w-4 mr-2" />
                     Create First Rule
                   </Button>
@@ -232,38 +232,38 @@ export default function AccountingRulesPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-slate-200 dark:border-slate-700">
-                    <TableHead className="text-slate-900 dark:text-slate-100">Name</TableHead>
-                    <TableHead className="text-slate-900 dark:text-slate-100">Office</TableHead>
-                    <TableHead className="text-slate-900 dark:text-slate-100">Debit Tags</TableHead>
-                    <TableHead className="text-slate-900 dark:text-slate-100">Debit Account</TableHead>
-                    <TableHead className="text-slate-900 dark:text-slate-100">Credit Tags</TableHead>
-                    <TableHead className="text-slate-900 dark:text-slate-100">Credit Account</TableHead>
-                    <TableHead className="text-slate-900 dark:text-slate-100">Actions</TableHead>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Office</TableHead>
+                    <TableHead>Debit Tags</TableHead>
+                    <TableHead>Debit Account</TableHead>
+                    <TableHead>Credit Tags</TableHead>
+                    <TableHead>Credit Account</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredRules.map((rule) => (
-                    <TableRow key={rule.id} className="border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-                      <TableCell className="font-medium text-slate-900 dark:text-slate-100">
+                    <TableRow key={rule.id}>
+                      <TableCell className="font-medium">
                         <div>
                           <div className="font-semibold">{rule.name}</div>
-                          <div className="text-sm text-slate-600 dark:text-slate-400">{rule.description}</div>
+                          <div className="text-sm text-muted-foreground">{rule.description}</div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-slate-900 dark:text-slate-100">
+                      <TableCell>
                         {rule.officeName}
                       </TableCell>
-                      <TableCell className="text-slate-900 dark:text-slate-100">
+                      <TableCell>
                         {getTagNames(rule.debitTags)}
                       </TableCell>
-                      <TableCell className="text-slate-900 dark:text-slate-100">
+                      <TableCell>
                         {getAccountNames(rule.debitAccounts)}
                       </TableCell>
-                      <TableCell className="text-slate-900 dark:text-slate-100">
+                      <TableCell>
                         {getTagNames(rule.creditTags)}
                       </TableCell>
-                      <TableCell className="text-slate-900 dark:text-slate-100">
+                      <TableCell>
                         {getAccountNames(rule.creditAccounts)}
                       </TableCell>
                       <TableCell>
@@ -278,10 +278,10 @@ export default function AccountingRulesPage() {
                               <Edit className="h-4 w-4" />
                             </Button>
                           </Link>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
                             onClick={() => handleDelete(rule.id)}
                           >
                             <Trash2 className="h-4 w-4" />
