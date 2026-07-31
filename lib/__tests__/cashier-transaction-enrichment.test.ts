@@ -44,6 +44,13 @@ test("keeps legacy repayment note loan id parsing", () => {
   );
 });
 
+test("parses credit balance refund loan ids from cashier notes", () => {
+  assert.equal(
+    extractLoanIdFromCashierTransactionNotes("Credit balance refund - Loan #164469"),
+    164469
+  );
+});
+
 test("matches loan payout by explicit Fineract loan note before loose amount matching", () => {
   const payout = matchLoanPayoutForCashierTransaction(
     {
