@@ -184,7 +184,7 @@ export default function JournalEntryViewPage() {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">Failed to load journal entry</h3>
           <p className="text-muted-foreground mb-4">
             Unable to fetch the journal entry details. Please try again.
