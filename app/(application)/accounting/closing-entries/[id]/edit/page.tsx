@@ -16,7 +16,7 @@ export default function EditClosurePage({ params }: { params: { id: string } }) 
     <div className="flex items-center justify-center min-h-screen">
       <div className="text-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-slate-600 dark:text-slate-400">Redirecting to edit mode...</p>
+        <p className="text-muted-foreground">Redirecting to edit mode...</p>
       </div>
     </div>
   );

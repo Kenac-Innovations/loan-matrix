@@ -335,14 +335,14 @@ export default function FrequentPostingsPage() {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back
           </Button>
-          <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-48 animate-pulse"></div>
+          <div className="h-8 bg-muted rounded w-48 animate-pulse"></div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {[...Array(4)].map((_, i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="pt-6">
-                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3 mb-4"></div>
-                <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded w-full"></div>
+                <div className="h-4 bg-muted rounded w-1/3 mb-4"></div>
+                <div className="h-10 bg-muted rounded w-full"></div>
               </CardContent>
             </Card>
           ))}
@@ -360,8 +360,8 @@ export default function FrequentPostingsPage() {
           Back
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Frequent Postings</h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Frequent Postings</h1>
+          <p className="text-muted-foreground mt-1">
             Create journal entries using predefined accounting rules
           </p>
         </div>
@@ -369,9 +369,9 @@ export default function FrequentPostingsPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
-        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            <CardTitle className="text-lg">
               Transaction Information
             </CardTitle>
           </CardHeader>
@@ -380,17 +380,17 @@ export default function FrequentPostingsPage() {
               {/* Left Column */}
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="office" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="office">
                     Office *
                   </Label>
                   <Select value={officeId} onValueChange={setOfficeId} required>
-                    <SelectTrigger className="mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600">
-                      <Building2 className="w-4 h-4 mr-2 text-slate-400" />
+                    <SelectTrigger className="mt-1">
+                      <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
                       <SelectValue placeholder="Select office" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                    <SelectContent>
                       {offices.map((office) => (
-                        <SelectItem key={office.id} value={office.id.toString()} className="text-slate-900 dark:text-slate-100">
+                        <SelectItem key={office.id} value={office.id.toString()}>
                           {office.name}
                         </SelectItem>
                       ))}
@@ -399,17 +399,17 @@ export default function FrequentPostingsPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="currency" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="currency">
                     Currency *
                   </Label>
                   <Select value={currencyCode} onValueChange={setCurrencyCode} required>
-                    <SelectTrigger className="mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600">
-                      <DollarSign className="w-4 h-4 mr-2 text-slate-400" />
+                    <SelectTrigger className="mt-1">
+                      <DollarSign className="w-4 h-4 mr-2 text-muted-foreground" />
                       <SelectValue placeholder="Select currency" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                    <SelectContent>
                       {currencies.map((currency) => (
-                        <SelectItem key={currency.code} value={currency.code} className="text-slate-900 dark:text-slate-100">
+                        <SelectItem key={currency.code} value={currency.code}>
                           {currency.displayLabel}
                         </SelectItem>
                       ))}
@@ -418,33 +418,33 @@ export default function FrequentPostingsPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="referenceNumber" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="referenceNumber">
                     Reference Number
                   </Label>
                   <div className="relative mt-1">
-                    <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="referenceNumber"
                       value={referenceNumber}
                       onChange={(e) => setReferenceNumber(e.target.value)}
-                      className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                      className="pl-10"
                       placeholder="Enter reference number"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="paymentType" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="paymentType">
                     Payment Type
                   </Label>
                   <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
-                    <SelectTrigger className="mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600">
-                      <CreditCard className="w-4 h-4 mr-2 text-slate-400" />
+                    <SelectTrigger className="mt-1">
+                      <CreditCard className="w-4 h-4 mr-2 text-muted-foreground" />
                       <SelectValue placeholder="Select payment type" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                    <SelectContent>
                       {paymentTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.id.toString()} className="text-slate-900 dark:text-slate-100">
+                        <SelectItem key={type.id} value={type.id.toString()}>
                           {type.name}
                         </SelectItem>
                       ))}
@@ -453,48 +453,48 @@ export default function FrequentPostingsPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="checkNumber" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="checkNumber">
                     Cheque Number
                   </Label>
                   <div className="relative mt-1">
-                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="checkNumber"
                       value={checkNumber}
                       onChange={(e) => setCheckNumber(e.target.value)}
-                      className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                      className="pl-10"
                       placeholder="Enter cheque number"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="receiptNumber" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="receiptNumber">
                     Receipt Number
                   </Label>
                   <div className="relative mt-1">
-                    <Receipt className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Receipt className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="receiptNumber"
                       value={receiptNumber}
                       onChange={(e) => setReceiptNumber(e.target.value)}
-                      className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                      className="pl-10"
                       placeholder="Enter receipt number"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="comments" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="comments">
                     Comments
                   </Label>
                   <div className="relative mt-1">
-                    <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                    <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                     <textarea
                       id="comments"
                       value={comments}
                       onChange={(e) => setComments(e.target.value)}
-                      className="w-full pl-10 pr-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-900 dark:text-slate-100 resize-none"
+                      className="w-full pl-10 pr-3 py-2 border rounded-md resize-none"
                       rows={3}
                       placeholder="Enter comments"
                     />
@@ -505,17 +505,17 @@ export default function FrequentPostingsPage() {
               {/* Right Column */}
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="accountingRule" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="accountingRule">
                     Accounting Rule *
                   </Label>
                   <Select value={accountingRuleId} onValueChange={setAccountingRuleId} required>
-                    <SelectTrigger className="mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600">
-                      <FileText className="w-4 h-4 mr-2 text-slate-400" />
+                    <SelectTrigger className="mt-1">
+                      <FileText className="w-4 h-4 mr-2 text-muted-foreground" />
                       <SelectValue placeholder="Select accounting rule" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                    <SelectContent>
                       {accountingRules.map((rule) => (
-                        <SelectItem key={rule.id} value={rule.id.toString()} className="text-slate-900 dark:text-slate-100">
+                        <SelectItem key={rule.id} value={rule.id.toString()}>
                           {rule.name}
                         </SelectItem>
                       ))}
@@ -524,7 +524,7 @@ export default function FrequentPostingsPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="transactionDate" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="transactionDate">
                     Transaction Date *
                   </Label>
                   <Popover>
@@ -532,15 +532,15 @@ export default function FrequentPostingsPage() {
                       <Button
                         variant="outline"
                         className={cn(
-                          "w-full justify-start text-left font-normal mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600",
-                          !transactionDate && "text-slate-500 dark:text-slate-400"
+                          "w-full justify-start text-left font-normal mt-1",
+                          !transactionDate && "text-muted-foreground"
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {transactionDate ? format(transactionDate, "PPP") : <span>Pick a date</span>}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                    <PopoverContent className="w-auto p-0">
                       <Calendar
                         mode="single"
                         selected={transactionDate}
@@ -552,48 +552,48 @@ export default function FrequentPostingsPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="accountNumber" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="accountNumber">
                     Account Number
                   </Label>
                   <div className="relative mt-1">
-                    <HashIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <HashIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="accountNumber"
                       value={accountNumber}
                       onChange={(e) => setAccountNumber(e.target.value)}
-                      className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                      className="pl-10"
                       placeholder="Enter account number"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="routingCode" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="routingCode">
                     Routing Code
                   </Label>
                   <div className="relative mt-1">
-                    <Route className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Route className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="routingCode"
                       value={routingCode}
                       onChange={(e) => setRoutingCode(e.target.value)}
-                      className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                      className="pl-10"
                       placeholder="Enter routing code"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <Label htmlFor="bankNumber" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  <Label htmlFor="bankNumber">
                     Bank Number
                   </Label>
                   <div className="relative mt-1">
-                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       id="bankNumber"
                       value={bankNumber}
                       onChange={(e) => setBankNumber(e.target.value)}
-                      className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                      className="pl-10"
                       placeholder="Enter bank number"
                     />
                   </div>
@@ -607,9 +607,9 @@ export default function FrequentPostingsPage() {
         {selectedRule && (
           <>
             {/* Debit Entries */}
-            <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+            <Card>
               <CardHeader>
-                <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                <CardTitle className="text-lg">
                   Debit Entries
                 </CardTitle>
               </CardHeader>
@@ -618,7 +618,7 @@ export default function FrequentPostingsPage() {
                   {debitEntries.map((entry, index) => (
                     <div key={index} className="flex items-center gap-4">
                       <div className="flex-1">
-                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <Label>
                           Affected GL Entry (Debit) *
                         </Label>
                         <Select
@@ -630,12 +630,12 @@ export default function FrequentPostingsPage() {
                           }}
                           required
                         >
-                          <SelectTrigger className="mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600">
+                          <SelectTrigger className="mt-1">
                             <SelectValue placeholder="Select GL account" />
                           </SelectTrigger>
-                          <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                          <SelectContent>
                             {glAccounts.map((account) => (
-                              <SelectItem key={account.id} value={account.id.toString()} className="text-slate-900 dark:text-slate-100">
+                              <SelectItem key={account.id} value={account.id.toString()}>
                                 {account.name} ({account.glCode})
                               </SelectItem>
                             ))}
@@ -643,7 +643,7 @@ export default function FrequentPostingsPage() {
                         </Select>
                       </div>
                       <div className="flex-1">
-                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <Label>
                           Debit Amount *
                         </Label>
                         <Input
@@ -656,7 +656,7 @@ export default function FrequentPostingsPage() {
                             newEntries[index].amount = parseFloat(e.target.value) || 0;
                             setDebitEntries(newEntries);
                           }}
-                          className="mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                          className="mt-1"
                           placeholder="0.00"
                           required
                         />
@@ -664,10 +664,10 @@ export default function FrequentPostingsPage() {
                       {debitEntries.length > 1 && (
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="destructive"
                           size="sm"
                           onClick={() => removeDebitEntry(index)}
-                          className="mt-6 border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                          className="mt-6"
                         >
                           <Minus className="w-4 h-4" />
                         </Button>
@@ -679,7 +679,6 @@ export default function FrequentPostingsPage() {
                       type="button"
                       variant="outline"
                       onClick={addDebitEntry}
-                      className="border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Add Debit Entry
@@ -690,9 +689,9 @@ export default function FrequentPostingsPage() {
             </Card>
 
             {/* Credit Entries */}
-            <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+            <Card>
               <CardHeader>
-                <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                <CardTitle className="text-lg">
                   Credit Entries
                 </CardTitle>
               </CardHeader>
@@ -701,7 +700,7 @@ export default function FrequentPostingsPage() {
                   {creditEntries.map((entry, index) => (
                     <div key={index} className="flex items-center gap-4">
                       <div className="flex-1">
-                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <Label>
                           Affected GL Entry (Credit) *
                         </Label>
                         <Select
@@ -713,12 +712,12 @@ export default function FrequentPostingsPage() {
                           }}
                           required
                         >
-                          <SelectTrigger className="mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600">
+                          <SelectTrigger className="mt-1">
                             <SelectValue placeholder="Select GL account" />
                           </SelectTrigger>
-                          <SelectContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                          <SelectContent>
                             {glAccounts.map((account) => (
-                              <SelectItem key={account.id} value={account.id.toString()} className="text-slate-900 dark:text-slate-100">
+                              <SelectItem key={account.id} value={account.id.toString()}>
                                 {account.name} ({account.glCode})
                               </SelectItem>
                             ))}
@@ -726,7 +725,7 @@ export default function FrequentPostingsPage() {
                         </Select>
                       </div>
                       <div className="flex-1">
-                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <Label>
                           Credit Amount *
                         </Label>
                         <Input
@@ -739,7 +738,7 @@ export default function FrequentPostingsPage() {
                             newEntries[index].amount = parseFloat(e.target.value) || 0;
                             setCreditEntries(newEntries);
                           }}
-                          className="mt-1 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100"
+                          className="mt-1"
                           placeholder="0.00"
                           required
                         />
@@ -747,10 +746,10 @@ export default function FrequentPostingsPage() {
                       {creditEntries.length > 1 && (
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="destructive"
                           size="sm"
                           onClick={() => removeCreditEntry(index)}
-                          className="mt-6 border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+                          className="mt-6"
                         >
                           <Minus className="w-4 h-4" />
                         </Button>
@@ -762,7 +761,6 @@ export default function FrequentPostingsPage() {
                       type="button"
                       variant="outline"
                       onClick={addCreditEntry}
-                      className="border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Add Credit Entry
@@ -773,43 +771,43 @@ export default function FrequentPostingsPage() {
             </Card>
 
             {/* Balance Summary */}
-            <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+            <Card>
               <CardHeader>
-                <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                <CardTitle className="text-lg">
                   Balance Summary
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800">
-                    <div className="text-sm font-medium text-red-600 dark:text-red-400">Total Debit</div>
-                    <div className="text-2xl font-bold text-red-700 dark:text-red-300">
+                  <div className="p-4 bg-red-500/20 rounded-lg">
+                    <div className="text-sm font-medium text-red-500">Total Debit</div>
+                    <div className="text-2xl font-bold text-red-500">
                       {currencyCode} {totalDebit.toFixed(2)}
                     </div>
                   </div>
-                  <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
-                    <div className="text-sm font-medium text-green-600 dark:text-green-400">Total Credit</div>
-                    <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+                  <div className="p-4 bg-green-500/20 rounded-lg">
+                    <div className="text-sm font-medium text-green-500">Total Credit</div>
+                    <div className="text-2xl font-bold text-green-500">
                       {currencyCode} {totalCredit.toFixed(2)}
                     </div>
                   </div>
                 </div>
                 <div className={`mt-4 p-3 rounded-lg ${
-                  isBalanced 
-                    ? 'bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800' 
-                    : 'bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800'
+                  isBalanced
+                    ? 'bg-green-500/20'
+                    : 'bg-red-500/20'
                 }`}>
                   <div className={`text-sm font-medium ${
-                    isBalanced 
-                      ? 'text-green-600 dark:text-green-400' 
-                      : 'text-red-600 dark:text-red-400'
+                    isBalanced
+                      ? 'text-green-500'
+                      : 'text-red-500'
                   }`}>
                     {isBalanced ? '✓ Balanced' : '✗ Not Balanced'}
                   </div>
                   <div className={`text-xs ${
-                    isBalanced 
-                      ? 'text-green-500 dark:text-green-300' 
-                      : 'text-red-500 dark:text-red-300'
+                    isBalanced
+                      ? 'text-green-500'
+                      : 'text-red-500'
                   }`}>
                     {isBalanced 
                       ? 'Debit and credit amounts are equal' 
@@ -823,21 +821,20 @@ export default function FrequentPostingsPage() {
         )}
 
         {/* Action Buttons */}
-        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <Card>
           <CardContent className="pt-6">
             <div className="flex justify-end gap-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => router.back()}
-                className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 disabled={isSubmitting || !isBalanced || !accountingRuleId || !transactionDate}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isSubmitting ? 'Creating...' : 'Create Journal Entry'}

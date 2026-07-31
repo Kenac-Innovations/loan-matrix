@@ -185,16 +185,16 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <div className="h-10 bg-slate-200 dark:bg-slate-700 rounded w-20 animate-pulse"></div>
-          <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-48 animate-pulse"></div>
+          <div className="h-10 bg-muted rounded w-20 animate-pulse"></div>
+          <div className="h-8 bg-muted rounded w-48 animate-pulse"></div>
         </div>
-        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <Card>
           <CardContent className="pt-6">
             <div className="space-y-4">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="flex items-center gap-4">
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-24 animate-pulse"></div>
-                  <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-48 animate-pulse"></div>
+                  <div className="h-4 bg-muted rounded w-24 animate-pulse"></div>
+                  <div className="h-4 bg-muted rounded w-48 animate-pulse"></div>
                 </div>
               ))}
             </div>
@@ -213,13 +213,13 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
             Back
           </Button>
         </div>
-        <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <Card>
           <CardContent className="pt-6">
             <div className="text-center py-12">
-              <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+              <h3 className="text-lg font-medium text-foreground mb-2">
                 Closing entry not found
               </h3>
-              <p className="text-slate-600 dark:text-slate-400">
+              <p className="text-muted-foreground">
                 The closing entry you're looking for doesn't exist or has been deleted.
               </p>
             </div>
@@ -239,8 +239,8 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
             Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Closing Entry Details</h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-1">
+            <h1 className="text-2xl font-bold text-foreground">Closing Entry Details</h1>
+            <p className="text-muted-foreground mt-1">
               View and manage closing entry information
             </p>
           </div>
@@ -249,7 +249,6 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
           <Button
             variant="outline"
             onClick={() => setIsEditing(!isEditing)}
-            className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
           >
             <Edit className="w-4 h-4 mr-2" />
             {isEditing ? 'Cancel Edit' : 'Edit'}
@@ -257,7 +256,7 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
           <Button
             variant="outline"
             onClick={() => setShowDeleteDialog(true)}
-            className="border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+            className="border-red-500/20 text-red-500 hover:bg-red-500/10 hover:text-red-600"
           >
             <Trash2 className="w-4 h-4 mr-2" />
             Delete
@@ -266,9 +265,9 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
       </div>
 
       {/* Main Content */}
-      <Card className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          <CardTitle className="text-lg">
             Closure Information
           </CardTitle>
         </CardHeader>
@@ -277,16 +276,16 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
             // Edit Form
             <form onSubmit={handleEditSubmit} className="space-y-6">
               <div>
-                <Label htmlFor="comments" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                <Label htmlFor="comments">
                   Comments
                 </Label>
                 <div className="relative mt-1">
-                  <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                  <MessageSquare className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <textarea
                     id="comments"
                     value={editComments}
                     onChange={(e) => setEditComments(e.target.value)}
-                    className="w-full pl-10 pr-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-slate-900 dark:text-slate-100 resize-none"
+                    className="w-full pl-10 pr-3 py-2 border rounded-md bg-transparent resize-none"
                     rows={3}
                     placeholder="Enter comments about this closure"
                   />
@@ -300,7 +299,6 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
                     setIsEditing(false);
                     setEditComments(closure.comments || '');
                   }}
-                  className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
                 >
                   <X className="w-4 h-4 mr-2" />
                   Cancel
@@ -308,7 +306,6 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-4 h-4 mr-2" />
                   {isSubmitting ? 'Saving...' : 'Save Changes'}
@@ -321,62 +318,62 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
-                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Office</Label>
+                    <Label>Office</Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <Building2 className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-900 dark:text-slate-100 font-medium">{closure.officeName}</span>
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-foreground font-medium">{closure.officeName}</span>
                     </div>
                   </div>
-                  
+
                   <div>
-                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Closing Date</Label>
+                    <Label>Closing Date</Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <Calendar className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-900 dark:text-slate-100">{formatDateArray(closure.closingDate)}</span>
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-foreground">{formatDateArray(closure.closingDate)}</span>
                     </div>
                   </div>
-                  
+
                   <div>
-                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Comments</Label>
+                    <Label>Comments</Label>
                     <div className="flex items-start gap-2 mt-1">
-                      <MessageSquare className="h-4 w-4 text-slate-400 mt-0.5" />
-                      <span className="text-slate-600 dark:text-slate-400">
+                      <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <span className="text-muted-foreground">
                         {closure.comments || 'No comments provided'}
                       </span>
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div>
-                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Created By</Label>
+                    <Label>Created By</Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <User className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-900 dark:text-slate-100">{closure.createdByUsername}</span>
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-foreground">{closure.createdByUsername}</span>
                     </div>
                   </div>
-                  
+
                   <div>
-                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Created Date</Label>
+                    <Label>Created Date</Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <Clock className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-900 dark:text-slate-100">{formatDateArray(closure.createdDate)}</span>
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-foreground">{formatDateArray(closure.createdDate)}</span>
                     </div>
                   </div>
-                  
+
                   <div>
-                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Last Updated</Label>
+                    <Label>Last Updated</Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <Clock className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-900 dark:text-slate-100">{formatDateArray(closure.lastUpdatedDate)}</span>
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-foreground">{formatDateArray(closure.lastUpdatedDate)}</span>
                     </div>
                   </div>
-                  
+
                   <div>
-                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Updated By</Label>
+                    <Label>Updated By</Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <User className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-900 dark:text-slate-100">{closure.lastUpdatedByUsername}</span>
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-foreground">{closure.lastUpdatedByUsername}</span>
                     </div>
                   </div>
                 </div>
@@ -404,10 +401,10 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-slate-900 dark:text-slate-100">Delete Closing Entry</DialogTitle>
-            <DialogDescription className="text-slate-600 dark:text-slate-400">
+            <DialogTitle>Delete Closing Entry</DialogTitle>
+            <DialogDescription>
               Are you sure you want to delete this closing entry? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
@@ -415,7 +412,6 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
             <Button
               variant="outline"
               onClick={() => setShowDeleteDialog(false)}
-              className="border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
             >
               Cancel
             </Button>
@@ -423,7 +419,6 @@ export default function ViewClosurePage({ params, searchParams }: { params: { id
               variant="destructive"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 text-white"
             >
               <Trash2 className="w-4 h-4 mr-2" />
               {isDeleting ? 'Deleting...' : 'Delete'}
