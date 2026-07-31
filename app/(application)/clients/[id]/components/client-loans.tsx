@@ -199,7 +199,23 @@ export function ClientLoans({ clientId, readOnly = false }: ClientLoansProps) {
       rawLoans = data.loanAccounts;
     }
     
+    const CUTOFF = new Date("2026-01-01T00:00:00Z");
+
+    const parseFineractDate = (
+      d: string | number[] | null | undefined
+    ): Date | null => {
+      if (!d) return null;
+      if (Array.isArray(d) && d.length >= 3) return new Date(d[0], d[1] - 1, d[2]);
+      if (typeof d === "string") return new Date(d);
+      return null;
+    };
+
     return rawLoans
+      .filter((loan: RawClientLoan) => {
+        const date = parseFineractDate(loan.timeline?.actualDisbursementDate)
+          ?? parseFineractDate(loan.timeline?.submittedOnDate);
+        return !date || date >= CUTOFF;
+      })
       .map((loan) => ({
       id: loan.id,
       accountNo: loan.accountNo,
