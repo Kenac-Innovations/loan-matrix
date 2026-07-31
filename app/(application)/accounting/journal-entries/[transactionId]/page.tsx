@@ -216,22 +216,22 @@ export default function JournalEntryViewPage() {
 
   const getEntryTypeBadge = (entryType: string) => {
     if (entryType === 'DEBIT') {
-      return <Badge variant="destructive" className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">DEBIT</Badge>;
+      return <Badge variant="destructive" className="bg-red-500/20 text-red-500">DEBIT</Badge>;
     }
-    return <Badge variant="default" className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">CREDIT</Badge>;
+    return <Badge variant="default" className="bg-green-500/20 text-green-500">CREDIT</Badge>;
   };
 
   const getAccountTypeBadge = (accountType: string) => {
     const variants: { [key: string]: string } = {
-      'ASSET': 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400',
-      'LIABILITY': 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400',
-      'EQUITY': 'bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400',
-      'INCOME': 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400',
-      'EXPENSE': 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+      'ASSET': 'bg-blue-500/20 text-blue-500',
+      'LIABILITY': 'bg-orange-500/20 text-orange-500',
+      'EQUITY': 'bg-purple-500/20 text-purple-500',
+      'INCOME': 'bg-green-500/20 text-green-500',
+      'EXPENSE': 'bg-red-500/20 text-red-500'
     };
-    
+
     return (
-      <Badge variant="outline" className={variants[accountType] || 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'}>
+      <Badge variant="outline" className={variants[accountType] || 'bg-muted text-muted-foreground'}>
         {accountType}
       </Badge>
     );
@@ -270,11 +270,11 @@ export default function JournalEntryViewPage() {
 
       <div className="space-y-6">
         {/* Transaction Summary */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Transaction Summary</CardTitle>
@@ -290,14 +290,14 @@ export default function JournalEntryViewPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-muted-foreground">Office:</span>
                   <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-gray-400" />
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground">{firstEntry.officeName}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-muted-foreground">Created By:</span>
                   <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-gray-400" />
+                    <User className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground">{firstEntry.createdByUserName}</span>
                   </div>
                 </div>
@@ -306,20 +306,20 @@ export default function JournalEntryViewPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-muted-foreground">Transaction Date:</span>
                   <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-gray-400" />
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground">{formatDate(firstEntry.transactionDate)}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-muted-foreground">Submitted on:</span>
                   <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-gray-400" />
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="text-foreground">{formatDateTime(firstEntry.submittedOnDate)}</span>
                   </div>
                 </div>
               </div>
             </div>
-            
+
             {firstEntry.comments && (
               <>
                 <Separator className="my-4" />
@@ -333,11 +333,11 @@ export default function JournalEntryViewPage() {
         </Card>
 
         {/* Entry Details */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-                <Hash className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Hash className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Entry Details</CardTitle>
@@ -351,7 +351,7 @@ export default function JournalEntryViewPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <tr className="border-b">
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Entry ID</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Type</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Account Code</th>
@@ -362,10 +362,10 @@ export default function JournalEntryViewPage() {
                 </thead>
                 <tbody>
                   {journalEntries.map((entry, index) => (
-                    <tr 
-                      key={entry.id} 
-                      className={`border-b border-gray-100 dark:border-gray-800 ${
-                        index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50 dark:bg-gray-800/50'
+                    <tr
+                      key={entry.id}
+                      className={`border-b ${
+                        index % 2 === 0 ? '' : 'bg-muted/50'
                       }`}
                     >
                       <td className="py-3 px-4 text-foreground">{entry.id}</td>
@@ -402,11 +402,11 @@ export default function JournalEntryViewPage() {
 
         {/* Payment Details */}
         {firstEntry.transactionDetails?.paymentDetails && (
-          <Card className="border-0 shadow-sm">
+          <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-                  <CreditCard className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <CreditCard className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <CardTitle className="text-lg">Payment Details</CardTitle>
@@ -426,14 +426,14 @@ export default function JournalEntryViewPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-muted-foreground">Account Number:</span>
                     <div className="flex items-center gap-2">
-                      <Banknote className="h-4 w-4 text-gray-400" />
+                      <Banknote className="h-4 w-4 text-muted-foreground" />
                       <span className="text-foreground">{firstEntry.transactionDetails.paymentDetails.accountNumber || 'N/A'}</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-muted-foreground">Check Number:</span>
                     <div className="flex items-center gap-2">
-                      <CheckSquare className="h-4 w-4 text-gray-400" />
+                      <CheckSquare className="h-4 w-4 text-muted-foreground" />
                       <span className="text-foreground">{firstEntry.transactionDetails.paymentDetails.checkNumber || 'N/A'}</span>
                     </div>
                   </div>
@@ -442,7 +442,7 @@ export default function JournalEntryViewPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-muted-foreground">Receipt Number:</span>
                     <div className="flex items-center gap-2">
-                      <Receipt className="h-4 w-4 text-gray-400" />
+                      <Receipt className="h-4 w-4 text-muted-foreground" />
                       <span className="text-foreground">{firstEntry.transactionDetails.paymentDetails.receiptNumber || 'N/A'}</span>
                     </div>
                   </div>
@@ -478,7 +478,7 @@ export default function JournalEntryViewPage() {
                 placeholder="Enter comments for the reversal..."
                 value={revertComments}
                 onChange={(e) => setRevertComments(e.target.value)}
-                className="resize-none bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                className="resize-none"
                 rows={3}
               />
             </div>
@@ -514,13 +514,13 @@ export default function JournalEntryViewPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-600" />
+              <CheckCircle className="h-5 w-5 text-green-500" />
               Transaction Reverted
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="text-center">
-              <p className="font-semibold text-green-600 mb-2">Success!</p>
+              <p className="font-semibold text-green-500 mb-2">Success!</p>
               <p className="text-foreground mb-2">
                 A new journal entry has been created to reverse this transaction:
               </p>
