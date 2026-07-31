@@ -1,7 +1,6 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -10,6 +9,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { LoanProductFormData, LoanProductTemplate } from "@/shared/types/loan-product";
+import { FieldLabel } from "./field-label";
+import { LOAN_PRODUCT_TOOLTIPS as T } from "./loan-product-tooltips";
 
 interface StepCurrencyProps {
   form: LoanProductFormData;
@@ -29,9 +30,7 @@ export function StepCurrency({ form, template, onChange }: StepCurrencyProps) {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor="currencyCode">
-            Currency <span className="text-destructive">*</span>
-          </Label>
+          <FieldLabel htmlFor="currencyCode" label="Currency" required tooltip={T.currencyCode} />
           <Select
             value={form.currencyCode}
             onValueChange={(v) => onChange({ currencyCode: v })}
@@ -50,9 +49,12 @@ export function StepCurrency({ form, template, onChange }: StepCurrencyProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="digitsAfterDecimal">
-            Decimal Places <span className="text-destructive">*</span>
-          </Label>
+          <FieldLabel
+            htmlFor="digitsAfterDecimal"
+            label="Decimal Places"
+            required
+            tooltip={T.digitsAfterDecimal}
+          />
           <Input
             id="digitsAfterDecimal"
             type="number"
@@ -72,7 +74,11 @@ export function StepCurrency({ form, template, onChange }: StepCurrencyProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="inMultiplesOf">Currency in Multiples Of</Label>
+          <FieldLabel
+            htmlFor="inMultiplesOf"
+            label="Currency in Multiples Of"
+            tooltip={T.inMultiplesOf}
+          />
           <Input
             id="inMultiplesOf"
             type="number"
@@ -91,9 +97,11 @@ export function StepCurrency({ form, template, onChange }: StepCurrencyProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="installmentAmountInMultiplesOf">
-            Installment Amount in Multiples Of
-          </Label>
+          <FieldLabel
+            htmlFor="installmentAmountInMultiplesOf"
+            label="Installment Amount in Multiples Of"
+            tooltip={T.installmentAmountInMultiplesOf}
+          />
           <Input
             id="installmentAmountInMultiplesOf"
             type="number"

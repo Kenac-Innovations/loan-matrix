@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { StepDetails } from "./step-details";
 import { StepCurrency } from "./step-currency";
@@ -438,9 +439,11 @@ export function LoanProductStepper({
 
       {/* Scrollable step content */}
       <Card className="overflow-hidden">
-        <CardContent className="max-h-[calc(100vh-26rem)] overflow-y-auto p-6">
-          {renderStep()}
-        </CardContent>
+        <TooltipProvider delayDuration={250}>
+          <CardContent className="max-h-[calc(100vh-26rem)] overflow-y-auto p-6">
+            {renderStep()}
+          </CardContent>
+        </TooltipProvider>
       </Card>
 
       {/* Validation error */}

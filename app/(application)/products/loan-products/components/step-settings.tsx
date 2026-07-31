@@ -1,7 +1,6 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Info } from "lucide-react";
 import {
@@ -14,6 +13,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import type { LoanProductFormData, LoanProductTemplate } from "@/shared/types/loan-product";
 import { ADVANCED_PAYMENT_ALLOCATION_STRATEGY } from "@/shared/types/loan-product";
+import { FieldLabel, TooltipHelp } from "./field-label";
+import { LOAN_PRODUCT_TOOLTIPS as T } from "./loan-product-tooltips";
 
 interface StepSettingsProps {
   form: LoanProductFormData;
@@ -26,6 +27,7 @@ function NumInput({
   label,
   required,
   hint,
+  tooltip,
   value,
   min,
   max,
@@ -37,6 +39,7 @@ function NumInput({
   label: string;
   required?: boolean;
   hint?: string;
+  tooltip?: string;
   value: number | "";
   min?: number;
   max?: number;
@@ -46,9 +49,7 @@ function NumInput({
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>
-        {label} {required && <span className="text-destructive">*</span>}
-      </Label>
+      <FieldLabel htmlFor={id} label={label} required={required} tooltip={tooltip} />
       <Input
         id={id}
         type="number"
@@ -71,6 +72,8 @@ function EnumSelect({
   value,
   options,
   placeholder,
+  disabled,
+  tooltip,
   onChange,
 }: {
   id: string;
@@ -79,18 +82,19 @@ function EnumSelect({
   value: number | "";
   options: { id: number; value: string }[];
   placeholder?: string;
+  disabled?: boolean;
+  tooltip?: string;
   onChange: (v: number | "") => void;
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>
-        {label} {required && <span className="text-destructive">*</span>}
-      </Label>
+      <FieldLabel htmlFor={id} label={label} required={required} tooltip={tooltip} />
       <Select
         value={value === "" ? "" : String(value)}
+        disabled={disabled}
         onValueChange={(v) => onChange(v === "" ? "" : Number(v))}
       >
-        <SelectTrigger id={id}>
+        <SelectTrigger id={id} disabled={disabled}>
           <SelectValue placeholder={placeholder ?? "Select…"} />
         </SelectTrigger>
         <SelectContent>
@@ -112,6 +116,7 @@ function CodeSelect({
   value,
   options,
   placeholder,
+  tooltip,
   onChange,
 }: {
   id: string;
@@ -120,13 +125,12 @@ function CodeSelect({
   value: string;
   options: { code: string; value: string }[];
   placeholder?: string;
+  tooltip?: string;
   onChange: (v: string) => void;
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>
-        {label} {required && <span className="text-destructive">*</span>}
-      </Label>
+      <FieldLabel htmlFor={id} label={label} required={required} tooltip={tooltip} />
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger id={id}>
           <SelectValue placeholder={placeholder ?? "Select…"} />
@@ -147,6 +151,7 @@ function SwitchRow({
   id,
   label,
   hint,
+  tooltip,
   checked,
   disabled,
   onChange,
@@ -154,6 +159,7 @@ function SwitchRow({
   id: string;
   label: string;
   hint?: string;
+  tooltip?: string;
   checked: boolean;
   disabled?: boolean;
   onChange: (v: boolean) => void;
@@ -171,9 +177,12 @@ function SwitchRow({
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor={id} className="pointer-events-none text-sm font-medium">
-          {label}
-        </Label>
+        <FieldLabel
+          htmlFor={id}
+          label={label}
+          tooltip={tooltip}
+          labelClassName="pointer-events-none text-sm font-medium"
+        />
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
       <Switch
@@ -207,6 +216,18 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
 
   const isProgressive = form.loanScheduleType === "PROGRESSIVE";
 
+  const rescheduleStrategyOptions = isProgressive
+    ? rescheduleStrategies.filter((option) => option.id > 3)
+    : rescheduleStrategies.filter((option) => option.id < 4);
+  const progressiveRescheduleStrategy = rescheduleStrategies.find((option) => option.id > 3);
+
+  const rescheduleStrategyForSchedule = (scheduleType: string) => {
+    const options = scheduleType === "PROGRESSIVE"
+      ? rescheduleStrategies.filter((option) => option.id > 3)
+      : rescheduleStrategies.filter((option) => option.id < 4);
+    return options[0]?.id;
+  };
+
   // PROGRESSIVE: only the advanced strategy; CUMULATIVE: exclude it
   const strategies = isProgressive
     ? allStrategies.filter((s) => s.code === ADVANCED_PAYMENT_ALLOCATION_STRATEGY)
@@ -221,6 +242,9 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
         loanScheduleType: v,
         transactionProcessingStrategyCode: advancedStrategy?.code ?? ADVANCED_PAYMENT_ALLOCATION_STRATEGY,
         loanScheduleProcessingType: loanScheduleProcessingTypes[0]?.code ?? "",
+        ...(form.isInterestRecalculationEnabled && progressiveRescheduleStrategy
+          ? { rescheduleStrategyMethod: progressiveRescheduleStrategy.id }
+          : {}),
       });
     } else {
       const firstNonAdvanced = allStrategies.find(
@@ -230,8 +254,20 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
         loanScheduleType: v,
         transactionProcessingStrategyCode: firstNonAdvanced?.code ?? "",
         loanScheduleProcessingType: "",
+        ...(form.isInterestRecalculationEnabled
+          ? { rescheduleStrategyMethod: rescheduleStrategyForSchedule(v) ?? "" }
+          : {}),
       });
     }
+  };
+
+  const handleInterestRecalculationChange = (enabled: boolean) => {
+    onChange({
+      isInterestRecalculationEnabled: enabled,
+      ...(enabled
+        ? { rescheduleStrategyMethod: rescheduleStrategyForSchedule(form.loanScheduleType) ?? "" }
+        : {}),
+    });
   };
 
   return (
@@ -253,6 +289,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             id="amortizationType"
             label="Amortization"
             required
+            tooltip={T.amortizationType}
             value={form.amortizationType}
             options={amortTypes}
             placeholder="Select amortization type"
@@ -262,6 +299,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             id="interestType"
             label="Interest Type"
             required
+            tooltip={T.interestType}
             value={form.interestType}
             options={interestTypes}
             placeholder="Select interest type"
@@ -270,6 +308,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <EnumSelect
             id="interestCalculationPeriodType"
             label="Interest Calculation Period"
+            tooltip={T.interestCalculationPeriodType}
             value={form.interestCalculationPeriodType}
             options={interestCalcTypes}
             onChange={(v) =>
@@ -283,9 +322,12 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             }
           />
           <div className="space-y-2">
-            <Label htmlFor="transactionProcessingStrategyCode">
-              Repayment Strategy <span className="text-destructive">*</span>
-            </Label>
+            <FieldLabel
+              htmlFor="transactionProcessingStrategyCode"
+              label="Repayment Strategy"
+              required
+              tooltip={T.transactionProcessingStrategyCode}
+            />
             <Select
               value={form.transactionProcessingStrategyCode}
               onValueChange={(v) => onChange({ transactionProcessingStrategyCode: v })}
@@ -305,6 +347,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <EnumSelect
             id="daysInYearType"
             label="Days in Year"
+            tooltip={T.daysInYearType}
             value={form.daysInYearType}
             options={daysInYear}
             onChange={(v) => onChange({ daysInYearType: v })}
@@ -312,6 +355,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <EnumSelect
             id="daysInMonthType"
             label="Days in Month"
+            tooltip={T.daysInMonthType}
             value={form.daysInMonthType}
             options={daysInMonth}
             onChange={(v) => onChange({ daysInMonthType: v })}
@@ -320,6 +364,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <CodeSelect
               id="loanScheduleType"
               label="Loan Schedule Type"
+              tooltip={T.loanScheduleType}
               value={form.loanScheduleType}
               options={loanScheduleTypes}
               onChange={handleScheduleTypeChange}
@@ -329,6 +374,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <CodeSelect
               id="loanScheduleProcessingType"
               label="Loan Schedule Processing Type"
+              tooltip={T.loanScheduleProcessingType}
               value={form.loanScheduleProcessingType}
               options={loanScheduleProcessingTypes}
               onChange={(v) => onChange({ loanScheduleProcessingType: v })}
@@ -338,6 +384,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
         <SwitchRow
           id="allowPartialPeriodInterestCalculation"
           label="Allow Partial Period Interest Calculation"
+          tooltip={T.allowPartialPeriodInterestCalculation}
           hint={
             isDailyInterestCalculation
               ? "Disabled for daily interest calculation because Fineract will force this off."
@@ -359,6 +406,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
         <SwitchRow
           id="isEqualAmortization"
           label="Equal Amortization"
+          tooltip={T.isEqualAmortization}
           hint="Distribute the amortization equally across all repayment periods."
           checked={form.isEqualAmortization}
           onChange={(v) => onChange({ isEqualAmortization: v })}
@@ -376,6 +424,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <NumInput
             id="graceOnPrincipalPayment"
             label="Grace on Principal Payment"
+            tooltip={T.graceOnPrincipalPayment}
             hint="Repayments of principal not required for this many periods."
             value={form.graceOnPrincipalPayment}
             min={0}
@@ -384,6 +433,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <NumInput
             id="graceOnInterestPayment"
             label="Grace on Interest Payment"
+            tooltip={T.graceOnInterestPayment}
             hint="Repayments of interest not required for this many periods."
             value={form.graceOnInterestPayment}
             min={0}
@@ -392,6 +442,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <NumInput
             id="graceOnInterestCharged"
             label="Grace on Interest Charged"
+            tooltip={T.graceOnInterestCharged}
             hint="No interest charged for this many periods."
             value={form.graceOnInterestCharged}
             min={0}
@@ -400,6 +451,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <NumInput
             id="graceOnArrearsAgeing"
             label="Grace on Arrears Ageing (days)"
+            tooltip={T.graceOnArrearsAgeing}
             hint="Days overdue before account moves into arrears."
             value={form.graceOnArrearsAgeing}
             min={0}
@@ -408,6 +460,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <NumInput
             id="inArrearsTolerance"
             label="In Arrears Tolerance"
+            tooltip={T.inArrearsTolerance}
             hint="Maximum amount that can be overdue before the account is in arrears."
             value={form.inArrearsTolerance}
             min={0}
@@ -417,6 +470,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <NumInput
             id="overdueDaysForNPA"
             label="Days Overdue Before NPA"
+            tooltip={T.overdueDaysForNPA}
             hint="Overdue days before the account is flagged as Non-Performing Asset."
             value={form.overdueDaysForNPA}
             min={0}
@@ -426,6 +480,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
         <SwitchRow
           id="accountMovesOutOfNPAOnlyOnArrearsCompletion"
           label="Account Moves Out of NPA Only After All Arrears Cleared"
+          tooltip={T.accountMovesOutOfNPAOnlyOnArrearsCompletion}
           checked={form.accountMovesOutOfNPAOnlyOnArrearsCompletion}
           onChange={(v) => onChange({ accountMovesOutOfNPAOnlyOnArrearsCompletion: v })}
         />
@@ -440,9 +495,15 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           onClick={() => onChange({ multiDisburseLoan: !form.multiDisburseLoan })}
         >
           <div className="space-y-0.5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Multiple Disbursements (Tranches)
-            </h3>
+            <div className="flex items-center gap-1">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Multiple Disbursements (Tranches)
+              </h3>
+              <TooltipHelp
+                tooltip={T.multiDisburseLoan}
+                ariaLabel="More information about multiple disbursements"
+              />
+            </div>
           </div>
           <Switch
             checked={form.multiDisburseLoan}
@@ -456,6 +517,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
               <NumInput
                 id="maxTrancheCount"
                 label="Max Tranche Count"
+                tooltip={T.maxTrancheCount}
                 value={form.maxTrancheCount}
                 min={1}
                 onChange={(v) => onChange({ maxTrancheCount: v })}
@@ -463,6 +525,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
               <NumInput
                 id="outstandingLoanBalance"
                 label="Outstanding Loan Balance"
+                tooltip={T.outstandingLoanBalance}
                 value={form.outstandingLoanBalance}
                 min={0}
                 step={0.01}
@@ -472,6 +535,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <SwitchRow
               id="disallowExpectedDisbursements"
               label="Disallow Expected Disbursements"
+              tooltip={T.disallowExpectedDisbursements}
               checked={form.disallowExpectedDisbursements}
               onChange={(v) => onChange({ disallowExpectedDisbursements: v })}
             />
@@ -485,14 +549,20 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
       <section className="space-y-4">
         <div
           className="flex cursor-pointer select-none items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/40"
-          onClick={() => onChange({ isInterestRecalculationEnabled: !form.isInterestRecalculationEnabled })}
+          onClick={() => handleInterestRecalculationChange(!form.isInterestRecalculationEnabled)}
         >
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Interest Recalculation
-          </h3>
+          <div className="flex items-center gap-1">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Interest Recalculation
+            </h3>
+            <TooltipHelp
+              tooltip={T.isInterestRecalculationEnabled}
+              ariaLabel="More information about interest recalculation"
+            />
+          </div>
           <Switch
             checked={form.isInterestRecalculationEnabled}
-            onCheckedChange={(v) => onChange({ isInterestRecalculationEnabled: v })}
+            onCheckedChange={handleInterestRecalculationChange}
             onClick={(e) => e.stopPropagation()}
           />
         </div>
@@ -502,20 +572,24 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
               <EnumSelect
                 id="preClosureInterestCalculationStrategy"
                 label="Pre-Closure Interest Calculation Strategy"
+                tooltip={T.preClosureInterestCalculationStrategy}
                 value={form.preClosureInterestCalculationStrategy}
                 options={preClosureStrategies}
                 onChange={(v) => onChange({ preClosureInterestCalculationStrategy: v })}
               />
               <EnumSelect
                 id="rescheduleStrategyMethod"
-                label="Reschedule Strategy"
+                label="Advance Payments Adjustment Type"
+                tooltip={T.rescheduleStrategyMethod}
                 value={form.rescheduleStrategyMethod}
-                options={rescheduleStrategies}
+                options={rescheduleStrategyOptions}
+                disabled={isProgressive}
                 onChange={(v) => onChange({ rescheduleStrategyMethod: v })}
               />
               <EnumSelect
                 id="interestRecalculationCompoundingMethod"
                 label="Compounding Method"
+                tooltip={T.interestRecalculationCompoundingMethod}
                 value={form.interestRecalculationCompoundingMethod}
                 options={compoundingMethods}
                 onChange={(v) => onChange({ interestRecalculationCompoundingMethod: v })}
@@ -523,6 +597,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
               <EnumSelect
                 id="recalculationRestFrequencyType"
                 label="Rest Frequency Type"
+                tooltip={T.recalculationRestFrequencyType}
                 value={form.recalculationRestFrequencyType}
                 options={recalcFreqTypes}
                 onChange={(v) => onChange({ recalculationRestFrequencyType: v })}
@@ -532,6 +607,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
                   <NumInput
                     id="recalculationRestFrequencyInterval"
                     label="Rest Frequency Interval"
+                    tooltip={T.recalculationRestFrequencyInterval}
                     value={form.recalculationRestFrequencyInterval}
                     min={1}
                     onChange={(v) => onChange({ recalculationRestFrequencyInterval: v })}
@@ -541,12 +617,14 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <SwitchRow
               id="isArrearsBasedOnOriginalSchedule"
               label="Arrears Based on Original Schedule"
+              tooltip={T.isArrearsBasedOnOriginalSchedule}
               checked={form.isArrearsBasedOnOriginalSchedule}
               onChange={(v) => onChange({ isArrearsBasedOnOriginalSchedule: v })}
             />
             <SwitchRow
               id="disallowInterestCalculationOnPastDue"
               label="Disallow Interest Calculation on Past Due"
+              tooltip={T.disallowInterestCalculationOnPastDue}
               checked={form.disallowInterestCalculationOnPastDue}
               onChange={(v) => onChange({ disallowInterestCalculationOnPastDue: v })}
             />
@@ -562,9 +640,12 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           className="flex cursor-pointer select-none items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/40"
           onClick={() => onChange({ holdGuaranteeFunds: !form.holdGuaranteeFunds })}
         >
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Guarantee Funds
-          </h3>
+          <div className="flex items-center gap-1">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Guarantee Funds
+            </h3>
+            <TooltipHelp tooltip={T.holdGuaranteeFunds} ariaLabel="More information about guarantee funds" />
+          </div>
           <Switch
             checked={form.holdGuaranteeFunds}
             onCheckedChange={(v) => onChange({ holdGuaranteeFunds: v })}
@@ -576,6 +657,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <NumInput
               id="mandatoryGuarantee"
               label="Mandatory Guarantee %"
+              tooltip={T.mandatoryGuarantee}
               value={form.mandatoryGuarantee}
               min={0}
               max={100}
@@ -585,6 +667,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <NumInput
               id="minimumGuaranteeFromGuarantor"
               label="Min Guarantee from Guarantor %"
+              tooltip={T.minimumGuaranteeFromGuarantor}
               value={form.minimumGuaranteeFromGuarantor}
               min={0}
               max={100}
@@ -594,6 +677,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <NumInput
               id="minimumGuaranteeFromOwnFunds"
               label="Min Guarantee from Own Funds %"
+              tooltip={T.minimumGuaranteeFromOwnFunds}
               value={form.minimumGuaranteeFromOwnFunds}
               min={0}
               max={100}
@@ -612,9 +696,15 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           className="flex cursor-pointer select-none items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/40"
           onClick={() => onChange({ allowVariableInstallments: !form.allowVariableInstallments })}
         >
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Variable Installments
-          </h3>
+          <div className="flex items-center gap-1">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Variable Installments
+            </h3>
+            <TooltipHelp
+              tooltip={T.allowVariableInstallments}
+              ariaLabel="More information about variable installments"
+            />
+          </div>
           <Switch
             checked={form.allowVariableInstallments}
             onCheckedChange={(v) => onChange({ allowVariableInstallments: v })}
@@ -626,6 +716,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <NumInput
               id="minimumGap"
               label="Minimum Gap (days)"
+              tooltip={T.minimumGap}
               value={form.minimumGap}
               min={0}
               onChange={(v) => onChange({ minimumGap: v })}
@@ -633,6 +724,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <NumInput
               id="maximumGap"
               label="Maximum Gap (days)"
+              tooltip={T.maximumGap}
               value={form.maximumGap}
               min={0}
               onChange={(v) => onChange({ maximumGap: v })}
@@ -649,9 +741,12 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           className="flex cursor-pointer select-none items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/40"
           onClick={() => onChange({ enableDownPayment: !form.enableDownPayment })}
         >
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Down Payment
-          </h3>
+          <div className="flex items-center gap-1">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Down Payment
+            </h3>
+            <TooltipHelp tooltip={T.enableDownPayment} ariaLabel="More information about down payment" />
+          </div>
           <Switch
             checked={form.enableDownPayment}
             onCheckedChange={(v) => onChange({ enableDownPayment: v })}
@@ -663,6 +758,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <NumInput
               id="disbursedAmountPercentageForDownPayment"
               label="Down Payment % of Disbursed Amount"
+              tooltip={T.disbursedAmountPercentageForDownPayment}
               value={form.disbursedAmountPercentageForDownPayment}
               min={0}
               max={100}
@@ -672,6 +768,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
             <SwitchRow
               id="enableAutoRepaymentForDownPayment"
               label="Enable Auto Repayment for Down Payment"
+              tooltip={T.enableAutoRepaymentForDownPayment}
               checked={form.enableAutoRepaymentForDownPayment}
               onChange={(v) => onChange({ enableAutoRepaymentForDownPayment: v })}
             />
@@ -688,7 +785,11 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
         </h3>
         {delinquencyBuckets.length > 0 && (
           <div className="space-y-2">
-            <Label htmlFor="delinquencyBucketId">Delinquency Bucket</Label>
+            <FieldLabel
+              htmlFor="delinquencyBucketId"
+              label="Delinquency Bucket"
+              tooltip={T.delinquencyBucketId}
+            />
             <Select
               value={form.delinquencyBucketId === "" ? "__none__" : String(form.delinquencyBucketId)}
               onValueChange={(v) =>
@@ -712,6 +813,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
         <SwitchRow
           id="enableInstallmentLevelDelinquency"
           label="Enable Installment Level Delinquency"
+          tooltip={T.enableInstallmentLevelDelinquency}
           checked={form.enableInstallmentLevelDelinquency}
           onChange={(v) => onChange({ enableInstallmentLevelDelinquency: v })}
         />
@@ -728,6 +830,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <SwitchRow
             id="canDefineInstallmentAmount"
             label="Can Define Installment Amount"
+            tooltip={T.canDefineInstallmentAmount}
             hint="Allow loan officers to define the installment amount when creating a loan account."
             checked={form.canDefineInstallmentAmount}
             onChange={(v) => onChange({ canDefineInstallmentAmount: v })}
@@ -737,6 +840,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
               <NumInput
                 id="principalThresholdForLastInstallment"
                 label="Principal Threshold for Last Installment (%)"
+                tooltip={T.principalThresholdForLastInstallment}
                 value={form.principalThresholdForLastInstallment}
                 min={0}
                 max={100}
@@ -749,6 +853,7 @@ export function StepSettings({ form, template, onChange }: StepSettingsProps) {
           <SwitchRow
             id="canUseForTopup"
             label="Can Be Used for Top-Up Loans"
+            tooltip={T.canUseForTopup}
             checked={form.canUseForTopup}
             onChange={(v) => onChange({ canUseForTopup: v })}
           />

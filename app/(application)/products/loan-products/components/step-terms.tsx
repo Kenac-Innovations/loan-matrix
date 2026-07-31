@@ -2,7 +2,6 @@
 
 import { Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -13,6 +12,8 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import type { LoanProductFormData, LoanProductTemplate } from "@/shared/types/loan-product";
+import { FieldLabel, TooltipHelp } from "./field-label";
+import { LOAN_PRODUCT_TOOLTIPS as T } from "./loan-product-tooltips";
 
 interface StepTermsProps {
   form: LoanProductFormData;
@@ -25,6 +26,7 @@ function NumInput({
   label,
   required,
   hint,
+  tooltip,
   value,
   min,
   max,
@@ -37,6 +39,7 @@ function NumInput({
   label: string;
   required?: boolean;
   hint?: string;
+  tooltip?: string;
   value: number | "";
   min?: number;
   max?: number;
@@ -47,9 +50,13 @@ function NumInput({
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id} className={disabled ? "text-muted-foreground" : ""}>
-        {label} {required && <span className="text-destructive">*</span>}
-      </Label>
+      <FieldLabel
+        htmlFor={id}
+        label={label}
+        required={required}
+        tooltip={tooltip}
+        labelClassName={disabled ? "text-muted-foreground" : ""}
+      />
       <Input
         id={id}
         type="number"
@@ -83,13 +90,17 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
 
       {/* Principal */}
       <section className="space-y-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Principal
-        </h3>
+        <div className="flex items-center gap-1">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Principal
+          </h3>
+          <TooltipHelp tooltip="Defines the minimum, default, and maximum principal amounts." ariaLabel="More information about principal" />
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <NumInput
             id="minPrincipal"
             label="Min Principal"
+            tooltip={T.minPrincipal}
             value={form.minPrincipal}
             min={0}
             onChange={(v) => onChange({ minPrincipal: v })}
@@ -99,6 +110,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
             id="principal"
             label="Default Principal"
             required
+            tooltip={T.principal}
             value={form.principal}
             min={0}
             onChange={(v) => onChange({ principal: v })}
@@ -107,6 +119,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
           <NumInput
             id="maxPrincipal"
             label="Max Principal"
+            tooltip={T.maxPrincipal}
             value={form.maxPrincipal}
             min={0}
             onChange={(v) => onChange({ maxPrincipal: v })}
@@ -118,7 +131,11 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
           onClick={() => onChange({ useBorrowerCycle: !form.useBorrowerCycle })}
         >
           <div className="space-y-1">
-            <Label className="pointer-events-none text-sm font-medium">Use Borrower Cycle</Label>
+            <FieldLabel
+              label="Use Borrower Cycle"
+              tooltip={T.useBorrowerCycle}
+              labelClassName="pointer-events-none text-sm font-medium"
+            />
             <p className="text-xs text-muted-foreground">
               Set different principal limits per loan cycle number.
             </p>
@@ -135,13 +152,20 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
 
       {/* Repayment */}
       <section className="space-y-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Repayment Schedule
-        </h3>
+        <div className="flex items-center gap-1">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Repayment Schedule
+          </h3>
+          <TooltipHelp
+            tooltip="Defines when installments are due and how many repayments are expected."
+            ariaLabel="More information about the repayment schedule"
+          />
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <NumInput
             id="minNumberOfRepayments"
             label="Min # of Repayments"
+            tooltip={T.minNumberOfRepayments}
             value={form.minNumberOfRepayments}
             min={1}
             onChange={(v) => onChange({ minNumberOfRepayments: v })}
@@ -150,6 +174,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
             id="numberOfRepayments"
             label="# of Repayments"
             required
+            tooltip={T.numberOfRepayments}
             value={form.numberOfRepayments}
             min={1}
             onChange={(v) => onChange({ numberOfRepayments: v })}
@@ -158,6 +183,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
           <NumInput
             id="maxNumberOfRepayments"
             label="Max # of Repayments"
+            tooltip={T.maxNumberOfRepayments}
             value={form.maxNumberOfRepayments}
             min={1}
             onChange={(v) => onChange({ maxNumberOfRepayments: v })}
@@ -169,15 +195,19 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
             id="repaymentEvery"
             label="Repaid Every"
             required
+            tooltip={T.repaymentEvery}
             value={form.repaymentEvery}
             min={1}
             onChange={(v) => onChange({ repaymentEvery: v })}
             placeholder="1"
           />
           <div className="space-y-2">
-            <Label htmlFor="repaymentFrequencyType">
-              Frequency <span className="text-destructive">*</span>
-            </Label>
+            <FieldLabel
+              htmlFor="repaymentFrequencyType"
+              label="Frequency"
+              required
+              tooltip={T.repaymentFrequencyType}
+            />
             <Select
               value={form.repaymentFrequencyType === "" ? "" : String(form.repaymentFrequencyType)}
               onValueChange={(v) =>
@@ -202,13 +232,18 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
           <NumInput
             id="minimumDaysBetweenDisbursalAndFirstRepayment"
             label="Min Days Between Disbursal & First Repayment"
+            tooltip={T.minimumDaysBetweenDisbursalAndFirstRepayment}
             value={form.minimumDaysBetweenDisbursalAndFirstRepayment}
             min={0}
             onChange={(v) => onChange({ minimumDaysBetweenDisbursalAndFirstRepayment: v })}
           />
           {repayStartOptions.length > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="repaymentStartDateType">Repayment Start Date Type</Label>
+              <FieldLabel
+                htmlFor="repaymentStartDateType"
+                label="Repayment Start Date Type"
+                tooltip={T.repaymentStartDateType}
+              />
               <Select
                 value={
                   form.repaymentStartDateType === ""
@@ -235,6 +270,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
           <NumInput
             id="fixedLength"
             label="Fixed Length (months)"
+            tooltip={T.fixedLength}
             value={form.fixedLength}
             min={0}
             onChange={(v) => onChange({ fixedLength: v })}
@@ -247,9 +283,11 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
           onClick={() => onChange({ interestRecognitionOnDisbursementDate: !form.interestRecognitionOnDisbursementDate })}
         >
           <div className="space-y-1">
-            <Label className="pointer-events-none text-sm font-medium">
-              Interest Recognition on Disbursement Date
-            </Label>
+            <FieldLabel
+              label="Interest Recognition on Disbursement Date"
+              tooltip="Calculates interest from the disbursement date rather than the expected first repayment date."
+              labelClassName="pointer-events-none text-sm font-medium"
+            />
             <p className="text-xs text-muted-foreground">
               Calculate interest from the disbursement date rather than the expected first
               repayment date.
@@ -268,9 +306,15 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
       {/* Interest */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Interest Rate
-          </h3>
+          <div className="flex items-center gap-1">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Interest Rate
+            </h3>
+            <TooltipHelp
+              tooltip="Defines the minimum, default, maximum, and period for the nominal or floating interest rate."
+              ariaLabel="More information about interest rates"
+            />
+          </div>
           <div
             className={`flex select-none items-center gap-2 rounded-md border px-3 py-1.5 transition-colors ${
               form.isInvoiceDiscounting
@@ -282,9 +326,12 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
               onChange({ isLinkedToFloatingInterestRates: !form.isLinkedToFloatingInterestRates })
             }
           >
-            <Label htmlFor="isLinkedToFloatingInterestRates" className="pointer-events-none text-sm">
-              Use Floating Rates
-            </Label>
+            <FieldLabel
+              htmlFor="isLinkedToFloatingInterestRates"
+              label="Use Floating Rates"
+              tooltip={T.isLinkedToFloatingInterestRates}
+              labelClassName="pointer-events-none text-sm"
+            />
             <Switch
               id="isLinkedToFloatingInterestRates"
               checked={form.isLinkedToFloatingInterestRates}
@@ -298,9 +345,12 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
         {form.isLinkedToFloatingInterestRates ? (
           <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
             <div className="space-y-2">
-              <Label htmlFor="floatingRatesId">
-                Floating Rate <span className="text-destructive">*</span>
-              </Label>
+              <FieldLabel
+                htmlFor="floatingRatesId"
+                label="Floating Rate"
+                required
+                tooltip={T.floatingRatesId}
+              />
               <Select
                 value={form.floatingRatesId === "" ? "" : String(form.floatingRatesId)}
                 onValueChange={(v) =>
@@ -323,6 +373,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
               <NumInput
                 id="interestRateDifferential"
                 label="Differential"
+                tooltip={T.defaultDifferentialLendingRate}
                 value={form.interestRateDifferential}
                 step={0.01}
                 onChange={(v) => onChange({ interestRateDifferential: v })}
@@ -330,6 +381,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
               <NumInput
                 id="minDifferentialLendingRate"
                 label="Min Differential"
+                tooltip={T.minDifferentialLendingRate}
                 value={form.minDifferentialLendingRate}
                 step={0.01}
                 onChange={(v) => onChange({ minDifferentialLendingRate: v })}
@@ -337,6 +389,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
               <NumInput
                 id="defaultDifferentialLendingRate"
                 label="Default Differential"
+                tooltip={T.defaultDifferentialLendingRate}
                 value={form.defaultDifferentialLendingRate}
                 step={0.01}
                 onChange={(v) => onChange({ defaultDifferentialLendingRate: v })}
@@ -344,6 +397,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
               <NumInput
                 id="maxDifferentialLendingRate"
                 label="Max Differential"
+                tooltip={T.maxDifferentialLendingRate}
                 value={form.maxDifferentialLendingRate}
                 step={0.01}
                 onChange={(v) => onChange({ maxDifferentialLendingRate: v })}
@@ -353,7 +407,11 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
               className="flex cursor-pointer select-none items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/40"
               onClick={() => onChange({ isFloatingInterestRateCalculationAllowed: !form.isFloatingInterestRateCalculationAllowed })}
             >
-              <Label className="pointer-events-none text-sm">Floating Interest Rate Calculation Allowed</Label>
+              <FieldLabel
+                label="Floating Interest Rate Calculation Allowed"
+                tooltip={T.isFloatingInterestRateCalculationAllowed}
+                labelClassName="pointer-events-none text-sm"
+              />
               <Switch
                 checked={form.isFloatingInterestRateCalculationAllowed}
                 onCheckedChange={(v) =>
@@ -379,6 +437,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
               <NumInput
                 id="minInterestRatePerPeriod"
                 label="Min Nominal Interest Rate %"
+                tooltip={T.minInterestRatePerPeriod}
                 value={form.isInvoiceDiscounting ? 0 : form.minInterestRatePerPeriod}
                 min={0}
                 step={0.01}
@@ -389,6 +448,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
                 id="interestRatePerPeriod"
                 label="Nominal Interest Rate %"
                 required
+                tooltip={T.interestRatePerPeriod}
                 value={form.isInvoiceDiscounting ? 0 : form.interestRatePerPeriod}
                 min={0}
                 step={0.01}
@@ -399,6 +459,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
               <NumInput
                 id="maxInterestRatePerPeriod"
                 label="Max Nominal Interest Rate %"
+                tooltip={T.maxInterestRatePerPeriod}
                 value={form.isInvoiceDiscounting ? 0 : form.maxInterestRatePerPeriod}
                 min={0}
                 step={0.01}
@@ -407,12 +468,13 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label
+              <FieldLabel
                 htmlFor="interestRateFrequencyType"
-                className={form.isInvoiceDiscounting ? "text-muted-foreground" : ""}
-              >
-                Interest Rate Frequency <span className="text-destructive">*</span>
-              </Label>
+                label="Interest Rate Frequency"
+                required
+                tooltip={T.interestRateFrequencyType}
+                labelClassName={form.isInvoiceDiscounting ? "text-muted-foreground" : ""}
+              />
               <Select
                 value={
                   form.interestRateFrequencyType === ""
@@ -449,9 +511,15 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
           className="flex cursor-pointer select-none items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/40"
           onClick={() => onChange({ allowApprovedDisbursedAmountsOverApplied: !form.allowApprovedDisbursedAmountsOverApplied })}
         >
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Over-Applied Amounts
-          </h3>
+          <div className="flex items-center gap-1">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Over-Applied Amounts
+            </h3>
+            <TooltipHelp
+              tooltip={T.allowApprovedDisbursedAmountsOverApplied}
+              ariaLabel="More information about over-applied amounts"
+            />
+          </div>
           <Switch
             checked={form.allowApprovedDisbursedAmountsOverApplied}
             onCheckedChange={(v) =>
@@ -463,7 +531,11 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
         {form.allowApprovedDisbursedAmountsOverApplied && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 rounded-lg border bg-muted/30 p-4">
             <div className="space-y-2">
-              <Label htmlFor="overAppliedCalculationType">Over Applied Calculation Type</Label>
+              <FieldLabel
+                htmlFor="overAppliedCalculationType"
+                label="Over Applied Calculation Type"
+                tooltip={T.overAppliedCalculationType}
+              />
               <Select
                 value={form.overAppliedCalculationType}
                 onValueChange={(v) => onChange({ overAppliedCalculationType: v })}
@@ -483,6 +555,7 @@ export function StepTerms({ form, template, onChange }: StepTermsProps) {
             <NumInput
               id="overAppliedNumber"
               label="Over Applied Number"
+              tooltip={T.overAppliedNumber}
               value={form.overAppliedNumber}
               min={0}
               step={0.01}
