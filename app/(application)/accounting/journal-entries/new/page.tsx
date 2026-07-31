@@ -216,11 +216,11 @@ export default function JournalEntriesPage() {
 
       <div className="space-y-6">
         {/* Basic Information Card */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Entry Information</CardTitle>
@@ -234,18 +234,18 @@ export default function JournalEntriesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Office */}
               <div className="space-y-2">
-                <Label htmlFor="office" className="text-sm font-medium">
+                <Label htmlFor="office">
                   Office <span className="text-red-500">*</span>
                 </Label>
                 <Select value={officeId} onValueChange={setOfficeId}>
-                  <SelectTrigger className="h-11 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Select office" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                  <SelectContent>
                     {offices.map(o => (
-                      <SelectItem key={o.id} value={String(o.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800">
+                      <SelectItem key={o.id} value={String(o.id)}>
                         <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-gray-400" />
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
                           <span className="text-foreground">{o.name}</span>
                         </div>
                       </SelectItem>
@@ -256,18 +256,18 @@ export default function JournalEntriesPage() {
 
               {/* Currency */}
               <div className="space-y-2">
-                <Label htmlFor="currency" className="text-sm font-medium">
+                <Label htmlFor="currency">
                   Currency <span className="text-red-500">*</span>
                 </Label>
                 <Select value={currencyCode} onValueChange={setCurrencyCode}>
-                  <SelectTrigger className="h-11 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                  <SelectContent>
                     {currencies.selectedCurrencyOptions.map(c => (
-                      <SelectItem key={c.code} value={c.code} className="hover:bg-gray-100 dark:hover:bg-gray-800">
+                      <SelectItem key={c.code} value={c.code}>
                         <div className="flex items-center gap-2">
-                          <DollarSign className="h-4 w-4 text-gray-400" />
+                          <DollarSign className="h-4 w-4 text-muted-foreground" />
                           <span className="text-foreground">{c.displayLabel}</span>
                         </div>
                       </SelectItem>
@@ -278,35 +278,35 @@ export default function JournalEntriesPage() {
 
               {/* Transaction Date */}
               <div className="space-y-2">
-                <Label htmlFor="transactionDate" className="text-sm font-medium">
+                <Label htmlFor="transactionDate">
                   Transaction Date <span className="text-red-500">*</span>
                 </Label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input 
-                    id="transactionDate" 
-                    type="date" 
-                    value={transactionDate} 
+                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                  <Input
+                    id="transactionDate"
+                    type="date"
+                    value={transactionDate}
                     onChange={e => setTransactionDate(e.target.value)}
-                    className="h-11 pl-10 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                    className="h-11 pl-10"
                   />
                 </div>
               </div>
 
               {/* Payment Type */}
               <div className="space-y-2">
-                <Label htmlFor="paymentType" className="text-sm font-medium">
+                <Label htmlFor="paymentType">
                   Payment Type
                 </Label>
                 <Select value={paymentTypeId} onValueChange={setPaymentTypeId}>
-                  <SelectTrigger className="h-11 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Select payment type" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                  <SelectContent>
                     {paymentTypes.map(p => (
-                      <SelectItem key={p.id} value={String(p.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800">
+                      <SelectItem key={p.id} value={String(p.id)}>
                         <div className="flex items-center gap-2">
-                          <CreditCard className="h-4 w-4 text-gray-400" />
+                          <CreditCard className="h-4 w-4 text-muted-foreground" />
                           <span className="text-foreground">{p.name}</span>
                         </div>
                       </SelectItem>
@@ -319,12 +319,12 @@ export default function JournalEntriesPage() {
         </Card>
 
         {/* Debits Section */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                  <TrendingDown className="h-5 w-5 text-red-600 dark:text-red-400" />
+                <div className="h-10 w-10 rounded-lg bg-red-500/20 flex items-center justify-center">
+                  <TrendingDown className="h-5 w-5 text-red-500" />
                 </div>
                 <div>
                   <CardTitle className="text-lg">Debit Entries</CardTitle>
@@ -333,9 +333,9 @@ export default function JournalEntriesPage() {
                   </CardDescription>
                 </div>
               </div>
-              <Button 
-                size="sm" 
-                variant="outline" 
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={addDebit}
                 className="flex items-center gap-2"
               >
@@ -346,20 +346,20 @@ export default function JournalEntriesPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {debits.map((d, idx) => (
-              <div key={idx} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div key={idx} className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg border">
                 <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2">
                   <Select
                     value={d.glAccountId}
                     onValueChange={v => updateDebit(idx, 'glAccountId', v)}
                   >
-                    <SelectTrigger className="h-11 w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                    <SelectTrigger className="h-11 w-full">
                       <SelectValue placeholder="Select GL account" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                    <SelectContent>
                       {glAccounts.map(a => (
-                        <SelectItem key={a.id} value={String(a.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800">
+                        <SelectItem key={a.id} value={String(a.id)}>
                           <div className="flex items-center gap-2">
-                            <Hash className="h-4 w-4 text-gray-400" />
+                            <Hash className="h-4 w-4 text-muted-foreground" />
                             <span className="text-foreground">{a.nameDecorated}</span>
                           </div>
                         </SelectItem>
@@ -367,7 +367,7 @@ export default function JournalEntriesPage() {
                     </SelectContent>
                   </Select>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                     <Input
                       type="number"
                       min="0"
@@ -375,13 +375,13 @@ export default function JournalEntriesPage() {
                       placeholder="Amount"
                       value={d.amount}
                       onChange={e => updateDebit(idx, 'amount', e.target.value)}
-                      className="h-11 w-full pl-10 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                      className="h-11 w-full pl-10"
                     />
                   </div>
                 </div>
-                <Button 
-                  size="sm" 
-                  variant="destructive" 
+                <Button
+                  size="sm"
+                  variant="destructive"
                   onClick={() => removeDebit(idx)}
                   className="h-11 w-11 shrink-0 p-0"
                 >
@@ -393,12 +393,12 @@ export default function JournalEntriesPage() {
         </Card>
 
         {/* Credits Section */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-                  <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <div className="h-10 w-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                  <TrendingUp className="h-5 w-5 text-green-500" />
                 </div>
                 <div>
                   <CardTitle className="text-lg">Credit Entries</CardTitle>
@@ -407,9 +407,9 @@ export default function JournalEntriesPage() {
                   </CardDescription>
                 </div>
               </div>
-              <Button 
-                size="sm" 
-                variant="outline" 
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={addCredit}
                 className="flex items-center gap-2"
               >
@@ -420,20 +420,20 @@ export default function JournalEntriesPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {credits.map((c, idx) => (
-              <div key={idx} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div key={idx} className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg border">
                 <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2">
                   <Select
                     value={c.glAccountId}
                     onValueChange={v => updateCredit(idx, 'glAccountId', v)}
                   >
-                    <SelectTrigger className="h-11 w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                    <SelectTrigger className="h-11 w-full">
                       <SelectValue placeholder="Select GL account" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+                    <SelectContent>
                       {glAccounts.map(a => (
-                        <SelectItem key={a.id} value={String(a.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800">
+                        <SelectItem key={a.id} value={String(a.id)}>
                           <div className="flex items-center gap-2">
-                            <Hash className="h-4 w-4 text-gray-400" />
+                            <Hash className="h-4 w-4 text-muted-foreground" />
                             <span className="text-foreground">{a.nameDecorated}</span>
                           </div>
                         </SelectItem>
@@ -441,7 +441,7 @@ export default function JournalEntriesPage() {
                     </SelectContent>
                   </Select>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                     <Input
                       type="number"
                       min="0"
@@ -449,13 +449,13 @@ export default function JournalEntriesPage() {
                       placeholder="Amount"
                       value={c.amount}
                       onChange={e => updateCredit(idx, 'amount', e.target.value)}
-                      className="h-11 w-full pl-10 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                      className="h-11 w-full pl-10"
                     />
                   </div>
                 </div>
-                <Button 
-                  size="sm" 
-                  variant="destructive" 
+                <Button
+                  size="sm"
+                  variant="destructive"
                   onClick={() => removeCredit(idx)}
                   className="h-11 w-11 shrink-0 p-0"
                 >
@@ -467,30 +467,30 @@ export default function JournalEntriesPage() {
         </Card>
 
         {/* Balance Summary */}
-        <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
+        <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <Calculator className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Calculator className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-blue-900 dark:text-blue-100">Entry Balance</h3>
-                  <p className="text-sm text-blue-700 dark:text-blue-300">Total debits vs total credits</p>
+                  <h3 className="font-semibold text-foreground">Entry Balance</h3>
+                  <p className="text-sm text-muted-foreground">Total debits vs total credits</p>
                 </div>
               </div>
               <div className="flex items-center gap-6">
                 <div className="text-center">
-                  <div className="text-sm text-blue-600 dark:text-blue-400 font-medium">Total Debits</div>
-                  <div className="text-lg font-bold text-blue-900 dark:text-blue-100">${totalDebits.toFixed(2)}</div>
+                  <div className="text-sm text-muted-foreground font-medium">Total Debits</div>
+                  <div className="text-lg font-bold text-foreground">${totalDebits.toFixed(2)}</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm text-blue-600 dark:text-blue-400 font-medium">Total Credits</div>
-                  <div className="text-lg font-bold text-blue-900 dark:text-blue-100">${totalCredits.toFixed(2)}</div>
+                  <div className="text-sm text-muted-foreground font-medium">Total Credits</div>
+                  <div className="text-lg font-bold text-foreground">${totalCredits.toFixed(2)}</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-sm text-blue-600 dark:text-blue-400 font-medium">Difference</div>
-                  <div className={`text-lg font-bold ${isBalanced ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  <div className="text-sm text-muted-foreground font-medium">Difference</div>
+                  <div className={`text-lg font-bold ${isBalanced ? 'text-green-500' : 'text-red-500'}`}>
                     ${Math.abs(totalDebits - totalCredits).toFixed(2)}
                   </div>
                 </div>
@@ -503,11 +503,11 @@ export default function JournalEntriesPage() {
         </Card>
 
         {/* Reference Information */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-                <Settings className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Settings className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Reference Information</CardTitle>
@@ -520,83 +520,83 @@ export default function JournalEntriesPage() {
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="referenceNumber" className="text-sm font-medium">
+                <Label htmlFor="referenceNumber">
                   Reference Number
                 </Label>
-                <Input 
-                  id="referenceNumber" 
-                  value={referenceNumber} 
+                <Input
+                  id="referenceNumber"
+                  value={referenceNumber}
                   onChange={e => setReferenceNumber(e.target.value)}
                   placeholder="Enter reference number"
-                  className="h-11 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                  className="h-11"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="receiptNumber" className="text-sm font-medium">
+                <Label htmlFor="receiptNumber">
                   Receipt Number
                 </Label>
                 <div className="relative">
-                  <Receipt className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input 
-                    id="receiptNumber" 
-                    value={receiptNumber} 
+                  <Receipt className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                  <Input
+                    id="receiptNumber"
+                    value={receiptNumber}
                     onChange={e => setReceiptNumber(e.target.value)}
                     placeholder="Enter receipt number"
-                    className="h-11 pl-10 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                    className="h-11 pl-10"
                   />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="checkNumber" className="text-sm font-medium">
+                <Label htmlFor="checkNumber">
                   Check Number
                 </Label>
                 <div className="relative">
-                  <CheckSquare className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input 
-                    id="checkNumber" 
-                    value={checkNumber} 
+                  <CheckSquare className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                  <Input
+                    id="checkNumber"
+                    value={checkNumber}
                     onChange={e => setCheckNumber(e.target.value)}
                     placeholder="Enter check number"
-                    className="h-11 pl-10 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                    className="h-11 pl-10"
                   />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="accountNumber" className="text-sm font-medium">
+                <Label htmlFor="accountNumber">
                   Account Number
                 </Label>
-                <Input 
-                  id="accountNumber" 
-                  value={accountNumber} 
+                <Input
+                  id="accountNumber"
+                  value={accountNumber}
                   onChange={e => setAccountNumber(e.target.value)}
                   placeholder="Enter account number"
-                  className="h-11 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                  className="h-11"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="routingCode" className="text-sm font-medium">
+                <Label htmlFor="routingCode">
                   Routing Code
                 </Label>
-                <Input 
-                  id="routingCode" 
-                  value={routingCode} 
+                <Input
+                  id="routingCode"
+                  value={routingCode}
                   onChange={e => setRoutingCode(e.target.value)}
                   placeholder="Enter routing code"
-                  className="h-11 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                  className="h-11"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="bankNumber" className="text-sm font-medium">
+                <Label htmlFor="bankNumber">
                   Bank Number
                 </Label>
                 <div className="relative">
-                  <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input 
-                    id="bankNumber" 
-                    value={bankNumber} 
+                  <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                  <Input
+                    id="bankNumber"
+                    value={bankNumber}
                     onChange={e => setBankNumber(e.target.value)}
                     placeholder="Enter bank number"
-                    className="h-11 pl-10 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                    className="h-11 pl-10"
                   />
                 </div>
               </div>
@@ -604,7 +604,7 @@ export default function JournalEntriesPage() {
 
             {/* Comments */}
             <div className="space-y-2">
-              <Label htmlFor="comments" className="text-sm font-medium">
+              <Label htmlFor="comments">
                 Comments
               </Label>
               <Textarea
@@ -613,19 +613,19 @@ export default function JournalEntriesPage() {
                 onChange={e => setComments(e.target.value)}
                 placeholder="Enter any additional comments or notes..."
                 rows={3}
-                className="resize-none bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-foreground"
+                className="resize-none"
               />
             </div>
           </CardContent>
         </Card>
 
         {/* Actions */}
-        <Card className="border-0 shadow-sm bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
+        <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-green-600 dark:text-green-400" />
-                <span className="text-sm text-green-700 dark:text-green-300 font-medium">
+                <BookOpen className="h-5 w-5 text-primary" />
+                <span className="text-sm text-primary font-medium">
                   Ready to create your journal entry
                 </span>
               </div>
@@ -633,14 +633,14 @@ export default function JournalEntriesPage() {
                 <Button
                   variant="outline"
                   onClick={() => router.back()}
-                  className="flex items-center gap-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  className="flex items-center gap-2"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleSubmit}
                   disabled={submitting || !isBalanced || hasIncompleteDebits || hasInvalidDebitAmounts || hasIncompleteCredits || hasInvalidCreditAmounts}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg flex items-center gap-2"
+                  className="flex items-center gap-2"
                 >
                   {submitting ? (
                     <>

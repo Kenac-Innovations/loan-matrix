@@ -65,11 +65,11 @@ export default function AccountingRuleViewPage() {
   if (!accountingRule) {
     return (
       <div className="text-center py-12">
-        <Settings className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+        <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-foreground mb-2">
           Accounting rule not found
         </h3>
-        <p className="text-slate-600 dark:text-slate-400 mb-6">
+        <p className="text-muted-foreground mb-6">
           The accounting rule you're looking for doesn't exist or has been deleted.
         </p>
         <Link href="/accounting/accounting-rules">
@@ -102,7 +102,7 @@ export default function AccountingRuleViewPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link href={`/accounting/accounting-rules/${accountingRule.id}/edit`}>
-            <Button className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white">
+            <Button>
               <Edit className="h-4 w-4 mr-2" />
               Edit Rule
             </Button>
@@ -111,9 +111,9 @@ export default function AccountingRuleViewPage() {
       </div>
 
       {/* Basic Information */}
-      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Settings className="h-5 w-5" />
             Basic Information
           </CardTitle>
@@ -121,17 +121,17 @@ export default function AccountingRuleViewPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label className="text-sm font-medium text-slate-600 dark:text-slate-400">Rule Name</Label>
-              <p className="text-slate-900 dark:text-slate-100 font-medium">{accountingRule.name}</p>
+              <Label className="text-sm font-medium text-muted-foreground">Rule Name</Label>
+              <p className="text-foreground font-medium">{accountingRule.name}</p>
             </div>
             <div>
-              <Label className="text-sm font-medium text-slate-600 dark:text-slate-400">Office</Label>
-              <p className="text-slate-900 dark:text-slate-100">{accountingRule.officeName}</p>
+              <Label className="text-sm font-medium text-muted-foreground">Office</Label>
+              <p className="text-foreground">{accountingRule.officeName}</p>
             </div>
           </div>
           <div>
-            <Label className="text-sm font-medium text-slate-600 dark:text-slate-400">Description</Label>
-            <p className="text-slate-900 dark:text-slate-100">{accountingRule.description || '—'}</p>
+            <Label className="text-sm font-medium text-muted-foreground">Description</Label>
+            <p className="text-foreground">{accountingRule.description || '—'}</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
@@ -144,9 +144,9 @@ export default function AccountingRuleViewPage() {
       </Card>
 
       {/* Debit Configuration */}
-      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Minus className="h-5 w-5 text-red-500" />
             Debit Configuration
           </CardTitle>
@@ -154,12 +154,12 @@ export default function AccountingRuleViewPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label className="text-sm font-medium text-slate-600 dark:text-slate-400">Debit Accounts</Label>
-              <p className="text-slate-900 dark:text-slate-100">{getAccountNames(accountingRule.debitAccounts)}</p>
+              <Label className="text-sm font-medium text-muted-foreground">Debit Accounts</Label>
+              <p className="text-foreground">{getAccountNames(accountingRule.debitAccounts)}</p>
             </div>
             <div>
-              <Label className="text-sm font-medium text-slate-600 dark:text-slate-400">Debit Tags</Label>
-              <p className="text-slate-900 dark:text-slate-100">{getTagNames(accountingRule.debitTags)}</p>
+              <Label className="text-sm font-medium text-muted-foreground">Debit Tags</Label>
+              <p className="text-foreground">{getTagNames(accountingRule.debitTags)}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -168,7 +168,7 @@ export default function AccountingRuleViewPage() {
             ) : (
               <XCircle className="h-4 w-4 text-red-500" />
             )}
-            <span className="text-sm text-slate-600 dark:text-slate-400">
+            <span className="text-sm text-muted-foreground">
               Multiple Debit Entries Allowed: {accountingRule.allowMultipleDebitEntries ? 'Yes' : 'No'}
             </span>
           </div>
@@ -176,9 +176,9 @@ export default function AccountingRuleViewPage() {
       </Card>
 
       {/* Credit Configuration */}
-      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
             <CreditCard className="h-5 w-5 text-green-500" />
             Credit Configuration
           </CardTitle>
@@ -186,12 +186,12 @@ export default function AccountingRuleViewPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label className="text-sm font-medium text-slate-600 dark:text-slate-400">Credit Accounts</Label>
-              <p className="text-slate-900 dark:text-slate-100">{getAccountNames(accountingRule.creditAccounts)}</p>
+              <Label className="text-sm font-medium text-muted-foreground">Credit Accounts</Label>
+              <p className="text-foreground">{getAccountNames(accountingRule.creditAccounts)}</p>
             </div>
             <div>
-              <Label className="text-sm font-medium text-slate-600 dark:text-slate-400">Credit Tags</Label>
-              <p className="text-slate-900 dark:text-slate-100">{getTagNames(accountingRule.creditTags)}</p>
+              <Label className="text-sm font-medium text-muted-foreground">Credit Tags</Label>
+              <p className="text-foreground">{getTagNames(accountingRule.creditTags)}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -200,7 +200,7 @@ export default function AccountingRuleViewPage() {
             ) : (
               <XCircle className="h-4 w-4 text-red-500" />
             )}
-            <span className="text-sm text-slate-600 dark:text-slate-400">
+            <span className="text-sm text-muted-foreground">
               Multiple Credit Entries Allowed: {accountingRule.allowMultipleCreditEntries ? 'Yes' : 'No'}
             </span>
           </div>
@@ -208,27 +208,27 @@ export default function AccountingRuleViewPage() {
       </Card>
 
       {/* Allowed Offices and Accounts */}
-      <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
             <Building className="h-5 w-5" />
             Permissions & Access
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label className="text-sm font-medium text-slate-600 dark:text-slate-400">Allowed Offices</Label>
-            <p className="text-slate-900 dark:text-slate-100">
-              {accountingRule.allowedOffices.length > 0 
+            <Label className="text-sm font-medium text-muted-foreground">Allowed Offices</Label>
+            <p className="text-foreground">
+              {accountingRule.allowedOffices.length > 0
                 ? accountingRule.allowedOffices.map((office: any) => office.name).join(', ')
                 : 'All offices'
               }
             </p>
           </div>
           <div>
-            <Label className="text-sm font-medium text-slate-600 dark:text-slate-400">Allowed Accounts</Label>
-            <p className="text-slate-900 dark:text-slate-100">
-              {accountingRule.allowedAccounts.length > 0 
+            <Label className="text-sm font-medium text-muted-foreground">Allowed Accounts</Label>
+            <p className="text-foreground">
+              {accountingRule.allowedAccounts.length > 0
                 ? accountingRule.allowedAccounts.map((account: any) => `${account.name} (${account.glCode})`).join(', ')
                 : 'All accounts'
               }

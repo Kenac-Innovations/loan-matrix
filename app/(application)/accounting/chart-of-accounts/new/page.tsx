@@ -68,12 +68,12 @@ export default function NewAccountPage() {
 
   if (error) {
     return (
-      <Card className="border-red-200 bg-red-50">
+      <Card>
         <CardContent className="pt-6">
           <div className="text-center">
-            <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-            <div className="text-red-600 font-medium">Error loading template</div>
-            <div className="text-sm text-red-500 mt-1">{error.message}</div>
+            <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
+            <div className="text-destructive font-medium">Error loading template</div>
+            <div className="text-sm text-destructive mt-1">{error.message}</div>
           </div>
         </CardContent>
       </Card>
@@ -85,15 +85,15 @@ export default function NewAccountPage() {
       <div className="space-y-4">
         <Card className="animate-pulse">
           <CardHeader>
-            <div className="h-6 bg-gray-200 rounded w-1/3 mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div className="h-6 bg-muted rounded w-1/3 mb-2"></div>
+            <div className="h-4 bg-muted rounded w-1/2"></div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[...Array(6)].map((_, i) => (
                 <div key={i}>
-                  <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
-                  <div className="h-10 bg-gray-200 rounded"></div>
+                  <div className="h-4 bg-muted rounded w-1/3 mb-2"></div>
+                  <div className="h-10 bg-muted rounded"></div>
                 </div>
               ))}
             </div>
@@ -116,12 +116,12 @@ export default function NewAccountPage() {
 
   // Type configuration for visual enhancement
   const typeConfig: Record<string, { color: string; bgColor: string; icon: any }> = {
-    ASSET: { color: 'text-emerald-600', bgColor: 'bg-emerald-50', icon: TrendingUp },
-    LIABILITY: { color: 'text-amber-600', bgColor: 'bg-amber-50', icon: TrendingDown },
-    INCOME: { color: 'text-blue-600', bgColor: 'bg-blue-50', icon: TrendingUp },
-    REVENUE: { color: 'text-blue-600', bgColor: 'bg-blue-50', icon: TrendingUp },
-    EQUITY: { color: 'text-purple-600', bgColor: 'bg-purple-50', icon: Circle },
-    EXPENSE: { color: 'text-red-600', bgColor: 'bg-red-50', icon: TrendingDown },
+    ASSET: { color: 'text-emerald-500', bgColor: 'bg-emerald-500/20', icon: TrendingUp },
+    LIABILITY: { color: 'text-amber-500', bgColor: 'bg-amber-500/20', icon: TrendingDown },
+    INCOME: { color: 'text-blue-500', bgColor: 'bg-blue-500/20', icon: TrendingUp },
+    REVENUE: { color: 'text-blue-500', bgColor: 'bg-blue-500/20', icon: TrendingUp },
+    EQUITY: { color: 'text-purple-500', bgColor: 'bg-purple-500/20', icon: Circle },
+    EXPENSE: { color: 'text-red-500', bgColor: 'bg-red-500/20', icon: TrendingDown },
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -208,11 +208,11 @@ export default function NewAccountPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information Card */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-blue-600" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Basic Information</CardTitle>
@@ -235,7 +235,7 @@ export default function NewAccountPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {accountTypeOptions.map((opt: any) => {
-                      const config = typeConfig[opt.value?.toUpperCase()] || { color: 'text-gray-600', bgColor: 'bg-gray-50', icon: FileText };
+                      const config = typeConfig[opt.value?.toUpperCase()] || { color: 'text-muted-foreground', bgColor: 'bg-muted', icon: FileText };
                       const IconComponent = config.icon;
                       return (
                         <SelectItem key={opt.id} value={opt.id.toString()}>
@@ -290,7 +290,7 @@ export default function NewAccountPage() {
                   GL Code <span className="text-red-500">*</span>
                 </Label>
                 <div className="relative">
-                  <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  <Hash className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                   <Input
                     id="glCode"
                     required
@@ -306,11 +306,11 @@ export default function NewAccountPage() {
         </Card>
 
         {/* Advanced Settings Card */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Settings className="h-5 w-5 text-purple-600" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Settings className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Advanced Settings</CardTitle>
@@ -336,7 +336,7 @@ export default function NewAccountPage() {
                     {chartAccounts.map((p: any) => (
                       <SelectItem key={p.id} value={p.id.toString()}>
                         <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-gray-400" />
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
                           <span>{p.name}</span>
                         </div>
                       </SelectItem>
@@ -359,7 +359,7 @@ export default function NewAccountPage() {
                     {tagOptions.map((t: any) => (
                       <SelectItem key={t.id} value={t.id.toString()}>
                         <div className="flex items-center gap-2">
-                          <Tag className="h-4 w-4 text-gray-400" />
+                          <Tag className="h-4 w-4 text-muted-foreground" />
                           <span>{t.name}</span>
                         </div>
                       </SelectItem>
@@ -370,7 +370,7 @@ export default function NewAccountPage() {
             </div>
 
             {/* Manual Entries Allowed */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
               <div className="space-y-1">
                 <Label className="text-sm font-medium">Manual Entries Allowed</Label>
                 <p className="text-xs text-muted-foreground">
@@ -386,11 +386,11 @@ export default function NewAccountPage() {
         </Card>
 
         {/* Description Card */}
-        <Card className="border-0 shadow-sm">
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-green-600" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-lg">Description</CardTitle>
@@ -418,12 +418,12 @@ export default function NewAccountPage() {
         </Card>
 
         {/* Actions */}
-        <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50">
+        <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-blue-600" />
-                <span className="text-sm text-blue-700 font-medium">
+                <CheckCircle className="h-5 w-5 text-primary" />
+                <span className="text-sm text-primary font-medium">
                   Ready to create your new GL account
                 </span>
               </div>
@@ -439,7 +439,7 @@ export default function NewAccountPage() {
                 <Button
                   type="submit"
                   disabled={submitting}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg flex items-center gap-2"
+                  className="flex items-center gap-2"
                 >
                   {submitting ? (
                     <>
