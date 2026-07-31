@@ -15,6 +15,7 @@ export interface BulkRepaymentReversalMessage {
 }
 
 declare global {
+  // eslint-disable-next-line no-var
   var __bulkRepaymentReversalConsumerActive: boolean | undefined;
 }
 
@@ -294,7 +295,7 @@ export class BulkRepaymentReversalQueueService {
     });
 
     try {
-      await undoLoanRepaymentTransaction({
+      const result = await undoLoanRepaymentTransaction({
         tenantSlug: message.tenantSlug,
         loanId: message.loanId,
         fineractTransactionId: message.fineractTransactionId,
@@ -314,7 +315,11 @@ export class BulkRepaymentReversalQueueService {
 
       await refreshBulkRepaymentUploadStats(message.uploadId);
 
-      console.log(`[BulkRepaymentReversal] Success: item=${message.itemId}`);
+      console.log(
+        result.status === "ALREADY_REVERSED"
+          ? `[BulkRepaymentReversal] Already reversed in Fineract: item=${message.itemId} txn=${result.transactionId}`
+          : `[BulkRepaymentReversal] Success: item=${message.itemId} txn=${result.transactionId}`
+      );
     } catch (error: unknown) {
       const errorMessage = getErrorMessage(error);
 
