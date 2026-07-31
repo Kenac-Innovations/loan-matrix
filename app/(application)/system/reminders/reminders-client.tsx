@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ClipboardEvent, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import {
   BellRing,
@@ -69,7 +69,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type {
   NotificationMessageSummary,
@@ -131,7 +130,19 @@ const TEMPLATE_VARIABLES = [
     label: "Email",
     hint: "Recipient email address from the candidate report.",
   },
-];
+] as const;
+
+type TemplateVariable = (typeof TEMPLATE_VARIABLES)[number];
+
+const TEMPLATE_VARIABLE_TOKENS = new Set(
+  TEMPLATE_VARIABLES.map((variable) => variable.token)
+);
+const TEMPLATE_VARIABLE_NAMES = new Set(
+  TEMPLATE_VARIABLES.map((variable) => variable.token.slice(2, -2))
+);
+const TEMPLATE_TOKEN_PATTERN = /{{[A-Za-z][A-Za-z0-9]*}}/g;
+const TEMPLATE_TOKEN_CLASS_NAME =
+  "mx-0.5 inline-flex select-none items-center rounded-md border border-blue-300 bg-blue-50 px-1.5 py-0.5 font-mono text-xs font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-200";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "N/A";
@@ -213,6 +224,270 @@ function FieldHint({ children }: { children: ReactNode }) {
     <p className="text-xs leading-relaxed text-muted-foreground">
       {children}
     </p>
+  );
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function textToTemplateEditorHtml(value: string) {
+  return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
+function tokenToTemplateEditorHtml(token: string) {
+  return `<span contenteditable="false" data-template-token="${escapeHtml(token)}" class="${TEMPLATE_TOKEN_CLASS_NAME}">${escapeHtml(token)}</span>`;
+}
+
+function renderTemplateEditorHtml(value: string) {
+  let html = "";
+  let lastIndex = 0;
+
+  for (const match of value.matchAll(TEMPLATE_TOKEN_PATTERN)) {
+    const token = match[0];
+    const index = match.index ?? 0;
+    html += textToTemplateEditorHtml(value.slice(lastIndex, index));
+    html += TEMPLATE_VARIABLE_TOKENS.has(token)
+      ? tokenToTemplateEditorHtml(token)
+      : textToTemplateEditorHtml(token);
+    lastIndex = index + token.length;
+  }
+
+  html += textToTemplateEditorHtml(value.slice(lastIndex));
+  return html;
+}
+
+function createTemplateTokenElement(token: string) {
+  const element = document.createElement("span");
+  element.contentEditable = "false";
+  element.dataset.templateToken = token;
+  element.className = TEMPLATE_TOKEN_CLASS_NAME;
+  element.textContent = token;
+  return element;
+}
+
+function serializeTemplateEditorNode(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent?.replace(/\u00a0/g, " ") ?? "";
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return "";
+  }
+
+  const element = node as HTMLElement;
+  const token = element.dataset.templateToken;
+  if (token) {
+    return token;
+  }
+
+  if (element.tagName === "BR") {
+    return "\n";
+  }
+
+  const children = Array.from(element.childNodes)
+    .map(serializeTemplateEditorNode)
+    .join("");
+
+  if (["DIV", "P"].includes(element.tagName)) {
+    return children.endsWith("\n") ? children : `${children}\n`;
+  }
+
+  return children;
+}
+
+function serializeTemplateEditor(element: HTMLElement | null) {
+  if (!element) {
+    return "";
+  }
+
+  return Array.from(element.childNodes)
+    .map(serializeTemplateEditorNode)
+    .join("")
+    .replace(/\u00a0/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n$/, "");
+}
+
+function findTemplateVariableErrors(body: string) {
+  const errors: string[] = [];
+  let index = 0;
+
+  while (index < body.length) {
+    const openIndex = body.indexOf("{{", index);
+    const closeIndex = body.indexOf("}}", index);
+
+    if (closeIndex !== -1 && (openIndex === -1 || closeIndex < openIndex)) {
+      errors.push("Template contains closing braces without a matching variable start.");
+      index = closeIndex + 2;
+      continue;
+    }
+
+    if (openIndex === -1) {
+      break;
+    }
+
+    const tokenEndIndex = body.indexOf("}}", openIndex + 2);
+    if (tokenEndIndex === -1) {
+      const partialToken = body.slice(openIndex, Math.min(body.length, openIndex + 40));
+      errors.push(`Incomplete template variable: ${partialToken}`);
+      break;
+    }
+
+    const rawName = body.slice(openIndex + 2, tokenEndIndex);
+    const name = rawName.trim();
+    if (rawName !== name || !TEMPLATE_VARIABLE_NAMES.has(name)) {
+      errors.push(`Unknown template variable: {{${rawName}}}`);
+    }
+
+    index = tokenEndIndex + 2;
+  }
+
+  return errors;
+}
+
+function TemplateBodyEditor({
+  value,
+  variables,
+  onChange,
+}: {
+  value: string;
+  variables: readonly TemplateVariable[];
+  onChange: (value: string) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    if (serializeTemplateEditor(editor) === value) {
+      return;
+    }
+
+    editor.innerHTML = renderTemplateEditorHtml(value);
+  }, [value]);
+
+  const syncEditorValue = () => {
+    onChange(serializeTemplateEditor(editorRef.current));
+  };
+
+  const handleEditorBlur = () => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    const nextValue = serializeTemplateEditor(editor);
+    onChange(nextValue);
+    editor.innerHTML = renderTemplateEditorHtml(nextValue);
+  };
+
+  const insertVariable = (token: string) => {
+    const editor = editorRef.current;
+    if (!editor) {
+      onChange(value ? `${value} ${token}` : token);
+      return;
+    }
+
+    editor.focus();
+    const selection = window.getSelection();
+    const selectedRange = selection && selection.rangeCount > 0
+      ? selection.getRangeAt(0)
+      : null;
+    const range = selectedRange && editor.contains(selectedRange.commonAncestorContainer)
+      ? selectedRange
+      : document.createRange();
+
+    if (!selectedRange || !editor.contains(selectedRange.commonAncestorContainer)) {
+      range.selectNodeContents(editor);
+      range.collapse(false);
+    }
+
+    range.deleteContents();
+
+    const currentBody = serializeTemplateEditor(editor);
+    const leadingSpace = currentBody && !/\s$/.test(currentBody) ? " " : "";
+    const trailingSpace = document.createTextNode(" ");
+    const fragment = document.createDocumentFragment();
+    if (leadingSpace) {
+      fragment.appendChild(document.createTextNode(leadingSpace));
+    }
+    fragment.appendChild(createTemplateTokenElement(token));
+    fragment.appendChild(trailingSpace);
+    range.insertNode(fragment);
+
+    const nextRange = document.createRange();
+    nextRange.setStartAfter(trailingSpace);
+    nextRange.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(nextRange);
+    syncEditorValue();
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain");
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(document.createTextNode(text));
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    syncEditorValue();
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2 rounded-md border bg-muted/20 p-2">
+        {variables.map((variable) => (
+          <Button
+            key={variable.token}
+            type="button"
+            variant="outline"
+            size="sm"
+            title={variable.hint}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => insertVariable(variable.token)}
+          >
+            {variable.label}
+          </Button>
+        ))}
+      </div>
+      <div className="relative">
+        {!value.trim() ? (
+          <div className="pointer-events-none absolute left-3 top-3 text-sm text-muted-foreground">
+            Write the reminder message
+          </div>
+        ) : null}
+        <div
+          ref={editorRef}
+          id="template-body"
+          role="textbox"
+          aria-multiline="true"
+          tabIndex={0}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={syncEditorValue}
+          onBlur={handleEditorBlur}
+          onPaste={handlePaste}
+          className="min-h-40 w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-6 shadow-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -350,7 +625,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
   const [runItemsLoading, setRunItemsLoading] = useState(false);
   const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const templateBodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   const activeRules = useMemo(
     () => data.rules.filter((rule) => rule.enabled).length,
@@ -387,31 +661,6 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
     });
   };
 
-  const insertTemplateVariable = (token: string) => {
-    const textarea = templateBodyRef.current;
-    setTemplateForm((current) => {
-      const body = current.body ?? "";
-      const selectionStart = textarea?.selectionStart ?? body.length;
-      const selectionEnd = textarea?.selectionEnd ?? body.length;
-      const before = body.slice(0, selectionStart);
-      const after = body.slice(selectionEnd);
-      const spaceBefore = before && !/\s$/.test(before) ? " " : "";
-      const spaceAfter = after && !/^\s/.test(after) ? " " : "";
-      const nextBody = `${before}${spaceBefore}${token}${spaceAfter}${after}`;
-      const cursorPosition = before.length + spaceBefore.length + token.length + spaceAfter.length;
-
-      requestAnimationFrame(() => {
-        templateBodyRef.current?.focus();
-        templateBodyRef.current?.setSelectionRange(cursorPosition, cursorPosition);
-      });
-
-      return {
-        ...current,
-        body: nextBody,
-      };
-    });
-  };
-
   const handleRuleChannelToggle = (channel: NotificationChannel, checked: boolean) => {
     setRuleForm((current) => {
       const selectedChannels = parseRuleChannels(current.channels);
@@ -430,6 +679,11 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
     event.preventDefault();
     if (!templateForm.name.trim() || !templateForm.body.trim()) {
       toast.error("Template name and message are required");
+      return;
+    }
+    const variableErrors = findTemplateVariableErrors(templateForm.body);
+    if (variableErrors.length > 0) {
+      toast.error(variableErrors[0]);
       return;
     }
 
@@ -1056,27 +1310,11 @@ export function RemindersClient({ initialData }: RemindersClientProps) {
                         Pick variables below to insert safe tokens into the message body.
                       </FieldHint>
                     </div>
-                    <div className="flex flex-wrap gap-2 rounded-md border bg-muted/20 p-2">
-                      {TEMPLATE_VARIABLES.map((variable) => (
-                        <Button
-                          key={variable.token}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          title={variable.hint}
-                          onClick={() => insertTemplateVariable(variable.token)}
-                        >
-                          {variable.label}
-                        </Button>
-                      ))}
-                    </div>
-                    <Textarea
-                      id="template-body"
-                      ref={templateBodyRef}
+                    <TemplateBodyEditor
                       value={templateForm.body}
-                      rows={7}
-                      onChange={(event) =>
-                        setTemplateForm((current) => ({ ...current, body: event.target.value }))
+                      variables={TEMPLATE_VARIABLES}
+                      onChange={(body) =>
+                        setTemplateForm((current) => ({ ...current, body }))
                       }
                     />
                     <FieldHint>
