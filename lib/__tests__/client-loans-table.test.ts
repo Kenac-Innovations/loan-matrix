@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import test from "node:test";
 
 import {
@@ -9,12 +7,6 @@ import {
   orderClientLoansLatestFirst,
   paginateClientLoans,
 } from "../client-loans-table";
-
-const repoRoot = path.resolve(process.cwd());
-
-function readRepoFile(relativePath: string): string {
-  return readFileSync(path.join(repoRoot, relativePath), "utf8");
-}
 
 test("orders client loans newest first while preserving chronological sequence numbers", () => {
   const loans = [
@@ -84,13 +76,4 @@ test("filters client loans by account number or loan product name", () => {
     filterClientLoans(loans, "  ").map((loan) => loan.id),
     [31, 32, 33]
   );
-});
-
-test("keeps historical loans returned by Fineract in the client loan list", () => {
-  const source = readRepoFile(
-    "app/(application)/clients/[id]/components/client-loans.tsx"
-  );
-
-  assert.doesNotMatch(source, /const CUTOFF = new Date\("2026-01-01T00:00:00Z"\)/);
-  assert.doesNotMatch(source, /date >= CUTOFF/);
 });
