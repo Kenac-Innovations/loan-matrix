@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { fetchFineractAPIAsCurrentUser } from "@/lib/api";
+import {
+  fetchFineractAPIAsCurrentUser,
+  isFineractCommandPendingApproval,
+} from "@/lib/api";
 import { hasFineractPermissionServer } from "@/lib/authorization";
 import type {
   AuditTrail,
@@ -12,6 +15,8 @@ import type {
   AvailableWorkflowJobSteps,
   CobCatchUpStatus,
   LockedLoansPage,
+  MakerCheckerSearchInput,
+  RescheduleLoanRequest,
   SchedulerJob,
   SchedulerRunHistory,
   SchedulerStatus,
@@ -24,8 +29,58 @@ import type {
   WorkflowJobStep,
   WorkflowJobSteps,
 } from "@/shared/types/system";
+import { format } from "date-fns";
 
 type LooseObject = Record<string, unknown>;
+
+/**
+ * Loan Matrix wraps a handful of Fineract tasks with its own bookkeeping (auto-
+ * disbursement trail, teller/cashier cash movements, LoanPayout records, lead/client
+ * linkage) that assumes the Fineract command executed immediately. Enabling maker-
+ * checker on these would silently desync that bookkeeping, since Fineract would queue
+ * the command instead of running it. These are hidden from the Configure Maker
+ * Checker Tasks page and stripped server-side even if a client tries to enable them
+ * directly.
+ *
+ * Loan approval and disbursement (app/api/fineract/loans/[id]/approve,
+ * .../disburse, .../undodisbursal, .../undoapproval) are the only loan-lifecycle
+ * actions with bespoke wrappers today - everything else under the loan/
+ * transaction_loan grouping (repayment, reject, withdraw, writeoff, waive, close,
+ * reschedule, ...) is a thin passthrough and safe to leave toggleable.
+ *
+ * Extend this list if a new bespoke workflow is added around a Fineract task.
+ */
+const BLOCKED_MAKER_CHECKER_CODES = new Set([
+  "CREATE_CLIENT",
+  "UPDATE_CLIENT",
+  "REJECT_CLIENT",
+  // Approval (incl. undo-approval and the "in past" variant)
+  "APPROVE_LOAN",
+  "APPROVE_LOAN_CHECKER",
+  "APPROVEINPAST_LOAN",
+  "APPROVEINPAST_LOAN_CHECKER",
+  "APPROVALUNDO_LOAN",
+  "APPROVALUNDO_LOAN_CHECKER",
+  // Disbursement (incl. undo-disbursal and the "in past" variant)
+  "DISBURSE_LOAN",
+  "DISBURSE_LOAN_CHECKER",
+  "DISBURSEINPAST_LOAN",
+  "DISBURSEINPAST_LOAN_CHECKER",
+  "DISBURSALUNDO_LOAN",
+  "DISBURSALUNDO_LOAN_CHECKER",
+]);
+
+function isBlockedMakerCheckerTask(permission: SystemPermission): boolean {
+  return BLOCKED_MAKER_CHECKER_CODES.has(permission.code);
+}
+
+const makerCheckerIdSchema = z.object({
+  id: z.coerce.number().int().positive("Entry id is required"),
+});
+
+const rescheduleLoanIdSchema = z.object({
+  id: z.coerce.number().int().positive("Reschedule request id is required"),
+});
 
 const roleCreateSchema = z.object({
   name: z.string().trim().min(1, "Role name is required"),
@@ -151,6 +206,10 @@ function ok<T>(data?: T): SystemActionResult<T> {
   return { success: true, data };
 }
 
+function pendingApproval<T>(): SystemActionResult<T> {
+  return { success: true, pending: true };
+}
+
 function fail<T = undefined>(
   error: unknown,
   fallback: string
@@ -256,6 +315,26 @@ function mapAuditPage(value: unknown): AuditTrailPage {
   };
 }
 
+function mapRescheduleLoanRequest(value: unknown): RescheduleLoanRequest {
+  const record = asObject(value);
+  const reasonCodeValue = asObject(record.rescheduleReasonCodeValue);
+  const timeline = asObject(record.timeline);
+
+  return {
+    id: asNumber(record.id) ?? 0,
+    loanId: asNumber(record.loanId),
+    clientId: asNumber(record.clientId),
+    clientName: asString(record.clientName),
+    loanAccountNumber: asString(record.loanAccountNumber),
+    rescheduleReasonComment: asString(record.rescheduleReasonComment),
+    rescheduleReasonName: asString(reasonCodeValue.name),
+    submittedOnDate:
+      (timeline.submittedOnDate as RescheduleLoanRequest["submittedOnDate"]) ??
+      null,
+    submittedByUsername: asString(timeline.submittedByUsername),
+  };
+}
+
 function mapRunHistory(value: unknown): SchedulerRunHistory {
   const record = asObject(value);
 
@@ -332,6 +411,7 @@ function revalidateSystemPaths() {
   revalidatePath("/system/configure-mc-tasks");
   revalidatePath("/system/manage-jobs");
   revalidatePath("/system/audit-trails");
+  revalidatePath("/checker-inbox");
 }
 
 export async function getSystemPermissionFlagsAction(): Promise<SystemPermissionFlags> {
@@ -381,6 +461,11 @@ export async function createSystemRoleAction(
       body: JSON.stringify(parsed.data),
     });
     revalidateSystemPaths();
+
+    if (isFineractCommandPendingApproval(response)) {
+      return pendingApproval();
+    }
+
     return ok(mapRoleSummary({ ...parsed.data, id: asNumber(asObject(response).resourceId) }));
   } catch (error) {
     return fail(error, "Failed to create role");
@@ -396,11 +481,16 @@ export async function updateSystemRoleAction(
   }
 
   try {
-    await fetchFineractAPIAsCurrentUser(`/roles/${parsed.data.id}`, {
+    const response = await fetchFineractAPIAsCurrentUser(`/roles/${parsed.data.id}`, {
       method: "PUT",
       body: JSON.stringify({ description: parsed.data.description }),
     });
     revalidateSystemPaths();
+
+    if (isFineractCommandPendingApproval(response)) {
+      return pendingApproval();
+    }
+
     return ok();
   } catch (error) {
     return fail(error, "Failed to update role");
@@ -416,7 +506,7 @@ export async function updateSystemRolePermissionsAction(
   }
 
   try {
-    await fetchFineractAPIAsCurrentUser(
+    const response = await fetchFineractAPIAsCurrentUser(
       `/roles/${parsed.data.roleId}/permissions`,
       {
         method: "PUT",
@@ -424,6 +514,11 @@ export async function updateSystemRolePermissionsAction(
       }
     );
     revalidateSystemPaths();
+
+    if (isFineractCommandPendingApproval(response)) {
+      return pendingApproval();
+    }
+
     return ok();
   } catch (error) {
     return fail(error, "Failed to update role permissions");
@@ -439,10 +534,15 @@ export async function deleteSystemRoleAction(
   }
 
   try {
-    await fetchFineractAPIAsCurrentUser(`/roles/${parsed.data.id}`, {
+    const response = await fetchFineractAPIAsCurrentUser(`/roles/${parsed.data.id}`, {
       method: "DELETE",
     });
     revalidateSystemPaths();
+
+    if (isFineractCommandPendingApproval(response)) {
+      return pendingApproval();
+    }
+
     return ok();
   } catch (error) {
     return fail(error, "Failed to delete role");
@@ -459,7 +559,7 @@ export async function setSystemRoleEnabledAction(
   }
 
   try {
-    await fetchFineractAPIAsCurrentUser(
+    const response = await fetchFineractAPIAsCurrentUser(
       `/roles/${parsed.data.id}?command=${enabled ? "enable" : "disable"}`,
       {
         method: "POST",
@@ -467,6 +567,11 @@ export async function setSystemRoleEnabledAction(
       }
     );
     revalidateSystemPaths();
+
+    if (isFineractCommandPendingApproval(response)) {
+      return pendingApproval();
+    }
+
     return ok();
   } catch (error) {
     return fail(error, `Failed to ${enabled ? "enable" : "disable"} role`);
@@ -478,7 +583,9 @@ export async function listMakerCheckerPermissionsAction(): Promise<SystemPermiss
     "/permissions?makerCheckerable=true",
     { cache: "no-store" }
   );
-  return asArray(permissions).map(mapPermission);
+  return asArray(permissions)
+    .map(mapPermission)
+    .filter((permission) => !isBlockedMakerCheckerTask(permission));
 }
 
 export async function updateMakerCheckerPermissionsAction(
@@ -490,14 +597,125 @@ export async function updateMakerCheckerPermissionsAction(
   }
 
   try {
+    // Defense in depth: strip any blocked code from the payload server-side too, in
+    // case a stale client or a direct call tries to enable one.
+    const allPermissions = asArray(
+      await fetchFineractAPIAsCurrentUser("/permissions?makerCheckerable=true", {
+        cache: "no-store",
+      })
+    ).map(mapPermission);
+    const blockedCodes = new Set(
+      allPermissions
+        .filter(isBlockedMakerCheckerTask)
+        .map((permission) => permission.code)
+    );
+    const sanitizedPermissions = Object.fromEntries(
+      Object.entries(parsed.data.permissions).filter(
+        ([code]) => !blockedCodes.has(code)
+      )
+    );
+
     await fetchFineractAPIAsCurrentUser("/permissions?makerCheckerable=true", {
       method: "PUT",
-      body: JSON.stringify(parsed.data),
+      body: JSON.stringify({ permissions: sanitizedPermissions }),
     });
     revalidateSystemPaths();
     return ok();
   } catch (error) {
     return fail(error, "Failed to update maker checker tasks");
+  }
+}
+
+export async function getMakerCheckerSearchTemplateAction(): Promise<AuditTrailSearchTemplate> {
+  const template = await fetchFineractAPIAsCurrentUser(
+    "/makercheckers/searchtemplate",
+    { cache: "no-store" }
+  );
+  return mapAuditTemplate(template);
+}
+
+export async function listMakerCheckerEntriesAction(
+  input: MakerCheckerSearchInput = {}
+): Promise<AuditTrail[]> {
+  const params = new URLSearchParams();
+  if (input.actionName) params.set("actionName", input.actionName);
+  if (input.entityName) params.set("entityName", input.entityName);
+  if (input.resourceId) params.set("resourceId", input.resourceId);
+  if (input.makerDateTimeFrom) {
+    params.set("makerDateTimeFrom", input.makerDateTimeFrom);
+    params.set("dateFormat", "dd MMMM yyyy");
+    params.set("locale", "en");
+  }
+  if (input.makerDateTimeTo) {
+    params.set("makerDateTimeTo", input.makerDateTimeTo);
+    params.set("dateFormat", "dd MMMM yyyy");
+    params.set("locale", "en");
+  }
+
+  const query = params.toString();
+  const entries = await fetchFineractAPIAsCurrentUser(
+    `/makercheckers${query ? `?${query}` : ""}`,
+    { cache: "no-store" }
+  );
+  return asArray(entries).map(mapAuditTrail);
+}
+
+export async function approveMakerCheckerEntryAction(
+  id: number | string
+): Promise<SystemActionResult> {
+  const parsed = makerCheckerIdSchema.safeParse({ id });
+  if (!parsed.success) {
+    return toFieldErrorResult(parsed.error);
+  }
+
+  try {
+    await fetchFineractAPIAsCurrentUser(
+      `/makercheckers/${parsed.data.id}?command=approve`,
+      { method: "POST", body: JSON.stringify({}) }
+    );
+    revalidateSystemPaths();
+    return ok();
+  } catch (error) {
+    return fail(error, "Failed to approve entry");
+  }
+}
+
+export async function rejectMakerCheckerEntryAction(
+  id: number | string
+): Promise<SystemActionResult> {
+  const parsed = makerCheckerIdSchema.safeParse({ id });
+  if (!parsed.success) {
+    return toFieldErrorResult(parsed.error);
+  }
+
+  try {
+    await fetchFineractAPIAsCurrentUser(
+      `/makercheckers/${parsed.data.id}?command=reject`,
+      { method: "POST", body: JSON.stringify({}) }
+    );
+    revalidateSystemPaths();
+    return ok();
+  } catch (error) {
+    return fail(error, "Failed to reject entry");
+  }
+}
+
+export async function deleteMakerCheckerEntryAction(
+  id: number | string
+): Promise<SystemActionResult> {
+  const parsed = makerCheckerIdSchema.safeParse({ id });
+  if (!parsed.success) {
+    return toFieldErrorResult(parsed.error);
+  }
+
+  try {
+    await fetchFineractAPIAsCurrentUser(`/makercheckers/${parsed.data.id}`, {
+      method: "DELETE",
+    });
+    revalidateSystemPaths();
+    return ok();
+  } catch (error) {
+    return fail(error, "Failed to delete entry");
   }
 }
 
@@ -812,5 +1030,73 @@ export async function getLoanClientNavigationAction(
     return ok({ loanId: parsed.data, clientId });
   } catch (error) {
     return fail(error, "Failed to resolve loan client");
+  }
+}
+
+export async function listPendingRescheduleLoansAction(): Promise<
+  RescheduleLoanRequest[]
+> {
+  const requests = await fetchFineractAPIAsCurrentUser(
+    "/rescheduleloans?command=pending",
+    { cache: "no-store" }
+  );
+  return asArray(requests).map(mapRescheduleLoanRequest);
+}
+
+function todayForFineract() {
+  return format(new Date(), "dd MMMM yyyy");
+}
+
+export async function approveRescheduleLoanAction(
+  id: number | string
+): Promise<SystemActionResult> {
+  const parsed = rescheduleLoanIdSchema.safeParse({ id });
+  if (!parsed.success) {
+    return toFieldErrorResult(parsed.error);
+  }
+
+  try {
+    await fetchFineractAPIAsCurrentUser(
+      `/rescheduleloans/${parsed.data.id}?command=approve`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
+          approvedOnDate: todayForFineract(),
+        }),
+      }
+    );
+    revalidateSystemPaths();
+    return ok();
+  } catch (error) {
+    return fail(error, "Failed to approve reschedule request");
+  }
+}
+
+export async function rejectRescheduleLoanAction(
+  id: number | string
+): Promise<SystemActionResult> {
+  const parsed = rescheduleLoanIdSchema.safeParse({ id });
+  if (!parsed.success) {
+    return toFieldErrorResult(parsed.error);
+  }
+
+  try {
+    await fetchFineractAPIAsCurrentUser(
+      `/rescheduleloans/${parsed.data.id}?command=reject`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          dateFormat: "dd MMMM yyyy",
+          locale: "en",
+          rejectedOnDate: todayForFineract(),
+        }),
+      }
+    );
+    revalidateSystemPaths();
+    return ok();
+  } catch (error) {
+    return fail(error, "Failed to reject reschedule request");
   }
 }

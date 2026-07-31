@@ -45,6 +45,7 @@ export type CashierTransactionLoanContext = {
 
 const LOAN_REPAYMENT_NOTE_REGEX = /loan repayment\s*#\s*(\d+)/i;
 const FINERACT_LOAN_NOTE_REGEX = /\bloan\s*:\s*(\d+)(?:\s*[-,]|\b)/i;
+const HASHED_LOAN_NOTE_REGEX = /\bloan\s*#\s*(\d+)(?:\s*[-,]|\b)/i;
 
 export function extractLoanIdFromCashierTransactionNotes(
   notes: string | null | undefined
@@ -53,7 +54,8 @@ export function extractLoanIdFromCashierTransactionNotes(
 
   const match =
     notes.match(LOAN_REPAYMENT_NOTE_REGEX) ??
-    notes.match(FINERACT_LOAN_NOTE_REGEX);
+    notes.match(FINERACT_LOAN_NOTE_REGEX) ??
+    notes.match(HASHED_LOAN_NOTE_REGEX);
   if (!match) return null;
 
   const loanId = Number(match[1]);
