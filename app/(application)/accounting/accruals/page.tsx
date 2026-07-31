@@ -95,19 +95,19 @@ export default function AccrualsPage() {
 
       {/* Main Content */}
       <div className="max-w-2xl">
-        <Card className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-lg">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            <CardTitle>
               Accrual Configuration
             </CardTitle>
-            <CardDescription className="text-slate-600 dark:text-slate-400">
+            <CardDescription>
               Select the date until which you want to run periodic accruals
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Date Input */}
             <div className="space-y-2">
-              <Label htmlFor="tillDate" className="text-sm font-medium text-slate-900 dark:text-slate-100">
+              <Label htmlFor="tillDate">
                 Accrue Till Date *
               </Label>
               <div className="relative">
@@ -116,19 +116,18 @@ export default function AccrualsPage() {
                   type="date"
                   value={tillDate}
                   onChange={(e) => setTillDate(e.target.value)}
-                  className="pl-10 bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="pl-10"
                   placeholder="Select date"
                 />
-                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               </div>
             </div>
 
             {/* Action Buttons */}
             <div className="flex items-center justify-end gap-3 pt-4">
               <Link href="/accounting">
-                <Button 
-                  variant="outline" 
-                  className="bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-600"
+                <Button
+                  variant="outline"
                 >
                   Cancel
                 </Button>
@@ -136,7 +135,7 @@ export default function AccrualsPage() {
               <Button
                 onClick={handleRunAccruals}
                 disabled={!tillDate || isLoading}
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className="disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
