@@ -259,6 +259,7 @@ export default function LoginPage() {
                   </div>
                 </div>
 
+                {/* Remember me is temporarily disabled until session lifetime behavior is finalized.
                 <div className="flex items-center space-x-2">
                   <input
                     type="checkbox"
@@ -269,6 +270,7 @@ export default function LoginPage() {
                     Remember me for 30 days
                   </label>
                 </div>
+                */}
 
                 <Button
                   type="submit"
