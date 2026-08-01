@@ -2,11 +2,22 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertCircle, CheckCircle2, Loader2, LockIcon } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  LockIcon,
+  ServerIcon,
+  ShieldIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BorderBeam } from "@/components/magicui/border-beam";
+import { Globe } from "@/components/magicui/globe";
+import { Meteors } from "@/components/magicui/meteors";
+import { Particles } from "@/components/magicui/particles";
 import { ThemeAwareLogo } from "@/components/ui/theme-aware-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -142,38 +153,129 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <main className="min-h-screen bg-background px-6 py-8">
-      <div className="absolute right-4 top-4">
+    <div className="min-h-screen flex flex-col md:flex-row bg-background overflow-x-hidden relative">
+      <div className="absolute top-4 right-4 z-50">
         <ThemeToggle />
       </div>
 
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md items-center justify-center">
-        <Card className="w-full shadow-xl">
-          <CardHeader className="space-y-4 text-center">
-            <div className="flex justify-center">
-              <ThemeAwareLogo width={150} height={50} className="h-12 w-auto" />
-            </div>
-            <div>
-              <CardTitle className="text-2xl">Reset your password</CardTitle>
-              <CardDescription className="mt-2">
-                {step === "request" && "Enter your username to receive a verification code."}
-                {step === "verify" && `Enter the code sent to ${deliveryDescription}.`}
-                {step === "complete" && "Choose a new password for your account."}
-                {step === "done" && "Your password has been changed."}
-              </CardDescription>
-            </div>
-          </CardHeader>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-90">
+        <Meteors number={10} />
+        <Particles />
+        <div className="absolute inset-0 translate-x-[200px]">
+          <Globe />
+        </div>
+      </div>
 
-          <CardContent className="space-y-5">
+      <div className="hidden md:block md:w-1/2 relative z-10">
+        <div className="absolute inset-0 z-20 flex flex-col justify-between p-12 mx-auto max-w-4xl">
+          <div>
+            <ThemeAwareLogo width={150} height={150} />
+          </div>
+
+          <div className="space-y-8 max-w-md">
+            <div className="space-y-2">
+              <p className="text-blue-500 text-lg font-medium">
+                Let&apos;s put Security everywhere
+              </p>
+              <p className="text-foreground text-lg">
+                Empowering Secure Lending, Everywhere.
+              </p>
+            </div>
+
+            <h2 className="text-6xl font-bold text-foreground leading-tight">
+              LOAN
+              <br />
+              MATRIX
+            </h2>
+
+            <div className="relative translate-x-[200px]">
+              <div className="absolute -right-40 -top-20 w-80 h-80">
+                <div className="absolute inset-0 border-2 border-blue-500/30 rounded-full animate-[spin_30s_linear_infinite]"></div>
+                <div className="absolute inset-4 border border-blue-500/20 rounded-full animate-[spin_20s_linear_infinite_reverse]"></div>
+                <div className="absolute inset-10 border border-blue-500/10 rounded-full animate-[spin_25s_linear_infinite]"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-32 h-32 bg-card/50 backdrop-blur-sm rounded-lg flex items-center justify-center border border-border">
+                    <LockIcon className="h-16 w-16 text-blue-500" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-6 pt-8">
+              <div className="flex flex-col items-center bg-card/50 backdrop-blur-sm rounded-lg p-4 transition-all duration-300 hover:bg-card/70 border border-border">
+                <ShieldIcon className="h-8 w-8 text-blue-500 mb-2" />
+                <span className="text-foreground text-sm font-medium text-center">
+                  Enterprise Security
+                </span>
+              </div>
+              <div className="flex flex-col items-center bg-card/50 backdrop-blur-sm rounded-lg p-4 transition-all duration-300 hover:bg-card/70 border border-border">
+                <ServerIcon className="h-8 w-8 text-blue-500 mb-2" />
+                <span className="text-foreground text-sm font-medium text-center">
+                  Advanced Analytics
+                </span>
+              </div>
+              <div className="flex flex-col items-center bg-card/50 backdrop-blur-sm rounded-lg p-4 transition-all duration-300 hover:bg-card/70 border border-border">
+                <svg
+                  className="h-8 w-8 text-blue-500 mb-2"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span className="text-foreground text-sm font-medium text-center">
+                  Compliance Ready
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="outline"
+              className="border-blue-500 text-foreground hover:bg-blue-500/20 transition-all duration-300"
+            >
+              LOAN MANAGEMENT
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col justify-center items-center p-6 md:p-12 lg:p-16 w-full md:w-1/2 relative z-10">
+        <div className="w-full max-w-md space-y-8 mx-auto">
+          <div className="md:hidden flex justify-center mb-8">
+            <ThemeAwareLogo width={120} height={40} className="h-12 w-auto" />
+          </div>
+
+          <Card className="w-full shadow-xl border-border overflow-hidden transition-all duration-300 hover:border-blue-500/40 bg-card/70 backdrop-blur-sm">
+            <CardContent className="p-8 space-y-6">
+              <div className="text-center space-y-2 mb-8">
+                <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                  Reset your password
+                </h1>
+                <p className="text-blue-500">
+                  {step === "request" && "Enter your username to continue"}
+                  {step === "verify" && `Enter the code sent to ${deliveryDescription}.`}
+                  {step === "complete" && "Choose a new password for your account."}
+                  {step === "done" && "Your password has been changed."}
+                </p>
+              </div>
+
             {error && (
-              <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
-                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-                <span>{error}</span>
+              <div className="bg-red-500/10 border border-red-500/30 rounded-md p-3 flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-red-500">{error}</p>
               </div>
             )}
 
             {message && step !== "done" && (
-              <div className="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700">
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-3 text-sm text-blue-500">
                 {message}
               </div>
             )}
@@ -181,19 +283,51 @@ export default function ResetPasswordPage() {
             {step === "request" && (
               <form onSubmit={submitRequest} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="username">Username</Label>
-                  <Input
-                    id="username"
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder="Enter your username"
-                    autoComplete="username"
-                    required
-                  />
+                  <Label
+                    htmlFor="username"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    Username
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="username"
+                      type="text"
+                      value={username}
+                      onChange={(event) => setUsername(event.target.value)}
+                      placeholder="Enter your username"
+                      autoComplete="username"
+                      className="pl-10 py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground"
+                      required
+                    />
+                    <svg
+                      className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-blue-500"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                  </div>
                 </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Send verification code
+                <Button
+                  type="submit"
+                  className="w-full py-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:shadow-blue-500/20 flex items-center justify-center gap-2"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>SENDING CODE...</span>
+                    </>
+                  ) : (
+                    <span>SEND VERIFICATION CODE</span>
+                  )}
                 </Button>
               </form>
             )}
@@ -201,7 +335,12 @@ export default function ResetPasswordPage() {
             {step === "verify" && (
               <form onSubmit={verifyCode} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="code">Verification code</Label>
+                  <Label
+                    htmlFor="code"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    Verification code
+                  </Label>
                   <Input
                     id="code"
                     value={code}
@@ -209,16 +348,32 @@ export default function ResetPasswordPage() {
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     placeholder="000000"
-                    className="text-center text-xl tracking-[0.35em]"
+                    className="py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground text-center text-xl tracking-[0.35em]"
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={isLoading || code.length !== 6}>
-                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Verify code
+                <Button
+                  type="submit"
+                  className="w-full py-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:shadow-blue-500/20 flex items-center justify-center gap-2"
+                  disabled={isLoading || code.length !== 6}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>VERIFYING CODE...</span>
+                    </>
+                  ) : (
+                    <span>VERIFY CODE</span>
+                  )}
                 </Button>
-                <Button type="button" variant="outline" className="w-full" onClick={resendCode} disabled={isLoading}>
-                  Resend code
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full py-6 border-blue-500 text-foreground hover:bg-blue-500/20 transition-all duration-300"
+                  onClick={resendCode}
+                  disabled={isLoading}
+                >
+                  RESEND CODE
                 </Button>
               </form>
             )}
@@ -226,7 +381,12 @@ export default function ResetPasswordPage() {
             {step === "complete" && (
               <form onSubmit={completeReset} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="new-password">New password</Label>
+                  <Label
+                    htmlFor="new-password"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    New password
+                  </Label>
                   <div className="relative">
                     <Input
                       id="new-password"
@@ -234,24 +394,30 @@ export default function ResetPasswordPage() {
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       autoComplete="new-password"
-                      className="pl-10"
+                      className="pl-10 py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground"
                       required
                     />
-                    <LockIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <LockIcon className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-blue-500" />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="repeat-password">Repeat new password</Label>
+                  <Label
+                    htmlFor="repeat-password"
+                    className="text-sm font-medium text-foreground"
+                  >
+                    Repeat new password
+                  </Label>
                   <Input
                     id="repeat-password"
                     type="password"
                     value={repeatPassword}
                     onChange={(event) => setRepeatPassword(event.target.value)}
                     autoComplete="new-password"
+                    className="py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground"
                     required
                   />
                 </div>
-                <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+                <div className="rounded-md border border-border bg-card/50 p-3 text-xs text-muted-foreground">
                   <p className="mb-1 font-medium text-foreground">Password requirements</p>
                   <ul className="list-disc space-y-1 pl-4">
                     {passwordRequirements.map((requirement) => (
@@ -259,33 +425,101 @@ export default function ResetPasswordPage() {
                     ))}
                   </ul>
                 </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Change password
+                <Button
+                  type="submit"
+                  className="w-full py-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:shadow-blue-500/20 flex items-center justify-center gap-2"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>CHANGING PASSWORD...</span>
+                    </>
+                  ) : (
+                    <span>CHANGE PASSWORD</span>
+                  )}
                 </Button>
               </form>
             )}
 
             {step === "done" && (
               <div className="space-y-4 text-center">
-                <CheckCircle2 className="mx-auto h-12 w-12 text-green-600" />
+                <CheckCircle2 className="mx-auto h-12 w-12 text-green-500" />
                 <p className="text-sm text-muted-foreground">{message}</p>
-                <Button asChild className="w-full">
-                  <Link href="/auth/login">Return to login</Link>
+                <Button
+                  asChild
+                  className="w-full py-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:shadow-blue-500/20"
+                >
+                  <Link href="/auth/login">RETURN TO LOGIN</Link>
                 </Button>
               </div>
             )}
 
             {step !== "done" && (
-              <div className="text-center text-sm">
-                <Link href="/auth/login" className="text-blue-600 hover:underline">
+              <div className="text-center text-sm pt-2">
+                <Link
+                  href="/auth/login"
+                  className="text-blue-500 hover:text-blue-600 font-medium transition-colors"
+                >
                   Back to login
                 </Link>
               </div>
             )}
-          </CardContent>
-        </Card>
+
+            </CardContent>
+            <BorderBeam
+              duration={8}
+              size={100}
+              className="from-transparent via-blue-500 to-transparent"
+            />
+          </Card>
+
+          <div className="flex items-center justify-center space-x-2 pt-4">
+            <div className="p-2 rounded-full bg-card border border-border">
+              <svg
+                className="h-4 w-4 text-blue-500"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </div>
+            <span className="text-sm text-blue-500">
+              Secure, encrypted connection
+            </span>
+          </div>
+
+          <div className="text-center text-sm text-muted-foreground pt-4">
+            © 2025 Enterprise Loan Management System. All rights reserved.
+            <div className="flex justify-center space-x-4 mt-2">
+              <Link
+                href="/terms"
+                className="text-blue-500 hover:text-blue-600 text-xs"
+              >
+                Terms
+              </Link>
+              <Link
+                href="/privacy"
+                className="text-blue-500 hover:text-blue-600 text-xs"
+              >
+                Privacy
+              </Link>
+              <Link
+                href="/support"
+                className="text-blue-500 hover:text-blue-600 text-xs"
+              >
+                Support
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
