@@ -148,6 +148,7 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
     accountMovesOutOfNPAOnlyOnArrearsCompletion: b(
       product.accountMovesOutOfNPAOnlyOnArrearsCompletion
     ),
+    enableInterestSuspenseAccounting: b(product.enableInterestSuspenseAccounting),
     multiDisburseLoan: b(product.multiDisburseLoan),
     maxTrancheCount: n(product.maxTrancheCount),
     outstandingLoanBalance: n(product.outstandingLoanBalance),
@@ -237,6 +238,7 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
         receivableInterestAccountId:               aid("receivableInterestAccount"),
         receivableFeeAccountId:                    aid("receivableFeeAccount"),
         receivablePenaltyAccountId:                aid("receivablePenaltyAccount"),
+        interestSuspenseAccountId:                 aid("interestSuspenseAccount"),
       };
     })(),
 
