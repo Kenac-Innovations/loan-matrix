@@ -78,6 +78,10 @@ export default function ResetPasswordPage() {
   const passwordRequirementScore = passwordRequirements.filter(({ test }) =>
     test(password)
   ).length;
+  const passwordMeetsRequirements =
+    passwordRequirementScore === passwordRequirements.length;
+  const passwordsMatch =
+    repeatPassword.length > 0 && password === repeatPassword;
 
   const callApi = async (path: string, body: Record<string, string>) => {
     const response = await fetch(path, {
@@ -618,6 +622,9 @@ export default function ResetPasswordPage() {
                       )}
                     </button>
                   </div>
+                  {repeatPassword && !passwordsMatch && (
+                    <p className="text-sm text-red-500">Passwords do not match.</p>
+                  )}
                 </div>
                 <div className="rounded-md border border-border bg-card/50 p-3 text-xs text-muted-foreground">
                   <div className="mb-2 flex items-center justify-between gap-3">
@@ -666,7 +673,9 @@ export default function ResetPasswordPage() {
                 <Button
                   type="submit"
                   className="w-full py-6 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition-all duration-200 shadow-md hover:shadow-lg hover:shadow-blue-500/20 flex items-center justify-center gap-2"
-                  disabled={isLoading}
+                  disabled={
+                    isLoading || !passwordMeetsRequirements || !passwordsMatch
+                  }
                 >
                   {isLoading ? (
                     <>
