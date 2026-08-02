@@ -300,6 +300,8 @@ export interface LoanProductFormData {
   receivableInterestAccountId: number | "";
   receivableFeeAccountId: number | "";
   receivablePenaltyAccountId: number | "";
+  enableInterestSuspenseAccounting: boolean;
+  interestSuspenseAccountId: number | "";
   advancedAccountingRules: boolean;
   paymentChannelToFundSourceMappings: PaymentChannelMapping[];
   feeToIncomeAccountMappings: FeeIncomeMapping[];
@@ -418,6 +420,8 @@ export const defaultLoanProductFormData: LoanProductFormData = {
   receivableInterestAccountId: "",
   receivableFeeAccountId: "",
   receivablePenaltyAccountId: "",
+  enableInterestSuspenseAccounting: false,
+  interestSuspenseAccountId: "",
   advancedAccountingRules: false,
   paymentChannelToFundSourceMappings: [],
   feeToIncomeAccountMappings: [],
@@ -746,6 +750,8 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
       if (form.receivableInterestAccountId !== "") payload.receivableInterestAccountId = form.receivableInterestAccountId;
       if (form.receivableFeeAccountId !== "") payload.receivableFeeAccountId = form.receivableFeeAccountId;
       if (form.receivablePenaltyAccountId !== "") payload.receivablePenaltyAccountId = form.receivablePenaltyAccountId;
+      if (form.enableInterestSuspenseAccounting) payload.enableInterestSuspenseAccounting = true;
+      if (form.interestSuspenseAccountId !== "") payload.interestSuspenseAccountId = form.interestSuspenseAccountId;
     }
 
     if (form.advancedAccountingRules) {
