@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  Circle,
   Eye,
   EyeOff,
   Loader2,
@@ -32,11 +33,30 @@ function emptyCodeDigits() {
 }
 
 const passwordRequirements = [
-  "At least 12 characters",
-  "One uppercase letter",
-  "One lowercase letter",
-  "One number",
-  "One special character",
+  {
+    label: "At least 12 characters",
+    test: (value: string) => value.length >= 12,
+  },
+  {
+    label: "50 characters or fewer",
+    test: (value: string) => value.length > 0 && value.length <= 50,
+  },
+  {
+    label: "One uppercase letter",
+    test: (value: string) => /[A-Z]/.test(value),
+  },
+  {
+    label: "One lowercase letter",
+    test: (value: string) => /[a-z]/.test(value),
+  },
+  {
+    label: "One number",
+    test: (value: string) => /[0-9]/.test(value),
+  },
+  {
+    label: "One special character",
+    test: (value: string) => /[^\w\s]/.test(value),
+  },
 ];
 
 export default function ResetPasswordPage() {
@@ -55,6 +75,9 @@ export default function ResetPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const digitRefs = useRef<Array<HTMLInputElement | null>>([]);
   const code = codeDigits.join("");
+  const passwordRequirementScore = passwordRequirements.filter(({ test }) =>
+    test(password)
+  ).length;
 
   const callApi = async (path: string, body: Record<string, string>) => {
     const response = await fetch(path, {
@@ -597,11 +620,47 @@ export default function ResetPasswordPage() {
                   </div>
                 </div>
                 <div className="rounded-md border border-border bg-card/50 p-3 text-xs text-muted-foreground">
-                  <p className="mb-1 font-medium text-foreground">Password requirements</p>
-                  <ul className="list-disc space-y-1 pl-4">
-                    {passwordRequirements.map((requirement) => (
-                      <li key={requirement}>{requirement}</li>
-                    ))}
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="font-medium text-foreground">Password requirements</p>
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      {passwordRequirementScore}/{passwordRequirements.length} met
+                    </span>
+                  </div>
+                  <div
+                    className="mb-3 h-1.5 overflow-hidden rounded-full bg-muted"
+                    aria-hidden="true"
+                  >
+                    <div
+                      className="h-full rounded-full bg-green-500 transition-all duration-300"
+                      style={{
+                        width: `${
+                          (passwordRequirementScore / passwordRequirements.length) *
+                          100
+                        }%`,
+                      }}
+                    />
+                  </div>
+                  <ul className="space-y-1.5">
+                    {passwordRequirements.map(({ label, test }) => {
+                      const isMet = test(password);
+
+                      return (
+                        <li
+                          key={label}
+                          className={cn(
+                            "flex items-center gap-2 transition-colors duration-200",
+                            isMet ? "text-green-500" : "text-muted-foreground"
+                          )}
+                        >
+                          {isMet ? (
+                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          ) : (
+                            <Circle className="h-4 w-4 shrink-0" />
+                          )}
+                          <span>{label}</span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
                 <Button
