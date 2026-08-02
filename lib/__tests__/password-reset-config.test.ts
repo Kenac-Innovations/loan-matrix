@@ -51,9 +51,11 @@ test("password reset password policy rejects weak passwords", async () => {
 
   assert.equal(validatePassword("short").valid, false);
   assert.equal(
-    validatePassword("Strong-password-123!").valid,
+    validatePassword("Very-Strong-123!").valid,
     true
   );
+  assert.equal(validatePassword("Strong password-123!").valid, false);
+  assert.equal(validatePassword("Strong-password-123!!").valid, false);
 });
 
 test("login remember-me control remains commented out", async () => {

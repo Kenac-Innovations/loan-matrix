@@ -7,6 +7,7 @@ import {
   getTenantSelfPasswordResetConfig,
   type SelfPasswordResetChannel,
 } from "@/shared/types/tenant";
+import { validatePassword as validateSharedPassword } from "@/shared/password-policy";
 import {
   normalizeSmsPhoneNumber,
   sendEmail,
@@ -401,16 +402,7 @@ async function getActiveChallenge(tenantId: string, challengeId: string) {
 }
 
 export function validatePassword(password: string) {
-  const errors: string[] = [];
-
-  if (password.length < 12) errors.push("Password must be at least 12 characters long");
-  if (password.length > 50) errors.push("Password must not exceed 50 characters");
-  if (!/[A-Z]/.test(password)) errors.push("Password must contain an uppercase letter");
-  if (!/[a-z]/.test(password)) errors.push("Password must contain a lowercase letter");
-  if (!/[0-9]/.test(password)) errors.push("Password must contain a number");
-  if (!/[^\w\s]/.test(password)) errors.push("Password must contain a special character");
-
-  return { valid: errors.length === 0, errors };
+  return validateSharedPassword(password);
 }
 
 export async function requestPasswordReset(input: {
@@ -809,7 +801,31 @@ export async function completePasswordReset(input: {
       input.password
     );
   } catch (error) {
-    console.error("Fineract password reset failed:", error);
+    const fineractError = error as {
+      message?: unknown;
+      response?: {
+        status?: unknown;
+        data?: {
+          defaultUserMessage?: unknown;
+          errors?: Array<{ defaultUserMessage?: unknown }>;
+        };
+      };
+    };
+    const fineractValidationMessage = fineractError.response?.data?.errors
+      ?.map(({ defaultUserMessage }) => defaultUserMessage)
+      .filter((message): message is string => typeof message === "string")
+      .join("; ");
+
+    console.error("Fineract password reset failed", {
+      status: fineractError.response?.status ?? null,
+      message:
+        fineractValidationMessage ||
+        (typeof fineractError.response?.data?.defaultUserMessage === "string"
+          ? fineractError.response.data.defaultUserMessage
+          : typeof fineractError.message === "string"
+            ? fineractError.message
+            : "Unknown Fineract error"),
+    });
     await writePasswordResetLog({
       tenantId: input.tenantId,
       challengeId: challenge.id,

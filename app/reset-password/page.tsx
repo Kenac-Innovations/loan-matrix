@@ -24,6 +24,7 @@ import { Particles } from "@/components/magicui/particles";
 import { ThemeAwareLogo } from "@/components/ui/theme-aware-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
+import { PASSWORD_REQUIREMENTS } from "@/shared/password-policy";
 
 type ResetStep = "request" | "verify" | "complete" | "done";
 const PASSWORD_RESET_CODE_LENGTH = 6;
@@ -31,33 +32,6 @@ const PASSWORD_RESET_CODE_LENGTH = 6;
 function emptyCodeDigits() {
   return Array.from({ length: PASSWORD_RESET_CODE_LENGTH }, () => "");
 }
-
-const passwordRequirements = [
-  {
-    label: "At least 12 characters",
-    test: (value: string) => value.length >= 12,
-  },
-  {
-    label: "50 characters or fewer",
-    test: (value: string) => value.length > 0 && value.length <= 50,
-  },
-  {
-    label: "One uppercase letter",
-    test: (value: string) => /[A-Z]/.test(value),
-  },
-  {
-    label: "One lowercase letter",
-    test: (value: string) => /[a-z]/.test(value),
-  },
-  {
-    label: "One number",
-    test: (value: string) => /[0-9]/.test(value),
-  },
-  {
-    label: "One special character",
-    test: (value: string) => /[^\w\s]/.test(value),
-  },
-];
 
 export default function ResetPasswordPage() {
   const [step, setStep] = useState<ResetStep>("request");
@@ -75,11 +49,11 @@ export default function ResetPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const digitRefs = useRef<Array<HTMLInputElement | null>>([]);
   const code = codeDigits.join("");
-  const passwordRequirementScore = passwordRequirements.filter(({ test }) =>
+  const passwordRequirementScore = PASSWORD_REQUIREMENTS.filter(({ test }) =>
     test(password)
   ).length;
   const passwordMeetsRequirements =
-    passwordRequirementScore === passwordRequirements.length;
+    passwordRequirementScore === PASSWORD_REQUIREMENTS.length;
   const passwordsMatch =
     repeatPassword.length > 0 && password === repeatPassword;
 
@@ -630,7 +604,7 @@ export default function ResetPasswordPage() {
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <p className="font-medium text-foreground">Password requirements</p>
                     <span className="text-[11px] font-medium text-muted-foreground">
-                      {passwordRequirementScore}/{passwordRequirements.length} met
+                      {passwordRequirementScore}/{PASSWORD_REQUIREMENTS.length} met
                     </span>
                   </div>
                   <div
@@ -641,19 +615,19 @@ export default function ResetPasswordPage() {
                       className="h-full rounded-full bg-green-500 transition-all duration-300"
                       style={{
                         width: `${
-                          (passwordRequirementScore / passwordRequirements.length) *
+                          (passwordRequirementScore / PASSWORD_REQUIREMENTS.length) *
                           100
                         }%`,
                       }}
                     />
                   </div>
                   <ul className="space-y-1.5">
-                    {passwordRequirements.map(({ label, test }) => {
+                    {PASSWORD_REQUIREMENTS.map(({ key, label, test }) => {
                       const isMet = test(password);
 
                       return (
                         <li
-                          key={label}
+                          key={key}
                           className={cn(
                             "flex items-center gap-2 transition-colors duration-200",
                             isMet ? "text-green-500" : "text-muted-foreground"
