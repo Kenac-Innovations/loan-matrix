@@ -1437,6 +1437,26 @@ export class FineractAPIService {
     }
   }
 
+  async getUser(userId: number): Promise<any> {
+    const response: AxiosResponse<any> = await this.client.get(`/users/${userId}`);
+    return response.data;
+  }
+
+  async updateUserPassword(
+    userId: number,
+    password: string,
+    repeatPassword: string
+  ): Promise<any> {
+    const response: AxiosResponse<any> = await this.client.put(
+      `/users/${userId}`,
+      {
+        password,
+        repeatPassword,
+      }
+    );
+    return response.data;
+  }
+
   // Loan Officer Assignment
   async assignLoanOfficer(
     loanId: number,

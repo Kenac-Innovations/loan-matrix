@@ -54,7 +54,13 @@ export type FirstRepaymentDateStrategy =
 
 export type InterestRateDisplayMode = "annual" | "monthly";
 export type MfaChannel = "email" | "sms";
+export type SelfPasswordResetChannel = MfaChannel;
 export type AutoDisbursementDecision = "APPROVED" | "MANUAL_REVIEW" | "DECLINED";
+
+export interface SelfPasswordResetSettings {
+  enabled?: boolean;
+  notificationChannels?: SelfPasswordResetChannel[];
+}
 
 export interface FirstRepaymentDateConfig {
   strategy: FirstRepaymentDateStrategy;
@@ -96,6 +102,8 @@ export interface TenantUssdAutoLeadRule {
 export interface TenantSettings {
   theme: string;
   features: TenantFeatures;
+  /** Self-service password reset configuration. Missing settings are disabled. */
+  selfPasswordReset?: SelfPasswordResetSettings;
   /** How loan interest rates should be displayed in the UI and documents */
   loanTermsInterestRateDisplay?: InterestRateDisplayMode;
   /** Field-level auto-population controls for lead creation */
@@ -154,6 +162,42 @@ export function getTenantFeatures(
   return {
     ...DEFAULT_FEATURES,
     ...settings?.features,
+  };
+}
+
+const SELF_PASSWORD_RESET_CHANNELS: SelfPasswordResetChannel[] = [
+  "email",
+  "sms",
+];
+
+export function getTenantSelfPasswordResetConfig(settings: unknown): {
+  enabled: boolean;
+  notificationChannels: SelfPasswordResetChannel[];
+} {
+  const config =
+    settings && typeof settings === "object"
+      ? (settings as Record<string, unknown>)
+      : {};
+  const rawConfig =
+    config.selfPasswordReset && typeof config.selfPasswordReset === "object"
+      ? (config.selfPasswordReset as Record<string, unknown>)
+      : {};
+  const rawChannels = Array.isArray(rawConfig.notificationChannels)
+    ? rawConfig.notificationChannels
+    : [];
+
+  return {
+    enabled: rawConfig.enabled === true,
+    notificationChannels: Array.from(
+      new Set(
+        rawChannels.filter(
+          (channel): channel is SelfPasswordResetChannel =>
+            SELF_PASSWORD_RESET_CHANNELS.includes(
+              channel as SelfPasswordResetChannel
+            )
+        )
+      )
+    ),
   };
 }
 
