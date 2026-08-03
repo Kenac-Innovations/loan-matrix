@@ -14,7 +14,12 @@ export async function GET(request: NextRequest) {
     const bucket = normalizeRecoveryBucket(searchParams.get("bucket"));
     const page = parsePositiveInt(searchParams.get("page"), 1, 100000);
     const pageSize = parsePositiveInt(searchParams.get("pageSize"), 25, 100);
-    const data = await getRecoveryDashboardData(bucket, { page, pageSize });
+    const clientName = searchParams.get("clientName")?.trim().slice(0, 100) || undefined;
+    const data = await getRecoveryDashboardData(bucket, {
+      page,
+      pageSize,
+      clientName,
+    });
 
     return NextResponse.json(data, {
       headers: { "Cache-Control": "no-store" },
