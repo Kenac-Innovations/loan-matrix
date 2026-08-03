@@ -5,6 +5,10 @@ import { formatFineractDate } from "@/lib/fineract-savings-service";
 import { resolveLoanNotificationTarget } from "@/lib/loan-notification-target";
 import { sendSms } from "@/lib/notification-service";
 import { getTenantBySlug } from "@/lib/tenant-service";
+import {
+  filterRecoveryRowsByClientName,
+  normalizeRecoveryClientNameSearch,
+} from "@/lib/recovery-client-name-search";
 
 export const RECOVERY_COURT_CASE_TABLE = "lm_loan_court_case";
 export const RECOVERY_COURT_PROCEEDING_TABLE = "lm_loan_court_proceeding";
@@ -18,6 +22,8 @@ export const RECOVERY_BRANCH_REPORT = "LM_RECOVERY_BRANCH_PERFORMANCE";
 
 const DATE_FORMAT = "dd MMMM yyyy";
 const LOCALE = "en";
+const RECOVERY_SEARCH_PAGE_SIZE = 1000;
+const MAX_RECOVERY_SEARCH_ROWS = 20000;
 
 export type RecoveryBucket = "30" | "60" | "90" | "npa" | "all";
 
@@ -139,6 +145,7 @@ export type RecoveryDashboardData = {
 export type RecoveryDashboardOptions = {
   page?: number;
   pageSize?: number;
+  clientName?: string;
 };
 
 export type CourtCaseInput = {
@@ -584,11 +591,58 @@ async function runRecoverySummaryReport(): Promise<RecoveryDashboardSummary> {
   return summaryFromReport(parseReportRows(summaryData)[0], branchRows);
 }
 
+type RecoveryReportPage = {
+  rows: RecoveryLoanRow[];
+  hasNextPage: boolean;
+};
+
+async function searchRecoveryReportRows(
+  getPage: (pagination: { page: number; pageSize: number }) => Promise<RecoveryReportPage>,
+  clientName: string,
+  pagination: { page: number; pageSize: number }
+): Promise<RecoveryReportPage> {
+  const allRows: RecoveryLoanRow[] = [];
+
+  for (
+    let page = 1;
+    allRows.length < MAX_RECOVERY_SEARCH_ROWS;
+    page += 1
+  ) {
+    const pageResult = await getPage({
+      page,
+      pageSize: RECOVERY_SEARCH_PAGE_SIZE,
+    });
+    allRows.push(...pageResult.rows);
+
+    if (!pageResult.hasNextPage) {
+      break;
+    }
+  }
+
+  const matchingRows = filterRecoveryRowsByClientName(allRows, clientName);
+  const offset = (pagination.page - 1) * pagination.pageSize;
+
+  return {
+    rows: matchingRows.slice(offset, offset + pagination.pageSize),
+    hasNextPage: offset + pagination.pageSize < matchingRows.length,
+  };
+}
+
 async function runRecoveryArrearsReport(
   daysPastDue: number,
   maxDaysPastDue: number | undefined,
-  pagination: { page: number; pageSize: number }
+  pagination: { page: number; pageSize: number },
+  clientName?: string
 ): Promise<{ rows: RecoveryLoanRow[]; hasNextPage: boolean }> {
+  if (normalizeRecoveryClientNameSearch(clientName)) {
+    return searchRecoveryReportRows(
+      (searchPagination) =>
+        runRecoveryArrearsReport(daysPastDue, maxDaysPastDue, searchPagination),
+      clientName || "",
+      pagination
+    );
+  }
+
   const requestedLimit = pagination.pageSize + 1;
   const offset = (pagination.page - 1) * pagination.pageSize;
   const params = new URLSearchParams({
@@ -613,8 +667,17 @@ async function runRecoveryArrearsReport(
 }
 
 async function runRecoveryNpaReport(
-  pagination: { page: number; pageSize: number }
+  pagination: { page: number; pageSize: number },
+  clientName?: string
 ): Promise<{ rows: RecoveryLoanRow[]; hasNextPage: boolean }> {
+  if (normalizeRecoveryClientNameSearch(clientName)) {
+    return searchRecoveryReportRows(
+      (searchPagination) => runRecoveryNpaReport(searchPagination),
+      clientName || "",
+      pagination
+    );
+  }
+
   const requestedLimit = pagination.pageSize + 1;
   const offset = (pagination.page - 1) * pagination.pageSize;
   const params = new URLSearchParams({
@@ -645,7 +708,8 @@ function getBucketRange(bucket: RecoveryBucket): { min: number; max?: number } {
 
 async function getFallbackRecoveryDashboardData(
   bucket: RecoveryBucket,
-  pagination: { page: number; pageSize: number }
+  pagination: { page: number; pageSize: number },
+  clientName?: string
 ): Promise<RecoveryDashboardData> {
   const loans = await fetchAllRecoveryLoans();
   const rows = loans.map(toLoanRow).filter((row): row is RecoveryLoanRow => Boolean(row));
@@ -658,7 +722,9 @@ async function getFallbackRecoveryDashboardData(
         ? rows.filter((row) => row.isNpa)
         : rows.filter((row) => row.bucket === bucket);
 
-  const sortedRows = filteredRows.sort((a, b) => b.daysPastDue - a.daysPastDue || b.overdueAmount - a.overdueAmount);
+  const sortedRows = filterRecoveryRowsByClientName(filteredRows, clientName).sort(
+    (a, b) => b.daysPastDue - a.daysPastDue || b.overdueAmount - a.overdueAmount
+  );
   const offset = (pagination.page - 1) * pagination.pageSize;
   const pagedRows = sortedRows.slice(offset, offset + pagination.pageSize);
 
@@ -681,6 +747,7 @@ export async function getRecoveryDashboardData(
   bucket: RecoveryBucket,
   options: RecoveryDashboardOptions = {}
 ): Promise<RecoveryDashboardData> {
+  const clientName = options.clientName?.trim().slice(0, 100) || "";
   const pagination = {
     page: toPositiveInteger(options.page, 1),
     pageSize: toPositiveInteger(options.pageSize, 25, 100),
@@ -691,8 +758,13 @@ export async function getRecoveryDashboardData(
     const [summary, pageResult] = await Promise.all([
       runRecoverySummaryReport(),
       bucket === "npa"
-        ? runRecoveryNpaReport(pagination)
-        : runRecoveryArrearsReport(bucket === "all" ? 0 : min, bucket === "all" ? undefined : max, pagination),
+        ? runRecoveryNpaReport(pagination, clientName)
+        : runRecoveryArrearsReport(
+            bucket === "all" ? 0 : min,
+            bucket === "all" ? undefined : max,
+            pagination,
+            clientName
+          ),
     ]);
     const sortedRows = pageResult.rows.sort((a, b) => b.daysPastDue - a.daysPastDue || b.overdueAmount - a.overdueAmount);
 
@@ -711,7 +783,7 @@ export async function getRecoveryDashboardData(
     };
   } catch (error) {
     console.warn("Recovery reports unavailable, falling back to loan list:", error);
-    return getFallbackRecoveryDashboardData(bucket, pagination);
+    return getFallbackRecoveryDashboardData(bucket, pagination, clientName);
   }
 }
 
