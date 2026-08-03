@@ -38,6 +38,8 @@ model Tenant {
   userLoginBlockEvents   UserLoginBlockEvent[]
   ussdPinResetLogs       UssdPinResetLog[]
   mfaChallenges          MfaChallenge[]
+  passwordResetChallenges PasswordResetChallenge[]
+  passwordResetLogs      PasswordResetLog[]
   validationRules        ValidationRule[]
   receiptRanges          ReceiptRange[]
   repaymentCashLinks     RepaymentCashLink[]
@@ -1303,6 +1305,56 @@ model MfaChallenge {
   @@index([tenantId, expiresAt])
   @@index([tenantId, consumedAt])
   @@index([tenantId, invalidatedAt])
+}
+
+model PasswordResetChallenge {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  fineractUserId       Int
+  username             String
+  codeHash             String
+  verificationTokenHash String?
+  configuredChannels   String[] @default([])
+  deliveredChannels    String[] @default([])
+  maskedDestinations   String[] @default([])
+  attempts             Int      @default(0)
+  maxAttempts          Int      @default(5)
+  resendCount          Int      @default(0)
+  lastSentAt           DateTime @default(now())
+  verifiedAt           DateTime?
+  consumedAt           DateTime?
+  invalidatedAt        DateTime?
+  expiresAt            DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, username])
+  @@index([tenantId, fineractUserId])
+  @@index([tenantId, expiresAt])
+  @@index([tenantId, consumedAt])
+  @@index([tenantId, invalidatedAt])
+}
+
+model PasswordResetLog {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  challengeId        String?
+  fineractUserId     Int?
+  username           String
+  event              String
+  configuredChannels String[] @default([])
+  deliveredChannels  String[] @default([])
+  maskedDestinations String[] @default([])
+  failureReason      String?  @db.Text
+  requestIp          String?
+  userAgent          String?  @db.Text
+  createdAt          DateTime @default(now())
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, username, createdAt])
+  @@index([tenantId, event, createdAt])
 }
 
 // User Alert - system alerts shown in notifications
