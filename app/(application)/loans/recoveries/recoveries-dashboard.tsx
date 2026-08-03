@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   BriefcaseBusiness,
@@ -18,6 +18,7 @@ import {
   MessageSquarePlus,
   RefreshCw,
   Scale,
+  Search,
   ShieldAlert,
   StickyNote,
 } from "lucide-react";
@@ -361,7 +362,7 @@ function RecoveryStatsSkeleton() {
 
 export function RecoveriesDashboard() {
   const { currencyCode } = useCurrency();
-  const dashboardCacheRef = useRef<Partial<Record<BucketTab, Record<number, RecoveryDashboardData>>>>({});
+  const dashboardCacheRef = useRef<Record<string, RecoveryDashboardData>>({});
   const courtRowsCacheRef = useRef<CourtReportRow[] | null>(null);
   const [activeTab, setActiveTab] = useState<BucketTab>("30");
   const [dashboard, setDashboard] = useState<RecoveryDashboardData | null>(null);
@@ -372,6 +373,7 @@ export function RecoveriesDashboard() {
   const [caseProceedingsData, setCaseProceedingsData] = useState<LoanCourtData | null>(null);
   const [caseProceedingsLoading, setCaseProceedingsLoading] = useState(false);
   const [pageByTab, setPageByTab] = useState<Partial<Record<BucketTab, number>>>({});
+  const [clientNameSearch, setClientNameSearch] = useState("");
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [noteTarget, setNoteTarget] = useState<RecoveryLoanRow | null>(null);
   const [noteText, setNoteText] = useState("");
@@ -384,12 +386,20 @@ export function RecoveriesDashboard() {
   const [proceedingTarget, setProceedingTarget] = useState<RecoveryLoanRow | null>(null);
   const [proceedingForm, setProceedingForm] = useState<ProceedingForm>(emptyProceedingForm);
 
+  const deferredClientNameSearch = useDeferredValue(clientNameSearch);
   const activePage = pageByTab[activeTab] ?? 1;
   const courtCaseFormValid = isCourtCaseFormValid(courtCaseForm);
   const proceedingFormValid = isProceedingFormValid(proceedingForm);
 
-  const fetchDashboard = useCallback(async (tab: BucketTab, page: number, force = false) => {
-    const cached = dashboardCacheRef.current[tab]?.[page];
+  const fetchDashboard = useCallback(async (
+    tab: BucketTab,
+    page: number,
+    clientNameSearch = "",
+    force = false
+  ) => {
+    const normalizedClientName = clientNameSearch.trim().toLocaleLowerCase();
+    const cacheKey = `${tab}:${page}:${normalizedClientName}`;
+    const cached = dashboardCacheRef.current[cacheKey];
     if (!force && cached) {
       setDashboard(cached);
       setLoading(false);
@@ -404,19 +414,16 @@ export function RecoveriesDashboard() {
         page: String(page),
         pageSize: String(PAGE_SIZE),
       });
+      if (clientNameSearch.trim()) {
+        params.set("clientName", clientNameSearch);
+      }
       const response = await fetch(`/api/recoveries/arrears?${params.toString()}`, {
         cache: "no-store",
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Failed to load recovery data");
       setDashboard(result);
-      dashboardCacheRef.current = {
-        ...dashboardCacheRef.current,
-        [tab]: {
-          ...(dashboardCacheRef.current[tab] || {}),
-          [page]: result,
-        },
-      };
+      dashboardCacheRef.current[cacheKey] = result;
     } catch (error) {
       toast({
         title: "Recoveries",
@@ -461,8 +468,8 @@ export function RecoveriesDashboard() {
       fetchCourtRows();
       return;
     }
-    fetchDashboard(activeTab, activePage);
-  }, [activePage, activeTab, fetchCourtRows, fetchDashboard]);
+    fetchDashboard(activeTab, activePage, deferredClientNameSearch);
+  }, [activePage, activeTab, deferredClientNameSearch, fetchCourtRows, fetchDashboard]);
 
   const rows = useMemo(() => dashboard?.rows || [], [dashboard]);
   const summary = dashboard?.summary;
@@ -479,8 +486,8 @@ export function RecoveriesDashboard() {
       fetchCourtRows(true);
       return;
     }
-    fetchDashboard(activeTab, activePage, true);
-  }, [activePage, activeTab, fetchCourtRows, fetchDashboard]);
+    fetchDashboard(activeTab, activePage, deferredClientNameSearch, true);
+  }, [activePage, activeTab, deferredClientNameSearch, fetchCourtRows, fetchDashboard]);
 
   const setActiveTabPage = useCallback((page: number) => {
     setPageByTab((current) => ({
@@ -488,6 +495,8 @@ export function RecoveriesDashboard() {
       [activeTab]: Math.max(1, page),
     }));
   }, [activeTab]);
+
+  const canSearchRecoveryClients = activeTab !== "court" && activeTab !== "performance";
 
   const loadCourtCaseData = useCallback(async (row: RecoveryLoanRow) => {
     setCourtCaseLoading(true);
@@ -748,6 +757,22 @@ export function RecoveriesDashboard() {
               ))}
             </TabsList>
           </Tabs>
+
+          {canSearchRecoveryClients && (
+            <div className="relative mt-4 max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={clientNameSearch}
+                onChange={(event) => {
+                  setClientNameSearch(event.target.value);
+                  setPageByTab({});
+                }}
+                placeholder="Search by client name"
+                aria-label="Search recovery queue by client name"
+                className="pl-9"
+              />
+            </div>
+          )}
 
           <div className="mt-4">
             {activeTab === "court" ? (
