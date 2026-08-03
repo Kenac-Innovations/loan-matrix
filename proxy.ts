@@ -5,6 +5,7 @@ import { tenantMiddleware } from "./lib/tenant-middleware";
 
 const PUBLIC_PREFIXES = [
   "/auth",
+  "/reset-password",
   "/_next",
   "/static",
 ];

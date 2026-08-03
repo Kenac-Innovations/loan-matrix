@@ -562,6 +562,46 @@ export function StepAccounting({ form, template, onChange }: StepAccountingProps
                     accounts={assetAccounts}
                     onChange={(v) => onChange({ receivablePenaltyAccountId: v })}
                   />
+                  <div className="sm:col-span-2 space-y-4">
+                    <div
+                      className="flex cursor-pointer select-none items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/40"
+                      onClick={() =>
+                        onChange({
+                          enableInterestSuspenseAccounting: !form.enableInterestSuspenseAccounting,
+                        })
+                      }
+                    >
+                      <div>
+                        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                          Interest Suspense Accounting
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          While a loan is non-performing, credit accrued interest to a suspense
+                          account instead of income until it is recovered or written off.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={form.enableInterestSuspenseAccounting}
+                        onCheckedChange={(v) =>
+                          onChange({ enableInterestSuspenseAccounting: v })
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+
+                    {form.enableInterestSuspenseAccounting && (
+                      <div className="rounded-lg border bg-muted/20 p-4">
+                        <GLAccountSelect
+                          id="interestSuspenseAccountId"
+                          label="Interest Suspense"
+                          required
+                          value={form.interestSuspenseAccountId}
+                          accounts={assetAccounts}
+                          onChange={(v) => onChange({ interestSuspenseAccountId: v })}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
