@@ -4,19 +4,35 @@ export type ReportDateValue =
   | string
   | number
   | Date
-  | [number, number, number]
+  | number[]
   | null
   | undefined;
 
-const ISO_DATE_ONLY_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
-const DAY_FIRST_DATE_REGEX = /^(\d{2})[/-](\d{2})[/-](\d{4})$/;
+const ISO_DATE_ONLY_REGEX = /^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/;
+const DAY_FIRST_DATE_REGEX = /^(\d{2})[/-](\d{2})[/-](\d{4})(?:[ T].*)?$/;
+
+export function isReportDateColumn(
+  columnType?: string | null,
+  columnDisplayType?: string | null
+): boolean {
+  const normalizedDisplayType = columnDisplayType?.toUpperCase();
+  const normalizedColumnType = columnType?.toUpperCase();
+
+  return (
+    normalizedDisplayType === "DATE" ||
+    normalizedDisplayType === "DATETIME" ||
+    normalizedColumnType === "DATE" ||
+    normalizedColumnType === "DATETIME" ||
+    normalizedColumnType === "TIMESTAMP"
+  );
+}
 
 export function isReportDateArray(
   value: unknown
-): value is [number, number, number] {
+): value is number[] {
   return (
     Array.isArray(value) &&
-    value.length === 3 &&
+    value.length >= 3 &&
     value.every((part) => typeof part === "number")
   );
 }
@@ -50,8 +66,8 @@ export function parseReportDateValue(value: ReportDateValue): Date | null {
   }
 
   if (isReportDateArray(value)) {
-    const [year, month, day] = value;
-    return new Date(year, month - 1, day);
+    const [year, month, day, hour = 0, minute = 0, second = 0] = value;
+    return new Date(year, month - 1, day, hour, minute, second);
   }
 
   if (typeof value === "string") {

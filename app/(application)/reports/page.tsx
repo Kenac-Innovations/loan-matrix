@@ -63,6 +63,7 @@ import {
 import { ReportDateParameterInput } from "./components/report-date-parameter-input";
 import {
   formatReportDateValue,
+  isReportDateColumn,
   isReportDateLike,
 } from "./components/report-date-utils";
 import { ReportsDataTable } from "./components/reports-data-table";
@@ -114,6 +115,8 @@ interface ReportData {
     row: any[];
   }>;
 }
+
+type ReportColumnHeader = ReportData["columnHeaders"][number];
 
 function safeText(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;
@@ -471,9 +474,11 @@ export default function ReportsPage() {
     const rows = reportData.data
       .map((item) =>
         item.row
-          .map((cell: any) => {
+          .map((cell: any, cellIndex: number) => {
+            const header = reportData.columnHeaders[cellIndex];
             if (cell === null || cell === undefined) return "";
-            const str = isReportDateLike(cell)
+            const str =
+              isDateColumn(header) || isReportDateLike(cell)
               ? formatReportDateValue(cell, "")
               : String(cell);
             return str.includes(",") || str.includes('"') || str.includes("\n")
@@ -495,6 +500,9 @@ export default function ReportsPage() {
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  const isDateColumn = (header?: ReportColumnHeader) =>
+    isReportDateColumn(header?.columnType, header?.columnDisplayType);
 
   const handleParameterChange = async (
     paramVariable: string,
@@ -632,12 +640,12 @@ export default function ReportsPage() {
     }
   };
 
-  const formatCellValue = (cell: any) => {
+  const formatCellValue = (cell: any, header?: ReportColumnHeader) => {
     if (cell === null || cell === undefined) {
       return <span className="text-muted-foreground">-</span>;
     }
 
-    if (isReportDateLike(cell)) {
+    if (isDateColumn(header) || isReportDateLike(cell)) {
       return formatReportDateValue(cell, String(cell));
     }
 

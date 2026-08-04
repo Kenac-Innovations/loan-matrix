@@ -44,6 +44,7 @@ import { isOmamaTenantHostname } from "@/lib/omama-tenant";
 import { ReportDateParameterInput } from "../components/report-date-parameter-input";
 import {
   formatReportDateValue,
+  isReportDateColumn,
   isReportDateLike,
 } from "../components/report-date-utils";
 
@@ -79,6 +80,8 @@ interface ReportData {
     row: any[];
   }>;
 }
+
+type ReportColumnHeader = ReportData["columnHeaders"][number];
 
 function safeText(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;
@@ -408,9 +411,11 @@ export default function ReportDetailPage() {
     const rows = reportData.data
       .map((item) =>
         visibleIndices.map((i) => {
+            const header = reportData.columnHeaders[i];
             const cell = item.row[i];
             if (cell === null || cell === undefined) return "";
-            const str = isReportDateLike(cell)
+            const str =
+              isDateColumn(header) || isReportDateLike(cell)
               ? formatReportDateValue(cell, "")
               : String(cell);
             return str.includes(",") || str.includes('"') || str.includes("\n")
@@ -444,9 +449,10 @@ export default function ReportDetailPage() {
     const rows = reportData.data.map((item) => ({
       row_type: rowTypeIndex >= 0 ? (item.row[rowTypeIndex] as string | null) : null,
       cells: visibleIndices.map((i) => {
+        const header = reportData.columnHeaders[i];
         const cell = item.row[i];
         if (cell === null || cell === undefined) return null;
-        if (isReportDateLike(cell)) {
+        if (isDateColumn(header) || isReportDateLike(cell)) {
           return formatReportDateValue(cell, "");
         }
         return cell;
@@ -546,6 +552,9 @@ export default function ReportDetailPage() {
     setParameters(newParams);
   };
 
+  const isDateColumn = (header?: ReportColumnHeader) =>
+    isReportDateColumn(header?.columnType, header?.columnDisplayType);
+
   const renderParameterInput = (param: ReportParameter) => {
     const value = parameters[param.parameter_variable] || "";
     const options = parameterOptions[param.parameter_name] || [];
@@ -627,12 +636,12 @@ export default function ReportDetailPage() {
     }
   };
 
-  const formatCellValue = (cell: any) => {
+  const formatCellValue = (cell: any, header?: ReportColumnHeader) => {
     if (cell === null || cell === undefined) {
       return <span className="text-muted-foreground">-</span>;
     }
 
-    if (isReportDateLike(cell)) {
+    if (isDateColumn(header) || isReportDateLike(cell)) {
       return formatReportDateValue(cell, String(cell));
     }
 
@@ -849,13 +858,14 @@ export default function ReportDetailPage() {
                         return (
                           <TableRow key={rowIndex}>
                             {item.row.map((cell, cellIndex) => {
-                              if (reportData.columnHeaders[cellIndex]?.columnName === "row_type") return null;
+                              const header = reportData.columnHeaders[cellIndex];
+                              if (header?.columnName === "row_type") return null;
                               return (
                                 <TableCell
                                   key={cellIndex}
                                   className={`border-r border-border last:border-r-0${isBold ? " font-bold" : ""}`}
                                 >
-                                  {formatCellValue(cell)}
+                                  {formatCellValue(cell, header)}
                                 </TableCell>
                               );
                             })}
