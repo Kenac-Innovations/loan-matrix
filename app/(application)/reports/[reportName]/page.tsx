@@ -41,6 +41,11 @@ import {
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { isOmamaTenantHostname } from "@/lib/omama-tenant";
+import { ReportDateParameterInput } from "../components/report-date-parameter-input";
+import {
+  formatReportDateValue,
+  isReportDateLike,
+} from "../components/report-date-utils";
 
 interface ReportParameter {
   parameter_name: string;
@@ -405,17 +410,9 @@ export default function ReportDetailPage() {
         visibleIndices.map((i) => {
             const cell = item.row[i];
             if (cell === null || cell === undefined) return "";
-            if (
-              Array.isArray(cell) &&
-              cell.length === 3 &&
-              typeof cell[0] === "number"
-            ) {
-              const [year, month, day] = cell;
-              return `${year}-${month.toString().padStart(2, "0")}-${day
-                .toString()
-                .padStart(2, "0")}`;
-            }
-            const str = String(cell);
+            const str = isReportDateLike(cell)
+              ? formatReportDateValue(cell, "")
+              : String(cell);
             return str.includes(",") || str.includes('"') || str.includes("\n")
               ? `"${str.replace(/"/g, '""')}"`
               : str;
@@ -449,9 +446,8 @@ export default function ReportDetailPage() {
       cells: visibleIndices.map((i) => {
         const cell = item.row[i];
         if (cell === null || cell === undefined) return null;
-        if (Array.isArray(cell) && cell.length === 3 && typeof cell[0] === "number") {
-          const [year, month, day] = cell;
-          return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        if (isReportDateLike(cell)) {
+          return formatReportDateValue(cell, "");
         }
         return cell;
       }),
@@ -583,12 +579,12 @@ export default function ReportDetailPage() {
 
       case "date":
         return (
-          <Input
-            type="date"
+          <ReportDateParameterInput
             value={value}
-            onChange={(e) =>
-              handleParameterChange(param.parameter_variable, e.target.value)
+            onChange={(nextValue) =>
+              handleParameterChange(param.parameter_variable, nextValue)
             }
+            placeholder={`Select ${displayLabel}`}
           />
         );
 
@@ -636,15 +632,8 @@ export default function ReportDetailPage() {
       return <span className="text-muted-foreground">-</span>;
     }
 
-    if (
-      Array.isArray(cell) &&
-      cell.length === 3 &&
-      typeof cell[0] === "number"
-    ) {
-      const [year, month, day] = cell;
-      return `${year}-${month.toString().padStart(2, "0")}-${day
-        .toString()
-        .padStart(2, "0")}`;
+    if (isReportDateLike(cell)) {
+      return formatReportDateValue(cell, String(cell));
     }
 
     return String(cell);

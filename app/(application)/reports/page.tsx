@@ -60,6 +60,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ReportDateParameterInput } from "./components/report-date-parameter-input";
+import {
+  formatReportDateValue,
+  isReportDateLike,
+} from "./components/report-date-utils";
 import { ReportsDataTable } from "./components/reports-data-table";
 
 interface FineractReport {
@@ -468,17 +473,9 @@ export default function ReportsPage() {
         item.row
           .map((cell: any) => {
             if (cell === null || cell === undefined) return "";
-            if (
-              Array.isArray(cell) &&
-              cell.length === 3 &&
-              typeof cell[0] === "number"
-            ) {
-              const [year, month, day] = cell;
-              return `${year}-${month.toString().padStart(2, "0")}-${day
-                .toString()
-                .padStart(2, "0")}`;
-            }
-            const str = String(cell);
+            const str = isReportDateLike(cell)
+              ? formatReportDateValue(cell, "")
+              : String(cell);
             return str.includes(",") || str.includes('"') || str.includes("\n")
               ? `"${str.replace(/"/g, '""')}"`
               : str;
@@ -600,12 +597,12 @@ export default function ReportsPage() {
 
       case "date":
         return (
-          <Input
-            type="date"
+          <ReportDateParameterInput
             value={value}
-            onChange={(e) =>
-              handleParameterChange(param.parameter_variable, e.target.value)
+            onChange={(nextValue) =>
+              handleParameterChange(param.parameter_variable, nextValue)
             }
+            placeholder={`Select ${displayLabel}`}
           />
         );
 
@@ -640,15 +637,8 @@ export default function ReportsPage() {
       return <span className="text-muted-foreground">-</span>;
     }
 
-    if (
-      Array.isArray(cell) &&
-      cell.length === 3 &&
-      typeof cell[0] === "number"
-    ) {
-      const [year, month, day] = cell;
-      return `${year}-${month.toString().padStart(2, "0")}-${day
-        .toString()
-        .padStart(2, "0")}`;
+    if (isReportDateLike(cell)) {
+      return formatReportDateValue(cell, String(cell));
     }
 
     return String(cell);
