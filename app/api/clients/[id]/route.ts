@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
-import { hasPermissionServer } from "@/lib/authorization";
+import {
+  hasPermissionServer,
+  hasSuperAdminServer,
+} from "@/lib/authorization";
+import {
+  isSensitiveClientEditRestrictionEnabled,
+  stripRestrictedClientEditFields,
+} from "@/lib/client-edit-restrictions";
 import {
   formatMobileForFineract,
   resolveCountryDialCodeForPhone,
@@ -103,9 +110,21 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid client ID" }, { status: 400 });
     }
 
+    const [tenant, isSuperAdmin] = await Promise.all([
+      getTenantFromHeaders(),
+      hasSuperAdminServer(),
+    ]);
+    const restrictSensitiveFields =
+      isSensitiveClientEditRestrictionEnabled(tenant?.settings) &&
+      !isSuperAdmin;
+
     const body = await request.json();
-    const outboundBody =
+    let outboundBody =
       typeof body === "object" && body !== null ? { ...body } : body;
+
+    if (restrictSensitiveFields) {
+      outboundBody = stripRestrictedClientEditFields(outboundBody);
+    }
 
     let ussdPhoneSyncWarning: { status: string; message: string } | null =
       null;
@@ -142,7 +161,6 @@ export async function PUT(
           normalizeUssdPhoneNumber(formattedMobileNo);
 
       if (phoneNumberChanged) {
-        const tenant = await getTenantFromHeaders();
         const ussdServiceTenantId = tenant?.ussdServiceTenantId?.trim();
 
         if (ussdServiceTenantId) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -120,6 +120,13 @@ const FEATURE_CONFIGS: FeatureConfig[] = [
       "On the loan repayment modal, restrict non-exempt users to cash repayments and auto-fill their teller/cashier from their cashier session, blocking submission if they aren't linked to a cashier. Individual users can be exempted from this restriction on the Users page.",
     tag: "New",
   },
+  {
+    key: "restrictSensitiveClientEditFieldsToSuperAdmin",
+    label: "Restrict Sensitive Client Fields",
+    description:
+      "When enabled, only SUPER_ADMIN users can edit sensitive client fields such as staff assignment, mobile number, submitted date, and activation date.",
+    tag: "New",
+  },
 ];
 
 export default function FeaturesSettingsPage() {
@@ -139,22 +146,32 @@ export default function FeaturesSettingsPage() {
   const [collectionReportsStatus, setCollectionReportsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [collectionReportsError, setCollectionReportsError] = useState<string | null>(null);
 
-  const fetchFeatures = useCallback(async () => {
-    try {
-      const res = await fetch("/api/tenant/features");
-      if (!res.ok) throw new Error("Failed to load features");
-      const data = await res.json();
-      setFeatures(data.features);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchFeatures();
-  }, [fetchFeatures]);
+    let isActive = true;
+
+    async function loadFeatures() {
+      try {
+        const res = await fetch("/api/tenant/features");
+        if (!res.ok) throw new Error("Failed to load features");
+        const data = await res.json();
+        if (!isActive) return;
+        setFeatures(data.features);
+      } catch (err) {
+        if (!isActive) return;
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadFeatures();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const handleToggle = async (key: keyof TenantFeatures, value: boolean) => {
     if (!features) return;
