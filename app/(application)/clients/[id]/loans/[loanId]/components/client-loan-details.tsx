@@ -91,6 +91,81 @@ type LoanDocumentDownloadItem = {
   name?: string;
 };
 
+type LoanChargeRecord = {
+  id: number;
+  name: string;
+  amount?: number;
+  amountOrPercentage?: number;
+  amountPaid?: number;
+  amountWaived?: number;
+  amountOutstanding?: number;
+  dueDate?: string | number[];
+  paid?: boolean;
+  waived?: boolean;
+  chargeTimeType?: {
+    value?: string;
+  };
+  chargeCalculationType?: {
+    value?: string;
+  };
+  chargeType?: {
+    value?: string;
+  };
+  currency?: {
+    code?: string;
+    displayLabel?: string;
+    displaySymbol?: string;
+  };
+};
+
+function getFineractActionErrorMessage(
+  errorData: any,
+  fallbackMessage: string
+): string {
+  if (!errorData || typeof errorData !== "object") {
+    return fallbackMessage;
+  }
+
+  return (
+    errorData.defaultUserMessage ||
+    errorData.error ||
+    errorData.errors?.[0]?.defaultUserMessage ||
+    errorData.errors?.[0]?.message ||
+    fallbackMessage
+  );
+}
+
+function canEditLoanCharge(
+  loan: FineractLoan | null,
+  _charge: LoanChargeRecord
+): boolean {
+  if (!loan) {
+    return false;
+  }
+
+  if (loan.status?.pendingApproval) {
+    return true;
+  }
+
+  return loan.status?.active === true;
+}
+
+function canWaiveLoanCharge(
+  loan: FineractLoan | null,
+  charge: LoanChargeRecord
+): boolean {
+  if (!loan?.status?.active) {
+    return false;
+  }
+
+  const isPaid = charge.paid === true;
+  const isWaived =
+    charge.waived === true || Number(charge.amountWaived ?? 0) > 0;
+  const isDisbursementCharge = charge.chargeTimeType?.value === "Disbursement";
+
+  return !isPaid && !isWaived && !isDisbursementCharge;
+}
+
 const getLoanSequenceSortTime = (loan: ClientLoanSequenceItem): number => {
   const candidateDates = [
     loan.timeline?.submittedOnDate,
@@ -234,6 +309,15 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const [chargeForm, setChargeForm] = useState({
     chargeId: '',
     amount: '',
+  });
+  const [showEditChargeModal, setShowEditChargeModal] = useState(false);
+  const [showWaiveChargeModal, setShowWaiveChargeModal] = useState(false);
+  const [selectedLoanCharge, setSelectedLoanCharge] =
+    useState<LoanChargeRecord | null>(null);
+  const [isSubmittingChargeEdit, setIsSubmittingChargeEdit] = useState(false);
+  const [isSubmittingChargeWaive, setIsSubmittingChargeWaive] = useState(false);
+  const [editChargeForm, setEditChargeForm] = useState({
+    amount: "",
   });
 
   // Foreclosure Modal State
@@ -2564,11 +2648,12 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
       toast({
         title: "Success",
         description: "Loan charge added successfully",
+        variant: "success",
       });
 
       setShowAddChargeModal(false);
       setChargeForm({ chargeId: '', amount: '' });
-      // Refresh loan data if needed
+      await fetchLoanData();
     } catch (error: any) {
       console.error('Error adding loan charge:', error);
       toast({
@@ -2584,6 +2669,166 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
   const openAddChargeModal = () => {
     setShowAddChargeModal(true);
     fetchChargeTemplate();
+  };
+
+  const resetLoanChargeActionState = () => {
+    setSelectedLoanCharge(null);
+    setEditChargeForm({ amount: "" });
+  };
+
+  const openEditChargeModal = (charge: LoanChargeRecord) => {
+    setSelectedLoanCharge(charge);
+    setEditChargeForm({
+      amount: String(
+        charge.amount ?? charge.amountOrPercentage ?? charge.amountOutstanding ?? ""
+      ),
+    });
+    setShowEditChargeModal(true);
+  };
+
+  const openWaiveChargeModal = (charge: LoanChargeRecord) => {
+    setSelectedLoanCharge(charge);
+    setShowWaiveChargeModal(true);
+  };
+
+  const handleEditChargeModalChange = (open: boolean) => {
+    if (isSubmittingChargeEdit) {
+      return;
+    }
+
+    setShowEditChargeModal(open);
+
+    if (!open) {
+      resetLoanChargeActionState();
+    }
+  };
+
+  const handleWaiveChargeModalChange = (open: boolean) => {
+    if (isSubmittingChargeWaive) {
+      return;
+    }
+
+    setShowWaiveChargeModal(open);
+
+    if (!open) {
+      resetLoanChargeActionState();
+    }
+  };
+
+  const handleSubmitEditCharge = async () => {
+    if (!selectedLoanCharge?.id || isSubmittingChargeEdit) {
+      return;
+    }
+
+    const amount = Number.parseFloat(editChargeForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Amount",
+        description: "Enter a valid charge amount greater than zero.",
+      });
+      return;
+    }
+
+    setIsSubmittingChargeEdit(true);
+    const chargeName = selectedLoanCharge.name;
+
+    try {
+      const response = await fetch(
+        `/api/fineract/loans/${loanId}/charges/${selectedLoanCharge.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount,
+            dateFormat: "dd MMMM yyyy",
+            locale: "en",
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          getFineractActionErrorMessage(
+            errorData,
+            "Failed to update loan charge"
+          )
+        );
+      }
+
+      toast({
+        title: "Success",
+        description: `${chargeName} updated successfully`,
+        variant: "success",
+      });
+
+      setShowEditChargeModal(false);
+      resetLoanChargeActionState();
+      await fetchLoanData();
+    } catch (error: any) {
+      console.error("Error updating loan charge:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to update loan charge",
+      });
+    } finally {
+      setIsSubmittingChargeEdit(false);
+    }
+  };
+
+  const handleConfirmWaiveCharge = async () => {
+    if (!selectedLoanCharge?.id || isSubmittingChargeWaive) {
+      return;
+    }
+
+    setIsSubmittingChargeWaive(true);
+    const chargeName = selectedLoanCharge.name;
+
+    try {
+      const response = await fetch(
+        `/api/fineract/loans/${loanId}/charges/${selectedLoanCharge.id}?command=waive`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          getFineractActionErrorMessage(
+            errorData,
+            "Failed to waive loan charge"
+          )
+        );
+      }
+
+      toast({
+        title: "Success",
+        description: `${chargeName} waived successfully`,
+        variant: "success",
+      });
+
+      setShowWaiveChargeModal(false);
+      resetLoanChargeActionState();
+      await fetchLoanData();
+    } catch (error: any) {
+      console.error("Error waiving loan charge:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to waive loan charge",
+      });
+    } finally {
+      setIsSubmittingChargeWaive(false);
+    }
   };
 
   // Handle Foreclosure
@@ -4157,7 +4402,7 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   <TableBody>
                     {loan.charges && loan.charges.length > 0 ? (
                       loan.charges.map((charge: any, index: number) => (
-                        <TableRow key={index}>
+                        <TableRow key={charge.id ?? index}>
                           <TableCell className="font-medium">{charge.name}</TableCell>
                           <TableCell>
                             <Badge variant={charge.chargeType?.value === "Penalty" ? "destructive" : "default"}>
@@ -4175,10 +4420,32 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableCell>{formatCurrency(charge.amountOutstanding ?? charge.amount ?? 0)}</TableCell>
                           <TableCell>
                             <div className="flex space-x-1">
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                disabled={!canEditLoanCharge(loan, charge)}
+                                title={
+                                  canEditLoanCharge(loan, charge)
+                                    ? `Edit ${charge.name}`
+                                    : "Charge editing is only available for pending approval loans or active charges with an outstanding amount."
+                                }
+                                onClick={() => openEditChargeModal(charge)}
+                              >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                disabled={!canWaiveLoanCharge(loan, charge)}
+                                title={
+                                  canWaiveLoanCharge(loan, charge)
+                                    ? `Waive ${charge.name}`
+                                    : "Only active, unpaid non-disbursement charges can be waived."
+                                }
+                                onClick={() => openWaiveChargeModal(charge)}
+                              >
                                 <Flag className="h-4 w-4" />
                               </Button>
                             </div>
@@ -5464,6 +5731,160 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={showEditChargeModal}
+        onOpenChange={handleEditChargeModalChange}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Charge</DialogTitle>
+            <DialogDescription>
+              Update the amount for the selected loan charge.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedLoanCharge ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-charge-name">Charge</Label>
+                  <Input
+                    id="edit-charge-name"
+                    value={selectedLoanCharge.name}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-charge-calculation-type">
+                    Calculation Type
+                  </Label>
+                  <Input
+                    id="edit-charge-calculation-type"
+                    value={
+                      selectedLoanCharge.chargeCalculationType?.value || "N/A"
+                    }
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-charge-amount">Amount *</Label>
+                <Input
+                  id="edit-charge-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editChargeForm.amount}
+                  onChange={(event) =>
+                    setEditChargeForm({ amount: event.target.value })
+                  }
+                  placeholder="Enter amount"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-charge-due-date">Due As Of</Label>
+                  <Input
+                    id="edit-charge-due-date"
+                    value={
+                      selectedLoanCharge.dueDate
+                        ? formatDate(selectedLoanCharge.dueDate)
+                        : "N/A"
+                    }
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-charge-outstanding">Outstanding</Label>
+                  <Input
+                    id="edit-charge-outstanding"
+                    value={formatCurrency(
+                      selectedLoanCharge.amountOutstanding ??
+                        selectedLoanCharge.amount ??
+                        0
+                    )}
+                    disabled
+                    className="bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => handleEditChargeModalChange(false)}
+              disabled={isSubmittingChargeEdit}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitEditCharge}
+              disabled={
+                !selectedLoanCharge ||
+                !editChargeForm.amount ||
+                isSubmittingChargeEdit
+              }
+            >
+              {isSubmittingChargeEdit ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Confirm"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={showWaiveChargeModal}
+        onOpenChange={handleWaiveChargeModalChange}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Waive Charge</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedLoanCharge
+                ? `Are you sure you want to waive charge with id ${selectedLoanCharge.id}?`
+                : "Are you sure you want to waive this charge?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              type="button"
+              disabled={isSubmittingChargeWaive}
+              onClick={() => handleWaiveChargeModalChange(false)}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              disabled={isSubmittingChargeWaive}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleConfirmWaiveCharge();
+              }}
+            >
+              {isSubmittingChargeWaive ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Waiving...
+                </>
+              ) : (
+                "Confirm"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add Loan Charge Modal */}
       <Dialog open={showAddChargeModal} onOpenChange={setShowAddChargeModal}>
