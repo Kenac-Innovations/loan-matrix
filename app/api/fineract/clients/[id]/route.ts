@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { fetchFineractAPI } from "@/lib/api";
-import { hasSuperAdminServer } from "@/lib/authorization";
+import { hasPermissionServer, hasSuperAdminServer } from "@/lib/authorization";
 import { getSession } from "@/lib/auth";
+import { SpecificPermission } from "@/shared/types/auth";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 
@@ -28,18 +29,19 @@ export async function GET(
     }
 
     const session = await getSession();
+    const sessionUser = session?.user;
     const tenantSlug = extractTenantSlugFromRequest(request);
     const data = await fetchFineractAPI(`/clients/${clientId}`, {
       authMode: "service",
     });
     const officeScope = resolveOmamaOfficeScope({
       tenantSlug,
-      roles: ((session?.user as any)?.roles || []) as Array<{
+      roles: (sessionUser?.roles ?? []) as Array<{
         name?: string | null;
         disabled?: boolean | null;
       }>,
-      officeId: ((session?.user as any)?.officeId as number | undefined) ?? null,
-      officeName: ((session?.user as any)?.officeName as string | undefined) ?? null,
+      officeId: sessionUser?.officeId ?? null,
+      officeName: sessionUser?.officeName ?? null,
     });
 
     if (officeScope?.officeId && data?.officeId !== officeScope.officeId) {
@@ -90,7 +92,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await hasSuperAdminServer())) {
+    if (!(await hasPermissionServer(SpecificPermission.UPDATE_CLIENT))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
