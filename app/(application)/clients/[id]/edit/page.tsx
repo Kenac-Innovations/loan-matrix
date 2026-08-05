@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { hasSuperAdminServer } from "@/lib/authorization";
+import { hasPermissionServer } from "@/lib/authorization";
+import { SpecificPermission } from "@/shared/types/auth";
 import { ClientEditForm } from "./components/client-edit-form";
 
 interface PageProps {
@@ -19,7 +20,9 @@ export default async function ClientEditPage({ params }: PageProps) {
     notFound();
   }
 
-  const canEditClient = await hasSuperAdminServer();
+  const canEditClient = await hasPermissionServer(
+    SpecificPermission.UPDATE_CLIENT
+  );
 
   return (
     <div className="space-y-6">

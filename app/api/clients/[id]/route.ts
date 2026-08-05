@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
-import { hasSuperAdminServer } from "@/lib/authorization";
+import { hasPermissionServer } from "@/lib/authorization";
 import {
   formatMobileForFineract,
   resolveCountryDialCodeForPhone,
 } from "@/lib/phone-utils";
+import { SpecificPermission } from "@/shared/types/auth";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { normalizeUssdPhoneNumber } from "@/lib/ussd-admin-client";
 import {
@@ -91,7 +92,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await hasSuperAdminServer())) {
+    if (!(await hasPermissionServer(SpecificPermission.UPDATE_CLIENT))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

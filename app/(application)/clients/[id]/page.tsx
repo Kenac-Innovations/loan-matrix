@@ -9,10 +9,11 @@ import {
   Wallet,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { hasSuperAdminServer } from "@/lib/authorization";
+import { hasPermissionServer } from "@/lib/authorization";
 import { getClientDetailsPageFineractHeaders } from "@/lib/client-details-page-fineract-auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { prisma } from "@/lib/prisma";
+import { SpecificPermission } from "@/shared/types/auth";
 import { ClientDetails } from "./components/client-details";
 import { ClientLoans } from "./components/client-loans";
 import { ClientTransactions } from "./components/client-transactions";
@@ -404,7 +405,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
       getClientData(clientId),
       getClientImage(clientId),
       getDatatables(),
-      hasSuperAdminServer(),
+      hasPermissionServer(SpecificPermission.UPDATE_CLIENT),
       getClientHasLoans(clientId),
     ]);
 
