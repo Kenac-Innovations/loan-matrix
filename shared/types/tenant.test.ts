@@ -39,6 +39,22 @@ function run() {
     false,
     "autoResolveRepaymentCashier defaults to false"
   );
+
+  assert.equal(
+    getTenantFeatures({
+      settings: {
+        features: { restrictSensitiveClientEditFieldsToSuperAdmin: true },
+      },
+    }).restrictSensitiveClientEditFieldsToSuperAdmin,
+    true,
+    "surfaces the new restricted client field flag when set"
+  );
+
+  assert.equal(
+    getTenantFeatures(null).restrictSensitiveClientEditFieldsToSuperAdmin,
+    false,
+    "restrictSensitiveClientEditFieldsToSuperAdmin defaults to false"
+  );
 }
 
 run();
