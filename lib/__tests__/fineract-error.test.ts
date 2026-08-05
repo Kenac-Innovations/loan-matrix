@@ -74,3 +74,44 @@ test("maps datatable not-found responses to a user-friendly empty-data message",
 
   assert.equal(message, "No information is available for this section yet.");
 });
+
+test("masks generic internal server errors with a safe default fallback", async () => {
+  const { parseFineractErrorResponse } = await import("../fineract-error");
+
+  const message = parseFineractErrorResponse({
+    timestamp: "2026-08-05T21:17:14.338Z",
+    status: 500,
+    error: "Internal Server Error",
+    httpStatusCode: "500",
+    defaultUserMessage: "Internal Server Error",
+    developerMessage: "Internal Server Error",
+    errors: [],
+  });
+
+  assert.equal(message, "The operation failed. Please try again.");
+});
+
+test("uses action context to make generic server errors user friendly", async () => {
+  const { getFineractErrorMessage } = await import("../fineract-error");
+
+  const message = getFineractErrorMessage(
+    {
+      status: 500,
+      errorData: {
+        timestamp: "2026-08-05T21:17:14.338Z",
+        status: 500,
+        error: "Internal Server Error",
+        httpStatusCode: "500",
+        defaultUserMessage: "Internal Server Error",
+        developerMessage: "Internal Server Error",
+        errors: [],
+      },
+    },
+    {
+      action: "update",
+      resource: "address",
+    }
+  );
+
+  assert.equal(message, "We couldn't update the address. Please try again.");
+});

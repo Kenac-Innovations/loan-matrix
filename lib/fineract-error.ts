@@ -18,12 +18,33 @@ export interface FineractErrorResponse {
   errors?: FineractErrorItem[];
 }
 
+export type FineractErrorAction =
+  | "load"
+  | "create"
+  | "update"
+  | "delete"
+  | "upload"
+  | "download"
+  | "submit"
+  | "approve"
+  | "reject"
+  | "transfer"
+  | "save"
+  | "process";
+
+export interface FineractErrorMessageContext {
+  action?: FineractErrorAction;
+  resource?: string;
+  surface?: string;
+  fallbackMessage?: string;
+}
+
 type ExtendedFineractErrorResponse = FineractErrorResponse & {
   error?: string | { defaultUserMessage?: string; developerMessage?: string };
   details?: FineractErrorResponse;
 };
 
-type NormalizeOptions = {
+type NormalizeOptions = FineractErrorMessageContext & {
   status?: number;
   statusText?: string;
 };
@@ -50,6 +71,37 @@ const FRIENDLY_MESSAGE_BY_CODE: Record<string, string> = {
     "This action could not be completed because it violates a business rule.",
 };
 
+const ACTION_LABEL_BY_TYPE: Record<FineractErrorAction, string> = {
+  load: "load",
+  create: "create",
+  update: "update",
+  delete: "delete",
+  upload: "upload",
+  download: "download",
+  submit: "submit",
+  approve: "approve",
+  reject: "reject",
+  transfer: "transfer",
+  save: "save",
+  process: "process",
+};
+
+const GENERIC_ERROR_MESSAGE_PATTERNS = [
+  /^internal server error$/i,
+  /^bad request$/i,
+  /^not found$/i,
+  /^forbidden$/i,
+  /^unauthorized$/i,
+  /^conflict$/i,
+  /^service unavailable$/i,
+  /^gateway timeout$/i,
+  /^method not allowed$/i,
+  /^unknown error$/i,
+  /^an error occurred$/i,
+  /^request failed$/i,
+  /^http\s+\d{3}(?::|\b)/i,
+];
+
 function parseErrorBody(body: string | object): ExtendedFineractErrorResponse | null {
   if (typeof body === "string") {
     try {
@@ -74,15 +126,39 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function getFallbackStatusMessage(options?: NormalizeOptions): string {
-  const status = options?.status;
-  const statusText = options?.statusText;
-
-  if (status) {
-    return `HTTP ${status}${statusText ? `: ${statusText}` : ""}`;
+function buildErrorTarget(options?: FineractErrorMessageContext): string {
+  if (isNonEmptyString(options?.resource)) {
+    return `the ${options.resource.trim()}`;
   }
 
-  return "An error occurred";
+  if (isNonEmptyString(options?.surface)) {
+    return `this ${options.surface.trim()}`;
+  }
+
+  return "this item";
+}
+
+function getFallbackStatusMessage(options?: NormalizeOptions): string {
+  if (isNonEmptyString(options?.fallbackMessage)) {
+    return options.fallbackMessage.trim();
+  }
+
+  if (options?.action) {
+    return `We couldn't ${ACTION_LABEL_BY_TYPE[options.action]} ${buildErrorTarget(
+      options
+    )}. Please try again.`;
+  }
+
+  return "The operation failed. Please try again.";
+}
+
+function isGenericErrorMessage(value: unknown): boolean {
+  if (!isNonEmptyString(value)) {
+    return true;
+  }
+
+  const message = value.trim();
+  return GENERIC_ERROR_MESSAGE_PATTERNS.some((pattern) => pattern.test(message));
 }
 
 function getPreferredRawMessage(error: FineractErrorItem | ExtendedFineractErrorResponse): string | undefined {
@@ -106,7 +182,7 @@ function getFriendlyMessageForCode(
     return FRIENDLY_MESSAGE_BY_CODE[code];
   }
 
-  if (isNonEmptyString(rawMessage)) {
+  if (isNonEmptyString(rawMessage) && !isGenericErrorMessage(rawMessage)) {
     return rawMessage;
   }
 
@@ -198,6 +274,12 @@ export function normalizeFineractErrorPayload(
 
   if (GENERIC_WRAPPER_CODES.has(topLevelCode ?? "") && firstSpecificMessage) {
     topLevelMessage = firstSpecificMessage;
+  } else if (
+    isGenericErrorMessage(getTopLevelRawMessage(parsed)) &&
+    firstSpecificMessage &&
+    !isGenericErrorMessage(firstSpecificMessage)
+  ) {
+    topLevelMessage = firstSpecificMessage;
   }
 
   return {
@@ -226,7 +308,10 @@ export function parseFineractErrorResponse(body: string | object): string {
  * Extracts the user-friendly error message from a caught Fineract API error
  * (thrown by fetchFineractAPI or Axios-backed Fineract service calls).
  */
-export function getFineractErrorMessage(error: unknown): string {
+export function getFineractErrorMessage(
+  error: unknown,
+  options?: FineractErrorMessageContext
+): string {
   const err = error as {
     errorData?: FineractErrorResponse;
     response?: { data?: string | object };
@@ -235,15 +320,22 @@ export function getFineractErrorMessage(error: unknown): string {
 
   if (err?.errorData) {
     return (
-      normalizeFineractErrorPayload(err.errorData).defaultUserMessage ||
+      normalizeFineractErrorPayload(err.errorData, options).defaultUserMessage ||
       err.message ||
-      "An error occurred"
+      getFallbackStatusMessage(options)
     );
   }
 
   if (err?.response?.data) {
-    return parseFineractErrorResponse(err.response.data);
+    return (
+      normalizeFineractErrorPayload(err.response.data, options)
+        .defaultUserMessage || getFallbackStatusMessage(options)
+    );
   }
 
-  return err?.message ?? "An error occurred";
+  if (isNonEmptyString(err?.message) && !isGenericErrorMessage(err.message)) {
+    return err.message;
+  }
+
+  return getFallbackStatusMessage(options);
 }

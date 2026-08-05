@@ -13,7 +13,7 @@ import {
   getTenantBySlug,
 } from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
-import { getFineractErrorMessage } from "@/lib/fineract-error";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 /**
  * GET /api/fineract/clients/[id]
@@ -68,23 +68,10 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: unknown) {
     console.error("Error fetching client details:", error);
-
-    // Better error handling for different error types
-    const errorObj = error as {
-      message?: string;
-      errorData?: { defaultUserMessage?: string };
-      status?: number;
-    };
-    const errorMessage = getFineractErrorMessage(errorObj);
-    const statusCode = errorObj?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "client details",
+    });
   }
 }
 
@@ -128,23 +115,10 @@ export async function PUT(
     return NextResponse.json(data);
   } catch (error: unknown) {
     console.error("Error updating client:", error);
-
-    // Better error handling for different error types
-    const errorObj = error as {
-      message?: string;
-      errorData?: { defaultUserMessage?: string };
-      status?: number;
-    };
-    const errorMessage = getFineractErrorMessage(errorObj);
-    const statusCode = errorObj?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "update",
+      resource: "client",
+    });
   }
 }
 
@@ -177,22 +151,9 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error("Error deleting client:", error);
-
-    // Better error handling for different error types
-    const errorObj = error as {
-      message?: string;
-      errorData?: { defaultUserMessage?: string };
-      status?: number;
-    };
-    const errorMessage = getFineractErrorMessage(errorObj);
-    const statusCode = errorObj?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "delete",
+      resource: "client",
+    });
   }
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 import { getSession } from "@/lib/auth";
-import { getFineractErrorMessage } from "@/lib/fineract-error";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import {
   extractTenantSlugFromRequest,
   getTenantBySlug,
@@ -93,23 +93,10 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error) {
     console.error("Error fetching loan documents:", error);
-
-    const fineractError = error as {
-      status?: number;
-      errorData?: unknown;
-    };
-
-    if (fineractError.status && fineractError.errorData) {
-      return NextResponse.json(fineractError.errorData, {
-        status: fineractError.status,
-      });
-    }
-
-    const message = getFineractErrorMessage(error);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "loan documents",
+    });
   }
 }
 
@@ -208,22 +195,9 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error) {
     console.error("Error uploading loan document:", error);
-
-    const fineractError = error as {
-      status?: number;
-      errorData?: unknown;
-    };
-
-    if (fineractError.status && fineractError.errorData) {
-      return NextResponse.json(fineractError.errorData, {
-        status: fineractError.status,
-      });
-    }
-
-    const message = getFineractErrorMessage(error);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "upload",
+      resource: "document",
+    });
   }
 }

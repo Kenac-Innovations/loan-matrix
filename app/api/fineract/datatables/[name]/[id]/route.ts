@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
-import { getFineractErrorMessage } from "@/lib/fineract-error";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 // GET /api/fineract/datatables/[name]/[id]?genericResultSet=true
 export async function GET(
@@ -22,13 +22,10 @@ export async function GET(
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error: any) {
-    return NextResponse.json(
-      {
-        error: getFineractErrorMessage(error),
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "additional details",
+    });
   }
 }
 
@@ -90,13 +87,10 @@ export async function PUT(
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Error updating datatable:", error);
-    return NextResponse.json(
-      {
-        error: getFineractErrorMessage(error),
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "update",
+      resource: "additional details",
+    });
   }
 }
 
@@ -137,12 +131,9 @@ export async function POST(
     return NextResponse.json(result, { status: 201 });
   } catch (error: any) {
     console.error("Error creating datatable entry:", error);
-    return NextResponse.json(
-      {
-        error: getFineractErrorMessage(error),
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "create",
+      resource: "additional details",
+    });
   }
 }

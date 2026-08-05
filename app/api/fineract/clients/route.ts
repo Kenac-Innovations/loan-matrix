@@ -5,7 +5,7 @@ import {
 } from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSession } from "@/lib/auth";
-import { getFineractErrorMessage } from "@/lib/fineract-error";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 import {
@@ -255,17 +255,10 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching clients:", error);
-
-    const errorMessage = getFineractErrorMessage(error);
-    const statusCode = error?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "clients",
+    });
   }
 }
 
@@ -284,16 +277,9 @@ export async function POST(request: Request) {
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
     console.error("Error creating client:", error);
-
-    const errorMessage = getFineractErrorMessage(error);
-    const statusCode = error?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "create",
+      resource: "client",
+    });
   }
 }
