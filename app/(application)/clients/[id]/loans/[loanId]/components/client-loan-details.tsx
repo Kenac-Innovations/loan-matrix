@@ -26,6 +26,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/use-toast";
 import { AlertCircle, Download, Loader2, MoreVertical, X, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Edit, Flag, Plus, Heart, Coins, RotateCcw, Calendar, ChevronRight as ChevronRightIcon, User, Building, Phone, Mail, CreditCard, TrendingUp, Clock, FileText, Shield, DollarSign, Percent, CalendarDays, Settings, Trash2, StickyNote } from "lucide-react";
@@ -4401,7 +4407,11 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                   </TableHeader>
                   <TableBody>
                     {loan.charges && loan.charges.length > 0 ? (
-                      loan.charges.map((charge: any, index: number) => (
+                      loan.charges.map((charge: LoanChargeRecord, index: number) => {
+                        const canEditCharge = canEditLoanCharge(loan, charge);
+                        const canWaiveCharge = canWaiveLoanCharge(loan, charge);
+
+                        return (
                         <TableRow key={charge.id ?? index}>
                           <TableCell className="font-medium">{charge.name}</TableCell>
                           <TableCell>
@@ -4419,39 +4429,37 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                           <TableCell>{formatCurrency(charge.amountWaived ?? 0)}</TableCell>
                           <TableCell>{formatCurrency(charge.amountOutstanding ?? charge.amount ?? 0)}</TableCell>
                           <TableCell>
-                            <div className="flex space-x-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                disabled={!canEditLoanCharge(loan, charge)}
-                                title={
-                                  canEditLoanCharge(loan, charge)
-                                    ? `Edit ${charge.name}`
-                                    : "Charge editing is only available for pending approval loans or active charges with an outstanding amount."
-                                }
-                                onClick={() => openEditChargeModal(charge)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                disabled={!canWaiveLoanCharge(loan, charge)}
-                                title={
-                                  canWaiveLoanCharge(loan, charge)
-                                    ? `Waive ${charge.name}`
-                                    : "Only active, unpaid non-disbursement charges can be waived."
-                                }
-                                onClick={() => openWaiveChargeModal(charge)}
-                              >
-                                <Flag className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 px-3 text-xs font-medium"
+                                >
+                                  ...Actions
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-40">
+                                <DropdownMenuItem
+                                  disabled={!canEditCharge}
+                                  onClick={() => openEditChargeModal(charge)}
+                                >
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Edit Charge
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={!canWaiveCharge}
+                                  onClick={() => openWaiveChargeModal(charge)}
+                                >
+                                  <Flag className="mr-2 h-4 w-4" />
+                                  Waive Charge
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                      ))
+                        );
+                      })
                     ) : (
                       <TableRow>
                         <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
