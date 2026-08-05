@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
-import { getFineractService } from "@/lib/fineract-api";
+import {
+  getFineractService,
+  getFineractServiceWithSession,
+} from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSession } from "@/lib/auth";
+import { getFineractErrorMessage } from "@/lib/fineract-error";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 import {
@@ -252,9 +256,7 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error("Error fetching clients:", error);
 
-    // Better error handling for different error types
-    const errorMessage =
-      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
+    const errorMessage = getFineractErrorMessage(error);
     const statusCode = error?.status || 500;
 
     return NextResponse.json(
@@ -283,9 +285,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("Error creating client:", error);
 
-    // Better error handling for different error types
-    const errorMessage =
-      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
+    const errorMessage = getFineractErrorMessage(error);
     const statusCode = error?.status || 500;
 
     return NextResponse.json(

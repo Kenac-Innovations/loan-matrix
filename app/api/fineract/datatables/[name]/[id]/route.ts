@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { getFineractErrorMessage } from "@/lib/fineract-error";
 
 // GET /api/fineract/datatables/[name]/[id]?genericResultSet=true
 export async function GET(
@@ -22,7 +23,10 @@ export async function GET(
     });
   } catch (error: any) {
     return NextResponse.json(
-      { error: error?.message || "Failed to fetch datatable data" },
+      {
+        error: getFineractErrorMessage(error),
+        details: error?.errorData || null,
+      },
       { status: error?.status || 500 }
     );
   }
@@ -88,10 +92,7 @@ export async function PUT(
     console.error("Error updating datatable:", error);
     return NextResponse.json(
       {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to update datatable entry",
+        error: getFineractErrorMessage(error),
         details: error?.errorData || null,
       },
       { status: error?.status || 500 }
@@ -138,10 +139,7 @@ export async function POST(
     console.error("Error creating datatable entry:", error);
     return NextResponse.json(
       {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to create datatable entry",
+        error: getFineractErrorMessage(error),
         details: error?.errorData || null,
       },
       { status: error?.status || 500 }

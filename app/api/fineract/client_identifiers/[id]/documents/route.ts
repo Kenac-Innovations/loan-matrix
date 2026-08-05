@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken, getFineractTenantId } from "@/lib/api";
+import { getFineractErrorMessage, normalizeFineractErrorPayload } from "@/lib/fineract-error";
 
 /**
  * GET /api/fineract/client_identifiers/[id]/documents
@@ -88,22 +89,14 @@ export async function GET(
     }
 
     if (!response.ok) {
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        errorData = {
-          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
-        };
-      }
+      const errorData = normalizeFineractErrorPayload(await response.json().catch(() => ({})), {
+        status: response.status,
+        statusText: response.statusText,
+      });
 
       return NextResponse.json(
         {
-          error:
-            errorData.defaultUserMessage ||
-            errorData.developerMessage ||
-            "Failed to fetch documents",
+          error: errorData.defaultUserMessage || "Failed to fetch documents",
           details: errorData,
         },
         { status: response.status }
@@ -116,9 +109,10 @@ export async function GET(
     console.error("Error fetching identifier documents:", error);
     return NextResponse.json(
       {
-        error: error?.message || "Internal server error",
+        error: getFineractErrorMessage(error),
+        details: error?.errorData || null,
       },
-      { status: 500 }
+      { status: error?.status || 500 }
     );
   }
 }
@@ -254,15 +248,10 @@ export async function POST(
     }
 
     if (!response.ok) {
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        errorData = {
-          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
-        };
-      }
+      const errorData = normalizeFineractErrorPayload(await response.json().catch(() => ({})), {
+        status: response.status,
+        statusText: response.statusText,
+      });
 
       console.error(
         "Failed to upload document to identifier:",
@@ -273,10 +262,7 @@ export async function POST(
 
       return NextResponse.json(
         {
-          error:
-            errorData.defaultUserMessage ||
-            errorData.developerMessage ||
-            "Failed to upload document",
+          error: errorData.defaultUserMessage || "Failed to upload document",
           details: errorData,
         },
         { status: response.status }
@@ -289,9 +275,10 @@ export async function POST(
     console.error("Error uploading document to identifier:", error);
     return NextResponse.json(
       {
-        error: error?.message || "Internal server error",
+        error: getFineractErrorMessage(error),
+        details: error?.errorData || null,
       },
-      { status: 500 }
+      { status: error?.status || 500 }
     );
   }
 }

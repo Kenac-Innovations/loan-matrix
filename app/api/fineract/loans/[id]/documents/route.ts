@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { getFineractErrorMessage } from "@/lib/fineract-error";
 import {
   extractTenantSlugFromRequest,
   getTenantBySlug,
@@ -104,7 +105,7 @@ export async function GET(
       });
     }
 
-    const message = error instanceof Error ? error.message : "Failed to fetch loan documents";
+    const message = getFineractErrorMessage(error);
     return NextResponse.json(
       { error: message },
       { status: 500 }
@@ -219,7 +220,7 @@ export async function POST(
       });
     }
 
-    const message = error instanceof Error ? error.message : "Failed to upload loan document";
+    const message = getFineractErrorMessage(error);
     return NextResponse.json(
       { error: message },
       { status: 500 }

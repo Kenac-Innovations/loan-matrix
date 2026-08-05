@@ -13,6 +13,7 @@ import {
   getTenantBySlug,
 } from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
+import { getFineractErrorMessage } from "@/lib/fineract-error";
 
 /**
  * GET /api/fineract/clients/[id]
@@ -74,10 +75,7 @@ export async function GET(
       errorData?: { defaultUserMessage?: string };
       status?: number;
     };
-    const errorMessage =
-      errorObj?.message ||
-      errorObj?.errorData?.defaultUserMessage ||
-      "Unknown error";
+    const errorMessage = getFineractErrorMessage(errorObj);
     const statusCode = errorObj?.status || 500;
 
     return NextResponse.json(
@@ -137,10 +135,7 @@ export async function PUT(
       errorData?: { defaultUserMessage?: string };
       status?: number;
     };
-    const errorMessage =
-      errorObj?.message ||
-      errorObj?.errorData?.defaultUserMessage ||
-      "Unknown error";
+    const errorMessage = getFineractErrorMessage(errorObj);
     const statusCode = errorObj?.status || 500;
 
     return NextResponse.json(
@@ -189,10 +184,7 @@ export async function DELETE(
       errorData?: { defaultUserMessage?: string };
       status?: number;
     };
-    const errorMessage =
-      errorObj?.message ||
-      errorObj?.errorData?.defaultUserMessage ||
-      "Unknown error";
+    const errorMessage = getFineractErrorMessage(errorObj);
     const statusCode = errorObj?.status || 500;
 
     return NextResponse.json(
