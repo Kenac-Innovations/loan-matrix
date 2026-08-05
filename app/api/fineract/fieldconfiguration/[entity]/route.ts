@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 /**
@@ -15,16 +16,7 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error(`Error fetching field configuration for ${entity}:`, error);
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          `Failed to fetch field configuration for ${entity}`,
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 

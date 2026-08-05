@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 export async function POST(
@@ -25,12 +26,6 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error processing loan charge action:", error);
-    if (error.status && error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status });
-    }
-    return NextResponse.json(
-      { error: error.message || "Failed to process loan charge action" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

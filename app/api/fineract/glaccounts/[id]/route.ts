@@ -2,16 +2,25 @@
 
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = await params;
+  try {
+    const resolvedParams = await params;
 
-  // Preserve the ?template=true (or any other) querystring
-  const { search } = new URL(request.url);
-  const path = `/glaccounts/${resolvedParams.id}${search}`;
-  const data = await fetchFineractAPI(path);
-  return NextResponse.json(data);
+    // Preserve the ?template=true (or any other) querystring
+    const { search } = new URL(request.url);
+    const path = `/glaccounts/${resolvedParams.id}${search}`;
+    const data = await fetchFineractAPI(path);
+    return NextResponse.json(data);
+  } catch (error: any) {
+    console.error('GET /api/fineract/glaccounts/[id] error:', error);
+    return buildFineractErrorResponse(error, {
+      action: 'load',
+      resource: 'GL account',
+    });
+  }
 }
 
 // And keep your PUT here—Fineract 1.11 does support PUT /glaccounts/{id}.
@@ -28,20 +37,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('PUT /api/fineract/glaccounts/[id] error:', error);
-    
-    // If it's our custom error with backend data, return it
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    
-    // Fallback error response
-    return NextResponse.json(
-      { 
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message 
-      }, 
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'update',
+      resource: 'GL account',
+    });
   }
 }
 
@@ -54,19 +53,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('DELETE /api/fineract/glaccounts/[id] error:', error);
-    
-    // If it's our custom error with backend data, return it
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    
-    // Fallback error response
-    return NextResponse.json(
-      { 
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message 
-      }, 
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'delete',
+      resource: 'GL account',
+    });
   }
 }
