@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 
@@ -45,9 +46,6 @@ export async function GET(
     });
   } catch (error: any) {
     console.error("Error fetching GL account balance:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch GL account balance" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

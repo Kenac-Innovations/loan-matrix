@@ -1,5 +1,6 @@
 // File: app/api/fineract/journalentries/route.ts
 import { NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
 
 export async function GET(request: Request) {
@@ -28,10 +29,7 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching journal entries:', error);
-    return NextResponse.json(
-      { error: error.message || 'Unknown error' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -46,9 +44,6 @@ export async function POST(request: Request) {
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
     console.error('Error creating journal entry:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to create journal entry' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

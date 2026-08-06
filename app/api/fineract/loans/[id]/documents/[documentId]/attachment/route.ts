@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildFineractRequest } from "@/lib/api";
 import { toInlineContentDisposition } from "@/lib/document-viewing";
+import {
+  buildFineractErrorResponse,
+  createFineractErrorResponsePayload,
+} from "@/lib/fineract-route-error";
 
 export async function GET(
   request: NextRequest,
@@ -86,28 +90,45 @@ export async function GET(
     console.log("Response status:", response.status);
 
     if (!response.ok) {
-      let errorMessage = "Failed to download document";
+      let errorBody: string | undefined;
       try {
         if (response.arrayBuffer) {
           const errorBuffer = await response.arrayBuffer();
-          const errorText = Buffer.from(errorBuffer).toString();
-          console.error("Error response body:", errorText);
-          errorMessage = errorText || errorMessage;
+          errorBody = Buffer.from(errorBuffer).toString();
+          console.error("Error response body:", errorBody);
         }
       } catch (e) {
         console.error("Could not parse error response");
       }
 
+      const errorResponse = createFineractErrorResponsePayload(
+        {
+          status: response.status,
+          errorData: errorBody
+            ? {
+                defaultUserMessage: errorBody,
+                developerMessage: errorBody,
+              }
+            : {
+                defaultUserMessage: "Failed to download document",
+                developerMessage: response.statusText,
+              },
+          response: { statusText: response.statusText },
+        },
+        {
+          action: "download",
+          resource: "document",
+        }
+      );
+
       console.error(
         "Failed to download document:",
         response.status,
-        response.statusText,
-        errorMessage
+        response.statusText
       );
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: response.status }
-      );
+      return NextResponse.json(errorResponse.body, {
+        status: errorResponse.status,
+      });
     }
 
     // Get the file data
@@ -137,11 +158,9 @@ export async function GET(
     });
   } catch (error) {
     console.error("Error downloading document:", error);
-    const errorMessage =
-      error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json(
-      { error: `Failed to download document: ${errorMessage}` },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "download",
+      resource: "document",
+    });
   }
 }

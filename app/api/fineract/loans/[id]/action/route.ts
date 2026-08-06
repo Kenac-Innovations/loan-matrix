@@ -5,6 +5,7 @@ import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-serv
 import { sendLoanStatusSms } from "@/lib/notification-service";
 import { applyTopupDisbursementCharges } from "@/lib/topup-disbursement-charge-service";
 import { getPipelineStageNameForLoanAction } from "@/lib/fineract-stage-sync";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 // POST /api/fineract/loans/[id]/action - Perform an action on a loan
 export async function POST(
@@ -109,17 +110,16 @@ export async function POST(
       );
     } catch (error: any) {
       console.error("Fineract loan action error:", error);
-      return NextResponse.json(
-        {
-          error:
-            error?.errorData?.defaultUserMessage ||
-            error?.errorData?.error ||
-            error?.message ||
-            `Failed to ${action} loan`,
-          details: error?.errorData || null,
-        },
-        { status: error?.status || 500 }
-      );
+      return buildFineractErrorResponse(error, {
+        action: action === "approve"
+          ? "approve"
+          : action === "reject"
+            ? "reject"
+            : action === "disburse"
+              ? "process"
+              : "update",
+        resource: "loan",
+      });
     }
     console.log("Loan action result:", result);
 
@@ -227,10 +227,10 @@ export async function POST(
     });
   } catch (error: any) {
     console.error("Error performing loan action:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to perform loan action" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "process",
+      resource: "loan action",
+    });
   }
 }
 
