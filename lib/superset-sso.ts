@@ -31,13 +31,18 @@ export async function createSupersetAssertion(
 ): Promise<string> {
   const privateKey = await importPKCS8(privateKeyPem, "RS256");
   const issuedAt = Math.floor(now.getTime() / 1_000);
+  const normalizedUsername = input.username.trim().toLowerCase();
+  const safeRole =
+    input.role === "creator" && normalizedUsername === "mifos"
+      ? "creator"
+      : "viewer";
 
   return new SignJWT({
     username: input.username,
     name: input.name || input.username,
     email: input.email || undefined,
     tenantSlug: input.tenantSlug,
-    role: input.role,
+    role: safeRole,
   })
     .setProtectedHeader({ alg: "RS256", typ: "JWT" })
     .setIssuer(process.env.SUPERSET_SSO_ISSUER || DEFAULT_ISSUER)

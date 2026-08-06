@@ -8,7 +8,8 @@ import {
 export const dynamic = "force-dynamic";
 
 function auditLaunch(fields: Record<string, string | number | boolean | null>) {
-  console.info(JSON.stringify({ event: "superset_sso_launch", ...fields }));
+  // Production builds retain warn/error logs while removing informational logs.
+  console.warn(JSON.stringify({ event: "superset_sso_launch", ...fields }));
 }
 
 export async function POST(request: NextRequest) {

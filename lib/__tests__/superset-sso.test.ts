@@ -74,6 +74,22 @@ async function run() {
     pathPrefixedHtml,
     /action="https:\/\/goodfellow\.kenac\.tech\/analytics\/login\/sso\/consume"/
   );
+
+  const nonMifosCreatorAssertion = await createSupersetAssertion(
+    { ...input, username: "analyst", role: "creator" },
+    privateKeyPem,
+    now
+  );
+  const nonMifosVerified = await jwtVerify(
+    nonMifosCreatorAssertion,
+    publicKey,
+    {
+      issuer: "loan-matrix",
+      audience: "loan-matrix-superset",
+      currentDate: new Date(now.getTime() + 1_000),
+    }
+  );
+  assert.equal(nonMifosVerified.payload.role, "viewer");
 }
 
 run().then(() => console.log("ok"));

@@ -3,7 +3,7 @@ import { evaluateSupersetLaunchPolicy } from "../superset-launch-policy";
 
 const validConfig = {
   enabled: true,
-  baseUrl: "https://analytics.kenacloanmatrix.com",
+  baseUrl: "https://goodfellow.kenac.tech/analytics",
   creatorUsernames: ["mifos"],
 };
 
@@ -18,6 +18,19 @@ assert.deepEqual(
     config: validConfig,
   }),
   { allowed: false, status: 401, reason: "unauthenticated" }
+);
+
+assert.deepEqual(
+  evaluateSupersetLaunchPolicy({
+    sessionUser: { username: "mifos", userId: 84 },
+    sessionTenantId: "tenant-omama",
+    tenantId: "tenant-omama",
+    tenantSlug: "omama",
+    reportsEnabled: true,
+    supersetRequestedEnabled: true,
+    config: validConfig,
+  }),
+  { allowed: false, status: 404, reason: "superset_disabled" }
 );
 
 assert.deepEqual(

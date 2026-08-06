@@ -53,6 +53,10 @@ export function evaluateSupersetLaunchPolicy(
     return { allowed: false, status: 403, reason: "tenant_mismatch" };
   }
 
+  if (input.tenantSlug !== "goodfellow") {
+    return { allowed: false, status: 404, reason: "superset_disabled" };
+  }
+
   if (!input.reportsEnabled) {
     return { allowed: false, status: 403, reason: "reports_disabled" };
   }

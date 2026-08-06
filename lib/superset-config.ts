@@ -1,5 +1,9 @@
 export type SupersetRole = "viewer" | "creator";
 
+export const GOODFELLOW_SUPERSET_BASE_URL =
+  "https://goodfellow.kenac.tech/analytics";
+const SUPERSET_CREATOR_USERNAME = "mifos";
+
 export interface ResolvedTenantSupersetConfig {
   enabled: boolean;
   baseUrl: string | null;
@@ -16,14 +20,12 @@ export function isTenantSupersetRequestedEnabled(settings: unknown): boolean {
 function normalizeCreatorUsernames(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
 
-  return Array.from(
-    new Set(
-      value
-        .filter((username): username is string => typeof username === "string")
-        .map((username) => username.trim().toLowerCase())
-        .filter(Boolean)
-    )
+  const includesMifos = value.some(
+    (username) =>
+      typeof username === "string" &&
+      username.trim().toLowerCase() === SUPERSET_CREATOR_USERNAME
   );
+  return includesMifos ? [SUPERSET_CREATOR_USERNAME] : [];
 }
 
 function normalizeHttpsBaseUrl(value: unknown): string | null {
@@ -35,7 +37,8 @@ function normalizeHttpsBaseUrl(value: unknown): string | null {
     if (url.search || url.hash) return null;
 
     const pathname = url.pathname.replace(/\/+$/, "");
-    return `${url.origin}${pathname}`;
+    const normalized = `${url.origin}${pathname}`;
+    return normalized === GOODFELLOW_SUPERSET_BASE_URL ? normalized : null;
   } catch {
     return null;
   }
@@ -68,5 +71,8 @@ export function resolveSupersetRole(
   const normalizedUsername = username?.trim().toLowerCase();
   if (!normalizedUsername) return "viewer";
 
-  return creatorUsernames.includes(normalizedUsername) ? "creator" : "viewer";
+  return normalizedUsername === SUPERSET_CREATOR_USERNAME &&
+    creatorUsernames.includes(SUPERSET_CREATOR_USERNAME)
+    ? "creator"
+    : "viewer";
 }

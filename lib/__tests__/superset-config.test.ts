@@ -15,14 +15,14 @@ assert.deepEqual(
   getTenantSupersetConfig({
     superset: {
       enabled: true,
-      baseUrl: "https://analytics.kenacloanmatrix.com/",
+      baseUrl: "https://goodfellow.kenac.tech/analytics/",
       creatorUsernames: [" MIFOS ", "mifos", "", " Analyst "],
     },
   }),
   {
     enabled: true,
-    baseUrl: "https://analytics.kenacloanmatrix.com",
-    creatorUsernames: ["mifos", "analyst"],
+    baseUrl: "https://goodfellow.kenac.tech/analytics",
+    creatorUsernames: ["mifos"],
   }
 );
 
@@ -59,7 +59,7 @@ assert.deepEqual(
   getTenantSupersetConfig({
     superset: {
       enabled: true,
-      baseUrl: "http://analytics.kenacloanmatrix.com",
+      baseUrl: "https://analytics.kenacloanmatrix.com",
       creatorUsernames: ["mifos"],
     },
   }),
@@ -71,7 +71,7 @@ assert.deepEqual(
 );
 
 assert.equal(resolveSupersetRole("Mifos", ["mifos"]), "creator");
-assert.equal(resolveSupersetRole(" analyst ", ["mifos", "analyst"]), "creator");
+assert.equal(resolveSupersetRole(" analyst ", ["mifos", "analyst"]), "viewer");
 assert.equal(resolveSupersetRole("other-user", ["mifos"]), "viewer");
 assert.equal(resolveSupersetRole(undefined, ["mifos"]), "viewer");
 assert.equal(
