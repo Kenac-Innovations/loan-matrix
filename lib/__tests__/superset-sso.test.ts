@@ -58,7 +58,7 @@ async function run() {
   );
   assert.match(
     html,
-    /action="https:\/\/analytics\.kenacloanmatrix\.com\/login\/sso\/consume"/
+    /action="https:\/\/analytics\.kenacloanmatrix\.com\/sso\/consume"/
   );
   assert.match(html, /method="post"/);
   assert.match(html, /name="assertion"/);
@@ -72,7 +72,7 @@ async function run() {
   );
   assert.match(
     pathPrefixedHtml,
-    /action="https:\/\/goodfellow\.kenac\.tech\/analytics\/login\/sso\/consume"/
+    /action="https:\/\/goodfellow\.kenac\.tech\/analytics\/sso\/consume"/
   );
 
   const nonMifosCreatorAssertion = await createSupersetAssertion(
