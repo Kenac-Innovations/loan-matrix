@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 /**
  * GET /api/fineract/currencies
@@ -11,6 +12,6 @@ export async function GET() {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching currencies:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return buildFineractErrorResponse(error);
   }
 }

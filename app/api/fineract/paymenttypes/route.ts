@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 /**
@@ -13,7 +14,7 @@ export async function GET() {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching payment types:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -31,9 +32,6 @@ export async function POST(request: Request) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error creating payment type:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to create payment type" },
-      { status: error.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

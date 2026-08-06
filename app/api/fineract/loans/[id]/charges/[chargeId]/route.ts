@@ -1,27 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
-
-type FineractApiError = {
-  status?: number;
-  errorData?: unknown;
-  message?: string;
-};
-
-function toFineractApiError(error: unknown): FineractApiError {
-  if (typeof error !== "object" || error === null) {
-    return { message: "Unexpected error" };
-  }
-
-  const candidate = error as Record<string, unknown>;
-  return {
-    status: typeof candidate.status === "number" ? candidate.status : undefined,
-    errorData: candidate.errorData,
-    message:
-      typeof candidate.message === "string"
-        ? candidate.message
-        : "Unexpected error",
-  };
-}
 
 export async function POST(
   request: NextRequest,
@@ -46,15 +25,11 @@ export async function POST(
 
     return NextResponse.json(data);
   } catch (error: unknown) {
-    const apiError = toFineractApiError(error);
     console.error("Error processing loan charge action:", error);
-    if (apiError.status && apiError.errorData) {
-      return NextResponse.json(apiError.errorData, { status: apiError.status });
-    }
-    return NextResponse.json(
-      { error: apiError.message || "Failed to process loan charge action" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "process",
+      resource: "loan charge",
+    });
   }
 }
 
@@ -77,15 +52,11 @@ export async function PUT(
 
     return NextResponse.json(data);
   } catch (error: unknown) {
-    const apiError = toFineractApiError(error);
     console.error("Error updating loan charge:", error);
-    if (apiError.status && apiError.errorData) {
-      return NextResponse.json(apiError.errorData, { status: apiError.status });
-    }
-    return NextResponse.json(
-      { error: apiError.message || "Failed to update loan charge" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "update",
+      resource: "loan charge",
+    });
   }
 }
 
@@ -106,14 +77,10 @@ export async function DELETE(
 
     return NextResponse.json(data);
   } catch (error: unknown) {
-    const apiError = toFineractApiError(error);
     console.error("Error deleting loan charge:", error);
-    if (apiError.status && apiError.errorData) {
-      return NextResponse.json(apiError.errorData, { status: apiError.status });
-    }
-    return NextResponse.json(
-      { error: apiError.message || "Failed to delete loan charge" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "delete",
+      resource: "loan charge",
+    });
   }
 }

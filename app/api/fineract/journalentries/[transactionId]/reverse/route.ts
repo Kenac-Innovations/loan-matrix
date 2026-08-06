@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
 
 export async function POST(
@@ -21,17 +22,9 @@ export async function POST(
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('Error reverting transaction:', error);
-    
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    
-    return NextResponse.json(
-      { 
-        defaultUserMessage: 'Failed to revert transaction',
-        developerMessage: error.message || 'Unknown error occurred'
-      }, 
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'reverse',
+      resource: 'journal entry',
+    });
   }
-} 
+}

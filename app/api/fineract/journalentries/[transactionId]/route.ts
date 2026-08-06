@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
 
 export async function GET(
@@ -13,17 +14,9 @@ export async function GET(
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('Error fetching journal entry details:', error);
-    
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    
-    return NextResponse.json(
-      { 
-        defaultUserMessage: 'Failed to fetch journal entry details',
-        developerMessage: error.message || 'Unknown error occurred'
-      }, 
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'load',
+      resource: 'journal entry details',
+    });
   }
-} 
+}
