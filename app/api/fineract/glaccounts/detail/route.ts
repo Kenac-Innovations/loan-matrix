@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 /**
  * GET /api/fineract/glaccounts/detail
@@ -40,6 +41,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(sortedData);
   } catch (error: any) {
     console.error("Error fetching GL accounts:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return buildFineractErrorResponse(error);
   }
 }

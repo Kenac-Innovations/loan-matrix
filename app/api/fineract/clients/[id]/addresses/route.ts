@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 /**
  * GET /api/fineract/clients/[id]/addresses
@@ -22,16 +23,10 @@ export async function GET(
     if (error?.status === 404) {
       return NextResponse.json([]);
     }
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to fetch client addresses",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "client addresses",
+    });
   }
 }
 
@@ -109,15 +104,9 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error creating client address:", error);
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to create client address",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "create",
+      resource: "address",
+    });
   }
 }

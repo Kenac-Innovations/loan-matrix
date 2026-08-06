@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 /**
@@ -50,10 +51,7 @@ export async function GET(
     return NextResponse.json(filteredValues);
   } catch (error: any) {
     console.error(`Error fetching code values for ${(await params).codeName}:`, error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch code values" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -113,18 +111,6 @@ export async function POST(
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
     console.error(`Error creating code value for ${codeName}:`, error);
-
-    // Handle specific error cases
-    if (error.status === 400) {
-      return NextResponse.json(
-        { error: error.message || "Invalid request data" },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      { error: error.message || "Failed to create code value" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
