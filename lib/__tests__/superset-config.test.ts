@@ -30,6 +30,35 @@ assert.deepEqual(
   getTenantSupersetConfig({
     superset: {
       enabled: true,
+      baseUrl: "https://goodfellow.kenac.tech/analytics/",
+      creatorUsernames: ["mifos"],
+    },
+  }),
+  {
+    enabled: true,
+    baseUrl: "https://goodfellow.kenac.tech/analytics",
+    creatorUsernames: ["mifos"],
+  }
+);
+
+assert.deepEqual(
+  getTenantSupersetConfig({
+    superset: {
+      enabled: true,
+      baseUrl: "https://goodfellow.kenac.tech/analytics?unsafe=true",
+    },
+  }),
+  {
+    enabled: false,
+    baseUrl: null,
+    creatorUsernames: [],
+  }
+);
+
+assert.deepEqual(
+  getTenantSupersetConfig({
+    superset: {
+      enabled: true,
       baseUrl: "http://analytics.kenacloanmatrix.com",
       creatorUsernames: ["mifos"],
     },

@@ -53,7 +53,7 @@ export function renderSupersetLaunchForm(
   baseUrl: string,
   assertion: string
 ): string {
-  const action = new URL("/login/sso/consume", baseUrl).toString();
+  const action = `${baseUrl.replace(/\/+$/, "")}/login/sso/consume`;
 
   return `<!doctype html>
 <html lang="en">

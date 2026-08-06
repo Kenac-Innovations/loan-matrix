@@ -65,6 +65,15 @@ async function run() {
   assert.match(html, /token-with-&quot;quotes&quot;-&amp;-symbols/);
   assert.doesNotMatch(html, /consume\?assertion=/);
   assert.match(html, /document\.getElementById\("sso-launch"\)\.submit\(\)/);
+
+  const pathPrefixedHtml = renderSupersetLaunchForm(
+    "https://goodfellow.kenac.tech/analytics",
+    "signed-token"
+  );
+  assert.match(
+    pathPrefixedHtml,
+    /action="https:\/\/goodfellow\.kenac\.tech\/analytics\/login\/sso\/consume"/
+  );
 }
 
 run().then(() => console.log("ok"));

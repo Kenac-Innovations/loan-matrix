@@ -32,8 +32,10 @@ function normalizeHttpsBaseUrl(value: unknown): string | null {
   try {
     const url = new URL(value.trim());
     if (url.protocol !== "https:" || url.username || url.password) return null;
-    if (url.pathname !== "/" || url.search || url.hash) return null;
-    return url.origin;
+    if (url.search || url.hash) return null;
+
+    const pathname = url.pathname.replace(/\/+$/, "");
+    return `${url.origin}${pathname}`;
   } catch {
     return null;
   }
