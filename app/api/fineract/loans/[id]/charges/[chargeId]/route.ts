@@ -24,8 +24,63 @@ export async function POST(
     );
 
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error processing loan charge action:", error);
-    return buildFineractErrorResponse(error);
+    return buildFineractErrorResponse(error, {
+      action: "process",
+      resource: "loan charge",
+    });
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  {
+    params,
+  }: {
+    params: Promise<{ id: string; chargeId: string }>;
+  }
+) {
+  try {
+    const { id: loanId, chargeId } = await params;
+    const body = await request.json();
+
+    const data = await fetchFineractAPI(`/loans/${loanId}/charges/${chargeId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+
+    return NextResponse.json(data);
+  } catch (error: unknown) {
+    console.error("Error updating loan charge:", error);
+    return buildFineractErrorResponse(error, {
+      action: "update",
+      resource: "loan charge",
+    });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  {
+    params,
+  }: {
+    params: Promise<{ id: string; chargeId: string }>;
+  }
+) {
+  try {
+    const { id: loanId, chargeId } = await params;
+
+    const data = await fetchFineractAPI(`/loans/${loanId}/charges/${chargeId}`, {
+      method: "DELETE",
+    });
+
+    return NextResponse.json(data);
+  } catch (error: unknown) {
+    console.error("Error deleting loan charge:", error);
+    return buildFineractErrorResponse(error, {
+      action: "delete",
+      resource: "loan charge",
+    });
   }
 }
