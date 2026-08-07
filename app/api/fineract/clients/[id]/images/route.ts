@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSearchAuthToken } from "@/lib/fineract-search-auth";
+import {
+  buildFineractErrorResponse,
+  createFineractErrorResponsePayload,
+} from "@/lib/fineract-route-error";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -57,38 +61,31 @@ export async function POST(
     }
 
     if (!response.ok) {
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        errorData = {
-          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
-        };
-      }
-
-      return NextResponse.json(
+      const errorResponse = createFineractErrorResponsePayload(
         {
-          error:
-            errorData.defaultUserMessage ||
-            errorData.developerMessage ||
-            "Failed to upload image",
-          details: errorData,
+          status: response.status,
+          errorData: await response.json().catch(() => ({})),
+          response: { statusText: response.statusText },
         },
-        { status: response.status }
+        {
+          action: "upload",
+          resource: "image",
+        }
       );
+
+      return NextResponse.json(errorResponse.body, {
+        status: errorResponse.status,
+      });
     }
 
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error uploading client image:", error);
-    return NextResponse.json(
-      {
-        error: error?.message || "Failed to upload image",
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "upload",
+      resource: "image",
+    });
   }
 }
 
@@ -148,25 +145,20 @@ export async function GET(
       if (response.status === 404) {
         return NextResponse.json(null);
       }
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        errorData = {
-          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
-        };
-      }
-      return NextResponse.json(
+      const errorResponse = createFineractErrorResponsePayload(
         {
-          error:
-            errorData.defaultUserMessage ||
-            errorData.developerMessage ||
-            "Failed to fetch client images",
-          details: errorData,
+          status: response.status,
+          errorData: await response.json().catch(() => ({})),
+          response: { statusText: response.statusText },
         },
-        { status: response.status }
+        {
+          action: "load",
+          resource: "client images",
+        }
       );
+      return NextResponse.json(errorResponse.body, {
+        status: errorResponse.status,
+      });
     }
 
     // Fineract returns the image as a base64 string or JSON
@@ -184,11 +176,9 @@ export async function GET(
     if (error?.status === 404) {
       return NextResponse.json(null);
     }
-    return NextResponse.json(
-      {
-        error: error?.message || "Failed to fetch client images",
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "client images",
+    });
   }
 }

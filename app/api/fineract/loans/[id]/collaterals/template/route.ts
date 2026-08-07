@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 export async function GET(
@@ -13,18 +14,6 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching collateral template:", error);
-    
-    // If it's a Fineract API error with status code, preserve it
-    if (error.status && error.errorData) {
-      return NextResponse.json(
-        error.errorData,
-        { status: error.status }
-      );
-    }
-    
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch collateral template" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

@@ -2,10 +2,18 @@ import { NextResponse } from "next/server";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { fetchFineractAPI } from "@/lib/api";
 import { hasPermissionServer, hasSuperAdminServer } from "@/lib/authorization";
+import {
+  isSensitiveClientEditRestrictionEnabled,
+  stripRestrictedClientEditFields,
+} from "@/lib/client-edit-restrictions";
 import { getSession } from "@/lib/auth";
 import { SpecificPermission } from "@/shared/types/auth";
-import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import {
+  extractTenantSlugFromRequest,
+  getTenantBySlug,
+} from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 /**
  * GET /api/fineract/clients/[id]
@@ -60,26 +68,10 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: unknown) {
     console.error("Error fetching client details:", error);
-
-    // Better error handling for different error types
-    const errorObj = error as {
-      message?: string;
-      errorData?: { defaultUserMessage?: string };
-      status?: number;
-    };
-    const errorMessage =
-      errorObj?.message ||
-      errorObj?.errorData?.defaultUserMessage ||
-      "Unknown error";
-    const statusCode = errorObj?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "client details",
+    });
   }
 }
 
@@ -98,7 +90,17 @@ export async function PUT(
 
     const { id } = await params;
     const clientId = Number(id);
+    const tenantSlug = extractTenantSlugFromRequest(request);
+    const [tenant, isSuperAdmin] = await Promise.all([
+      getTenantBySlug(tenantSlug),
+      hasSuperAdminServer(),
+    ]);
     const payload = await request.json();
+    const outboundPayload =
+      isSensitiveClientEditRestrictionEnabled(tenant?.settings) &&
+      !isSuperAdmin
+        ? stripRestrictedClientEditFields(payload)
+        : payload;
 
     if (!Number.isFinite(clientId) || clientId <= 0) {
       return NextResponse.json(
@@ -108,31 +110,15 @@ export async function PUT(
     }
 
     const fineractService = await getFineractServiceWithSession();
-    const data = await fineractService.updateClient(clientId, payload);
+    const data = await fineractService.updateClient(clientId, outboundPayload);
 
     return NextResponse.json(data);
   } catch (error: unknown) {
     console.error("Error updating client:", error);
-
-    // Better error handling for different error types
-    const errorObj = error as {
-      message?: string;
-      errorData?: { defaultUserMessage?: string };
-      status?: number;
-    };
-    const errorMessage =
-      errorObj?.message ||
-      errorObj?.errorData?.defaultUserMessage ||
-      "Unknown error";
-    const statusCode = errorObj?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "update",
+      resource: "client",
+    });
   }
 }
 
@@ -165,25 +151,9 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error("Error deleting client:", error);
-
-    // Better error handling for different error types
-    const errorObj = error as {
-      message?: string;
-      errorData?: { defaultUserMessage?: string };
-      status?: number;
-    };
-    const errorMessage =
-      errorObj?.message ||
-      errorObj?.errorData?.defaultUserMessage ||
-      "Unknown error";
-    const statusCode = errorObj?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "delete",
+      resource: "client",
+    });
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { format } from "date-fns";
 import { getSession } from "@/lib/auth";
 import { callCDEAndStore } from "@/lib/cde-utils";
@@ -251,19 +252,9 @@ export async function POST(
     });
   } catch (error: any) {
     console.error("Error creating loan from lead:", error);
-    if (error.status && error.errorData) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          status: error.status,
-          errorData: error.errorData,
-        },
-        { status: error.status }
-      );
-    }
-    return NextResponse.json(
-      { error: error.message || "Unknown error" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "create",
+      resource: "loan",
+    });
   }
 }
