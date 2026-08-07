@@ -14,7 +14,7 @@ test("runReport uses a report-specific timeout override", () => {
 
   assert.match(
     source,
-    /const DEFAULT_FINERACT_REPORT_TIMEOUT_MS = 120_000;/,
+    /const DEFAULT_FINERACT_REPORT_TIMEOUT_MS = 300_000;/,
     "report requests should default to a longer timeout"
   );
   assert.match(

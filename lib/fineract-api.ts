@@ -3,7 +3,7 @@ import { transferClientToOfficeWithServiceAuth } from "./fineract-client-transfe
 import { getFineractBaseUrl } from "./fineract-base-url";
 import { normalizeFineractErrorPayload } from "./fineract-error";
 
-const DEFAULT_FINERACT_REPORT_TIMEOUT_MS = 120_000;
+const DEFAULT_FINERACT_REPORT_TIMEOUT_MS = 300_000;
 
 function getFineractReportTimeoutMs(): number {
   const configuredTimeout = Number(process.env.FINERACT_REPORT_TIMEOUT_MS);
