@@ -3,6 +3,20 @@ import { transferClientToOfficeWithServiceAuth } from "./fineract-client-transfe
 import { getFineractBaseUrl } from "./fineract-base-url";
 import { normalizeFineractErrorPayload } from "./fineract-error";
 
+const DEFAULT_FINERACT_REPORT_TIMEOUT_MS = 120_000;
+
+function getFineractReportTimeoutMs(): number {
+  const configuredTimeout = Number(process.env.FINERACT_REPORT_TIMEOUT_MS);
+
+  if (Number.isFinite(configuredTimeout) && configuredTimeout > 0) {
+    return configuredTimeout;
+  }
+
+  return DEFAULT_FINERACT_REPORT_TIMEOUT_MS;
+}
+
+const FINERACT_REPORT_TIMEOUT_MS = getFineractReportTimeoutMs();
+
 export interface FineractConfig {
   baseUrl: string;
   username: string;
@@ -792,7 +806,9 @@ export class FineractAPIService {
       queryString ? `?${queryString}` : ""
     }`;
 
-    const response = await this.client.get(url);
+    const response = await this.client.get(url, {
+      timeout: FINERACT_REPORT_TIMEOUT_MS,
+    });
     return response.data;
   }
 
