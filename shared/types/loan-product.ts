@@ -109,6 +109,7 @@ export interface LoanProductTemplate {
   repaymentStartDateTypeOptions?: FineractEnumOption[];
   loanScheduleTypeOptions?: FineractEnumOption[];
   loanScheduleProcessingTypeOptions?: FineractEnumOption[];
+  enableAccrualActivityPosting?: boolean;
   advancedPaymentAllocationTransactionTypes?: FineractEnumOption[];
   advancedPaymentAllocationTypes?: FineractEnumOption[];
   advancedPaymentAllocationFutureInstallmentAllocationRules?: FineractEnumOption[];
@@ -300,6 +301,7 @@ export interface LoanProductFormData {
   receivableInterestAccountId: number | "";
   receivableFeeAccountId: number | "";
   receivablePenaltyAccountId: number | "";
+  enableAccrualActivityPosting: boolean;
   enableInterestSuspenseAccounting: boolean;
   interestSuspenseAccountId: number | "";
   advancedAccountingRules: boolean;
@@ -420,6 +422,7 @@ export const defaultLoanProductFormData: LoanProductFormData = {
   receivableInterestAccountId: "",
   receivableFeeAccountId: "",
   receivablePenaltyAccountId: "",
+  enableAccrualActivityPosting: false,
   enableInterestSuspenseAccounting: false,
   interestSuspenseAccountId: "",
   advancedAccountingRules: false,
@@ -750,6 +753,7 @@ export function buildFineractPayload(form: LoanProductFormData): Record<string, 
       if (form.receivableInterestAccountId !== "") payload.receivableInterestAccountId = form.receivableInterestAccountId;
       if (form.receivableFeeAccountId !== "") payload.receivableFeeAccountId = form.receivableFeeAccountId;
       if (form.receivablePenaltyAccountId !== "") payload.receivablePenaltyAccountId = form.receivablePenaltyAccountId;
+      payload.enableAccrualActivityPosting = form.enableAccrualActivityPosting;
       if (form.enableInterestSuspenseAccounting) payload.enableInterestSuspenseAccounting = true;
       if (form.interestSuspenseAccountId !== "") payload.interestSuspenseAccountId = form.interestSuspenseAccountId;
     }
