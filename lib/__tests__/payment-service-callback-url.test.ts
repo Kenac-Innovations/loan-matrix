@@ -136,3 +136,21 @@ test("loan disbursement route uses the tenant-aware payment service callback hel
   assert.match(routeSource, /getRequiredPaymentServiceCallbackUrl/);
   assert.match(routeSource, /tenant\?\.ussdServiceTenantId/);
 });
+
+test("loan disbursement route resolves callback env only inside the Yango USSD branch", () => {
+  const routeSource = readRepoFile(
+    "app/api/fineract/loans/[id]/disburse/route.ts"
+  );
+
+  const yangoBranchIndex = routeSource.indexOf("if (yangoUssdDetails) {");
+  const callbackEnvIndex = routeSource.indexOf(
+    "getRequiredPaymentServiceCallbackUrl()"
+  );
+
+  assert.notEqual(yangoBranchIndex, -1);
+  assert.notEqual(callbackEnvIndex, -1);
+  assert.ok(
+    callbackEnvIndex > yangoBranchIndex,
+    "expected callback env lookup to happen inside the Yango USSD block"
+  );
+});

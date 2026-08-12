@@ -121,10 +121,6 @@ export async function POST(
       }
     }
 
-    const callbackUrl = buildPaymentServiceCallbackUrl(
-      getRequiredPaymentServiceCallbackUrl(),
-      tenant?.ussdServiceTenantId
-    );
     const augmentedPayload: Record<string, unknown> = {
       ...payload,
     };
@@ -165,6 +161,10 @@ export async function POST(
         : null;
 
     if (yangoUssdDetails) {
+      const callbackUrl = buildPaymentServiceCallbackUrl(
+        getRequiredPaymentServiceCallbackUrl(),
+        tenant?.ussdServiceTenantId
+      );
       augmentedPayload.externalId = yangoUssdDetails.externalId;
       augmentedPayload.accountNumber = yangoUssdDetails.accountNumber;
       if (yangoUssdDetails.paymentTypeId) {
