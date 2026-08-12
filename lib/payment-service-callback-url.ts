@@ -19,3 +19,23 @@ export function getRequiredPaymentServiceCallbackUrl(): string {
 
   return callbackUrl;
 }
+
+export function buildPaymentServiceCallbackUrl(
+  baseCallbackUrl: string,
+  ussdServiceTenantId?: string | null
+): string {
+  const normalizedBaseUrl = baseCallbackUrl.trim();
+  const tenantCode = ussdServiceTenantId?.trim();
+
+  if (!tenantCode) {
+    return normalizedBaseUrl;
+  }
+
+  try {
+    const callbackUrl = new URL(normalizedBaseUrl);
+    callbackUrl.searchParams.set("tenantCode", tenantCode);
+    return callbackUrl.toString();
+  } catch {
+    return normalizedBaseUrl;
+  }
+}

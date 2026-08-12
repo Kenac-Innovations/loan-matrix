@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
+  buildPaymentServiceCallbackUrl,
   getRequiredPaymentServiceCallbackUrl,
   resolvePaymentServiceCallbackUrl,
 } from "../payment-service-callback-url";
+
+function readRepoFile(relativePath: string): string {
+  return readFileSync(join(process.cwd(), relativePath), "utf8");
+}
 
 function withCallbackEnv(
   env: {
@@ -94,4 +101,38 @@ test("getRequiredPaymentServiceCallbackUrl throws when callback env vars are mis
       });
     }
   );
+});
+
+test("buildPaymentServiceCallbackUrl appends tenantCode when tenant is present", () => {
+  const callbackUrl = buildPaymentServiceCallbackUrl(
+    "http://cde-prod.cde-prod.svc.cluster.local:80/api/v1/repayment/txn-repaymentcallback",
+    " goodfellow "
+  );
+
+  assert.equal(
+    new URL(callbackUrl).href,
+    new URL(
+      "http://cde-prod.cde-prod.svc.cluster.local:80/api/v1/repayment/txn-repaymentcallback?tenantCode=goodfellow"
+    ).href
+  );
+});
+
+test("buildPaymentServiceCallbackUrl leaves base URL unchanged when tenant is missing", () => {
+  assert.equal(
+    buildPaymentServiceCallbackUrl(
+      "http://cde-prod.cde-prod.svc.cluster.local:80/api/v1/repayment/txn-repaymentcallback",
+      null
+    ),
+    "http://cde-prod.cde-prod.svc.cluster.local:80/api/v1/repayment/txn-repaymentcallback"
+  );
+});
+
+test("loan disbursement route uses the tenant-aware payment service callback helper", () => {
+  const routeSource = readRepoFile(
+    "app/api/fineract/loans/[id]/disburse/route.ts"
+  );
+
+  assert.match(routeSource, /buildPaymentServiceCallbackUrl/);
+  assert.match(routeSource, /getRequiredPaymentServiceCallbackUrl/);
+  assert.match(routeSource, /tenant\?\.ussdServiceTenantId/);
 });
