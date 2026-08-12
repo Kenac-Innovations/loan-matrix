@@ -7,8 +7,11 @@ import {
   getDisbursementBlockReason,
   getLeadViewerAccessContext,
 } from '@/lib/lead-policy';
+import {
+  buildPaymentServiceCallbackUrl,
+  getRequiredPaymentServiceCallbackUrl,
+} from '@/lib/payment-service-callback-url';
 import { applyTopupDisbursementCharges } from '@/lib/topup-disbursement-charge-service';
-import { getRequiredPaymentServiceCallbackUrl } from '@/lib/payment-service-callback-url';
 import { extractTenantSlugFromRequest, getTenantBySlug } from '@/lib/tenant-service';
 import { resolveYangoUssdDisbursementDetailsForLead } from '@/lib/yango-ussd-disbursement';
 
@@ -158,6 +161,10 @@ export async function POST(
         : null;
 
     if (yangoUssdDetails) {
+      const callbackUrl = buildPaymentServiceCallbackUrl(
+        getRequiredPaymentServiceCallbackUrl(),
+        tenant?.ussdServiceTenantId
+      );
       augmentedPayload.externalId = yangoUssdDetails.externalId;
       augmentedPayload.accountNumber = yangoUssdDetails.accountNumber;
       if (yangoUssdDetails.paymentTypeId) {
@@ -172,7 +179,7 @@ export async function POST(
           coercePositiveNumber(fineractLoan?.approvedPrincipal) ??
           coercePositiveNumber(fineractLoan?.principal);
       }
-      augmentedPayload.note = getRequiredPaymentServiceCallbackUrl();
+      augmentedPayload.note = callbackUrl;
     }
 
     // Log the payload being sent to Fineract
