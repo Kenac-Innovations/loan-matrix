@@ -1,7 +1,7 @@
 export type SupersetRole = "viewer" | "creator";
 
 export const GOODFELLOW_SUPERSET_BASE_URL =
-  "https://goodfellow.kenac.tech/analytics";
+  "https://apachesupersetgoodfellow.kenac.tech/analytics";
 const SUPERSET_CREATOR_USERNAME = "mifos";
 
 export interface ResolvedTenantSupersetConfig {

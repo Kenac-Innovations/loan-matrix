@@ -6,18 +6,19 @@ const source = readFileSync(
   resolve(process.cwd(), "app/(application)/reports/page.tsx"),
   "utf8"
 );
-const launchRoute = readFileSync(
-  resolve(process.cwd(), "app/api/analytics/launch/route.ts"),
+const tenantAnalyticsRoute = readFileSync(
+  resolve(process.cwd(), "app/api/tenant/analytics/route.ts"),
   "utf8"
 );
 
 assert.match(source, /Advanced Analytics/);
 assert.match(source, /fetch\("\/api\/tenant\/analytics"/);
-assert.match(source, /action="\/api\/analytics\/launch"/);
-assert.match(source, /method="post"/);
+assert.match(source, /href=\{analyticsUrl\}/);
 assert.match(source, /target="_blank"/);
-assert.match(source, /analyticsEnabled\s*&&/);
-assert.match(launchRoute, /console\.warn\(JSON\.stringify/);
-assert.doesNotMatch(launchRoute, /console\.info\(JSON\.stringify/);
+assert.match(source, /rel="noopener noreferrer"/);
+assert.match(source, /analyticsUrl\s*&&/);
+assert.doesNotMatch(source, /action="\/api\/analytics\/launch"/);
+assert.doesNotMatch(source, /<form/);
+assert.match(tenantAnalyticsRoute, /url:\s*decision\.baseUrl/);
 
 console.log("ok");

@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
 
   if (decision.allowed) {
     return NextResponse.json(
-      { enabled: true },
+      { enabled: true, url: decision.baseUrl },
       { headers: { "Cache-Control": "no-store" } }
     );
   }

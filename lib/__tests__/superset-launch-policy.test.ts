@@ -3,7 +3,7 @@ import { evaluateSupersetLaunchPolicy } from "../superset-launch-policy";
 
 const validConfig = {
   enabled: true,
-  baseUrl: "https://goodfellow.kenac.tech/analytics",
+  baseUrl: "https://apachesupersetgoodfellow.kenac.tech/analytics",
   creatorUsernames: ["mifos"],
 };
 

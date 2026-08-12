@@ -15,13 +15,13 @@ assert.deepEqual(
   getTenantSupersetConfig({
     superset: {
       enabled: true,
-      baseUrl: "https://goodfellow.kenac.tech/analytics/",
+      baseUrl: "https://apachesupersetgoodfellow.kenac.tech/analytics/",
       creatorUsernames: [" MIFOS ", "mifos", "", " Analyst "],
     },
   }),
   {
     enabled: true,
-    baseUrl: "https://goodfellow.kenac.tech/analytics",
+    baseUrl: "https://apachesupersetgoodfellow.kenac.tech/analytics",
     creatorUsernames: ["mifos"],
   }
 );
@@ -30,13 +30,13 @@ assert.deepEqual(
   getTenantSupersetConfig({
     superset: {
       enabled: true,
-      baseUrl: "https://goodfellow.kenac.tech/analytics/",
+      baseUrl: "https://apachesupersetgoodfellow.kenac.tech/analytics/",
       creatorUsernames: ["mifos"],
     },
   }),
   {
     enabled: true,
-    baseUrl: "https://goodfellow.kenac.tech/analytics",
+    baseUrl: "https://apachesupersetgoodfellow.kenac.tech/analytics",
     creatorUsernames: ["mifos"],
   }
 );
@@ -45,13 +45,29 @@ assert.deepEqual(
   getTenantSupersetConfig({
     superset: {
       enabled: true,
-      baseUrl: "https://goodfellow.kenac.tech/analytics?unsafe=true",
+      baseUrl:
+        "https://apachesupersetgoodfellow.kenac.tech/analytics?unsafe=true",
     },
   }),
   {
     enabled: false,
     baseUrl: null,
     creatorUsernames: [],
+  }
+);
+
+assert.deepEqual(
+  getTenantSupersetConfig({
+    superset: {
+      enabled: true,
+      baseUrl: "https://goodfellow.kenac.tech/analytics",
+      creatorUsernames: ["mifos"],
+    },
+  }),
+  {
+    enabled: false,
+    baseUrl: null,
+    creatorUsernames: ["mifos"],
   }
 );
 

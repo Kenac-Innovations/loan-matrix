@@ -127,7 +127,7 @@ function safeText(value: unknown, fallback = ""): string {
 
 export default function ReportsPage() {
   const [isOmamaTenant, setIsOmamaTenant] = useState(false);
-  const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
+  const [analyticsUrl, setAnalyticsUrl] = useState<string | null>(null);
   const [availableReports, setAvailableReports] = useState<FineractReport[]>(
     []
   );
@@ -245,8 +245,18 @@ export default function ReportsPage() {
       .then((response) =>
         response.ok ? response.json() : Promise.resolve({ enabled: false })
       )
-      .then((data: { enabled?: boolean }) => {
-        setAnalyticsEnabled(data.enabled === true);
+      .then((data: { enabled?: boolean; url?: string }) => {
+        if (data.enabled !== true || typeof data.url !== "string") {
+          setAnalyticsUrl(null);
+          return;
+        }
+
+        try {
+          const url = new URL(data.url);
+          setAnalyticsUrl(url.protocol === "https:" ? url.toString() : null);
+        } catch {
+          setAnalyticsUrl(null);
+        }
       })
       .catch((error) => {
         if (error instanceof Error && error.name !== "AbortError") {
@@ -797,7 +807,7 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      {analyticsEnabled && (
+      {analyticsUrl && (
         <Card className="relative mt-6 overflow-hidden border-cyan-500/30 bg-gradient-to-r from-slate-950 via-slate-900 to-cyan-950 text-white">
           <div className="absolute inset-y-0 right-0 w-48 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.18),transparent_68%)]" />
           <CardContent className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -810,23 +820,23 @@ export default function ReportsPage() {
               </div>
               <h2 className="text-xl font-semibold">Advanced Analytics</h2>
               <p className="mt-1 text-sm text-slate-300">
-                Open secure, interactive dashboards in a new tab using your
-                existing Loan Matrix access.
+                Open secure, interactive dashboards in a separate tab.
+                Superset may request its own login.
               </p>
             </div>
-            <form
-              action="/api/analytics/launch"
-              method="post"
-              target="_blank"
+            <Button
+              asChild
+              className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 sm:w-auto"
             >
-              <Button
-                type="submit"
-                className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 sm:w-auto"
+              <a
+                href={analyticsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 Open Advanced Analytics
                 <ExternalLink className="ml-2 h-4 w-4" />
-              </Button>
-            </form>
+              </a>
+            </Button>
           </CardContent>
         </Card>
       )}
