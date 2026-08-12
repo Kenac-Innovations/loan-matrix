@@ -86,6 +86,12 @@ export interface TenantMobileMoneySettings {
   payoutClearingGlAccountCode?: string;
 }
 
+export interface TenantSupersetSettings {
+  enabled?: boolean;
+  baseUrl?: string;
+  creatorUsernames?: string[];
+}
+
 export interface TenantAutoProgressToDisbursementRule {
   enabled?: boolean;
   loanProductId: number;
@@ -120,6 +126,8 @@ export interface TenantSettings {
   firstRepaymentDate?: FirstRepaymentDateConfig;
   /** Mobile money pool configuration */
   mobileMoney?: TenantMobileMoneySettings;
+  /** Optional shared analytics configuration */
+  superset?: TenantSupersetSettings;
   /** Product-specific rules for automatic CDE-gated progression through disbursement */
   autoProgressToDisbursementRules?: TenantAutoProgressToDisbursementRule[];
   /** Product-specific rules for automatic USSD lead creation */
