@@ -80,6 +80,7 @@ function buildTemplateDefaults(template: LoanProductTemplate): Partial<LoanProdu
       defaultLoanScheduleType
     ),
     accountingRule:                first(template.accountingRuleOptions),
+    enableAccrualActivityPosting:  template.enableAccrualActivityPosting ?? false,
     loanScheduleType:              defaultLoanScheduleType,
     currencyCode:                  template.currencyOptions?.[0]?.code ?? "",
     digitsAfterDecimal:            template.currencyOptions?.[0]?.decimalPlaces ?? 2,

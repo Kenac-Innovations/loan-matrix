@@ -51,6 +51,7 @@ import {
   Clock,
   Grid3X3,
   List,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { isOmamaTenantHostname } from "@/lib/omama-tenant";
@@ -126,6 +127,7 @@ function safeText(value: unknown, fallback = ""): string {
 
 export default function ReportsPage() {
   const [isOmamaTenant, setIsOmamaTenant] = useState(false);
+  const [analyticsUrl, setAnalyticsUrl] = useState<string | null>(null);
   const [availableReports, setAvailableReports] = useState<FineractReport[]>(
     []
   );
@@ -231,6 +233,38 @@ export default function ReportsPage() {
   // Load available reports on component mount
   useEffect(() => {
     fetchAvailableReports();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch("/api/tenant/analytics", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) =>
+        response.ok ? response.json() : Promise.resolve({ enabled: false })
+      )
+      .then((data: { enabled?: boolean; url?: string }) => {
+        if (data.enabled !== true || typeof data.url !== "string") {
+          setAnalyticsUrl(null);
+          return;
+        }
+
+        try {
+          const url = new URL(data.url);
+          setAnalyticsUrl(url.protocol === "https:" ? url.toString() : null);
+        } catch {
+          setAnalyticsUrl(null);
+        }
+      })
+      .catch((error) => {
+        if (error instanceof Error && error.name !== "AbortError") {
+          console.warn("Advanced Analytics availability check failed");
+        }
+      });
+
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -772,6 +806,40 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {analyticsUrl && (
+        <Card className="relative mt-6 overflow-hidden border-cyan-500/30 bg-gradient-to-r from-slate-950 via-slate-900 to-cyan-950 text-white">
+          <div className="absolute inset-y-0 right-0 w-48 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.18),transparent_68%)]" />
+          <CardContent className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="max-w-2xl">
+              <div className="mb-2 flex items-center gap-2 text-cyan-300">
+                <BarChart3 className="h-5 w-5" />
+                <span className="text-xs font-semibold uppercase tracking-[0.18em]">
+                  Goodfellow Analytics
+                </span>
+              </div>
+              <h2 className="text-xl font-semibold">Advanced Analytics</h2>
+              <p className="mt-1 text-sm text-slate-300">
+                Open secure, interactive dashboards in a separate tab.
+                Superset may request its own login.
+              </p>
+            </div>
+            <Button
+              asChild
+              className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 sm:w-auto"
+            >
+              <a
+                href={analyticsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open Advanced Analytics
+                <ExternalLink className="ml-2 h-4 w-4" />
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Report Categories Overview with Tabs */}
       {Object.keys(reportCategories).length > 0 && (

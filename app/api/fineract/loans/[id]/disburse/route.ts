@@ -8,6 +8,7 @@ import {
   getLeadViewerAccessContext,
 } from '@/lib/lead-policy';
 import { applyTopupDisbursementCharges } from '@/lib/topup-disbursement-charge-service';
+import { getRequiredPaymentServiceCallbackUrl } from '@/lib/payment-service-callback-url';
 import { extractTenantSlugFromRequest, getTenantBySlug } from '@/lib/tenant-service';
 import { resolveYangoUssdDisbursementDetailsForLead } from '@/lib/yango-ussd-disbursement';
 
@@ -117,11 +118,6 @@ export async function POST(
       }
     }
 
-    // Build callback URL to be used by payment gateway
-    //const callbackUrl = `https://webhook.site/45f26e26-5c80-4290-9a1a-87b60be151a4`;
-    // Use specific callback URL for payment gateway
-    const callbackUrl = `http://loan-matrix-dev.loan-matrix-dev.svc.cluster.local:3000/api/ussd-leads/payment-callback`;
-
     const augmentedPayload: Record<string, unknown> = {
       ...payload,
     };
@@ -176,7 +172,7 @@ export async function POST(
           coercePositiveNumber(fineractLoan?.approvedPrincipal) ??
           coercePositiveNumber(fineractLoan?.principal);
       }
-      augmentedPayload.note = payload?.note || callbackUrl;
+      augmentedPayload.note = getRequiredPaymentServiceCallbackUrl();
     }
 
     // Log the payload being sent to Fineract
