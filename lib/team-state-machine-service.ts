@@ -40,6 +40,7 @@ import {
   isAutoDisbursementDecisionAllowed,
   resolveAutoProgressTriggeredBy,
 } from "./lead-auto-disbursement-policy";
+import { getRequiredPaymentServiceCallbackUrl } from "./payment-service-callback-url";
 import { getTenantAutoDisbursementRules } from "./tenant-auto-disbursement-rules";
 import { resolvePaymentTypeForPreferredMethod } from "./payment-method-resolution";
 import { resolveYangoUssdDisbursementDetailsForLead } from "./yango-ussd-disbursement";
@@ -657,7 +658,6 @@ export class TeamAwareStateMachineService {
         fineractOverrides: isDisbursementHop
           ? {
               ...paymentResolution.fineractOverrides,
-              note: `Auto-progressed after CDE ${cdeResult.decision}`,
               payoutNote: `Auto-progressed after CDE ${cdeResult.decision}`,
             }
           : {
@@ -1738,7 +1738,9 @@ export class TeamAwareStateMachineService {
           bankNumber: overrides?.bankNumber,
           externalId: yangoUssdDetails?.externalId ?? overrides?.externalId,
           transactionAmount: yangoUssdDetails ? transactionAmount : overrides?.transactionAmount,
-          note: overrides?.note,
+          note: yangoUssdDetails
+            ? getRequiredPaymentServiceCallbackUrl()
+            : overrides?.note,
         });
 
         // Non-blocking: disbursement succeeds even when charge application fails.
