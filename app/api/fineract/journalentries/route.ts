@@ -2,32 +2,17 @@
 import { NextResponse } from 'next/server';
 import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
+import { buildJournalEntriesEndpoint } from '@/lib/journalentries-endpoint';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const transactionId = searchParams.get('transactionId');
-    const transactionDetails = searchParams.get('transactionDetails');
-
-    if (!transactionId) {
-      return NextResponse.json(
-        { error: 'Transaction ID is required' },
-        { status: 400 }
-      );
-    }
-
-    const queryParams = new URLSearchParams({
-      transactionId,
-    });
-
-    if (transactionDetails) {
-      queryParams.append('transactionDetails', transactionDetails);
-    }
-
-    const data = await fetchFineractAPI(`/journalentries?${queryParams}`);
+    const data = await fetchFineractAPI(
+      buildJournalEntriesEndpoint(searchParams)
+    );
     
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching journal entries:', error);
     return buildFineractErrorResponse(error);
   }
@@ -42,7 +27,7 @@ export async function POST(request: Request) {
       body: JSON.stringify(payload),
     });
     return NextResponse.json(data, { status: 201 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating journal entry:', error);
     return buildFineractErrorResponse(error);
   }
