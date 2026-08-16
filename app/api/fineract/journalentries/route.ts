@@ -2,14 +2,11 @@
 import { NextResponse } from 'next/server';
 import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
-import { buildJournalEntriesEndpoint } from '@/lib/journalentries-endpoint';
+import { getJournalEntriesData } from '@/lib/journalentries-route';
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const data = await fetchFineractAPI(
-      buildJournalEntriesEndpoint(searchParams)
-    );
+    const data = await getJournalEntriesData(request, fetchFineractAPI);
     
     return NextResponse.json(data);
   } catch (error) {
