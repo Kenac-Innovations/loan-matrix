@@ -80,3 +80,28 @@ test("Fineract disbursement paths include Yango external id payload support", ()
   assert.match(disburseRoute, /augmentedPayload\.accountNumber\s*=\s*yangoUssdDetails\.accountNumber/);
   assert.match(disburseRoute, /augmentedPayload\.transactionAmount/);
 });
+
+test(
+  "Yango disbursement route uses env callback URL and auto-progress keeps payout note separate",
+  () => {
+    const stateMachine = readRepoFile("lib/team-state-machine-service.ts");
+    const disburseRoute = readRepoFile(
+      "app/api/fineract/loans/[id]/disburse/route.ts"
+    );
+
+    assert.match(disburseRoute, /getRequiredPaymentServiceCallbackUrl/);
+    assert.doesNotMatch(disburseRoute, /payload\?\.note\s*\|\|/);
+    assert.doesNotMatch(
+      stateMachine,
+      /fineractOverrides:\s*isDisbursementHop\s*\?\s*{\s*\.\.\.paymentResolution\.fineractOverrides,\s*note:\s*`Auto-progressed after CDE \$\{cdeResult\.decision\}`/s
+    );
+    assert.match(
+      stateMachine,
+      /fineractOverrides:\s*isDisbursementHop\s*\?\s*{\s*\.\.\.paymentResolution\.fineractOverrides,\s*payoutNote:\s*`Auto-progressed after CDE \$\{cdeResult\.decision\}`/s
+    );
+    assert.match(
+      stateMachine,
+      /note:\s*yangoUssdDetails\s*\?\s*getRequiredPaymentServiceCallbackUrl\(\)\s*:\s*overrides\?\.note/
+    );
+  }
+);

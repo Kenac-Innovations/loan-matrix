@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { use } from "react";
 import {
-  ArrowLeft, Pencil, Calendar, Percent, Repeat2, Coins, BookOpen,
-  ShieldAlert, Tag, Settings2, TrendingDown, Info, ChevronDown,
-  Banknote, RefreshCw, Lock,
+  ArrowLeft, Pencil, Percent, Repeat2, Coins, BookOpen,
+  ShieldAlert, Tag, Settings2, TrendingDown, Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -99,6 +98,7 @@ interface LoanProduct {
   enableInstallmentLevelDelinquency?: boolean;
   delinquencyBucket?: { id: number; name: string };
   accountingRule?: EnumValue;
+  enableAccrualActivityPosting?: boolean;
   // Fineract nests all GL account objects under accountingMappings
   accountingMappings?: {
     fundSourceAccount?: GLAccount;
@@ -556,6 +556,22 @@ export default function LoanProductViewPage({ params }: { params: Promise<{ id: 
 
             {hasGL && (
               <>
+                {isAccrual && (
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Accrual Activity Posting
+                    </p>
+                    <InfoGrid
+                      rows={[
+                        {
+                          label: "Enable on Installment Due Date",
+                          value: product.enableAccrualActivityPosting,
+                        },
+                      ]}
+                    />
+                  </div>
+                )}
+
                 {(() => {
                   const am = product.accountingMappings ?? {};
                   return (

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 /**
  * PUT /api/fineract/clients/[id]/addresses/[addressId]
@@ -80,16 +81,10 @@ export async function PUT(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error updating client address:", error);
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to update client address",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "update",
+      resource: "address",
+    });
   }
 }
 
@@ -115,15 +110,9 @@ export async function DELETE(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error deleting client address:", error);
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to delete client address",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "delete",
+      resource: "address",
+    });
   }
 }

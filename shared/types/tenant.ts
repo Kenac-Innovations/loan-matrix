@@ -34,6 +34,8 @@ export interface TenantFeatures {
   topupLoanBalanceExcludeUnrealizedInterests: boolean;
   /** Restrict non-exempt users to cash-only loan repayments, auto-resolving their teller/cashier from their cashier session (blocking submission if unresolvable), unless the user is individually exempted */
   autoResolveRepaymentCashier: boolean;
+  /** When true, only SUPER_ADMIN users may edit sensitive client fields on the client edit form. */
+  restrictSensitiveClientEditFieldsToSuperAdmin: boolean;
   /** When true, MFA is required for tenant logins. Missing or false disables MFA. */
   usesMFA?: boolean;
   /** Enabled MFA delivery channels for the tenant. */
@@ -84,6 +86,12 @@ export interface TenantMobileMoneySettings {
   payoutClearingGlAccountCode?: string;
 }
 
+export interface TenantSupersetSettings {
+  enabled?: boolean;
+  baseUrl?: string;
+  creatorUsernames?: string[];
+}
+
 export interface TenantAutoProgressToDisbursementRule {
   enabled?: boolean;
   loanProductId: number;
@@ -118,6 +126,8 @@ export interface TenantSettings {
   firstRepaymentDate?: FirstRepaymentDateConfig;
   /** Mobile money pool configuration */
   mobileMoney?: TenantMobileMoneySettings;
+  /** Optional shared analytics configuration */
+  superset?: TenantSupersetSettings;
   /** Product-specific rules for automatic CDE-gated progression through disbursement */
   autoProgressToDisbursementRules?: TenantAutoProgressToDisbursementRule[];
   /** Product-specific rules for automatic USSD lead creation */
@@ -144,6 +154,7 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   officeScopedAdminLeadsDashboard: false,
   topupLoanBalanceExcludeUnrealizedInterests: false,
   autoResolveRepaymentCashier: false,
+  restrictSensitiveClientEditFieldsToSuperAdmin: false,
 };
 
 /**

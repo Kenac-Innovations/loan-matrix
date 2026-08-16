@@ -1,13 +1,49 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
-import { error } from "console";
 import { transferClientToOfficeWithServiceAuth } from "./fineract-client-transfer-service";
 import { getFineractBaseUrl } from "./fineract-base-url";
+import { normalizeFineractErrorPayload } from "./fineract-error";
+
+const DEFAULT_FINERACT_REPORT_TIMEOUT_MS = 300_000;
+
+function getFineractReportTimeoutMs(): number {
+  const configuredTimeout = Number(process.env.FINERACT_REPORT_TIMEOUT_MS);
+
+  if (Number.isFinite(configuredTimeout) && configuredTimeout > 0) {
+    return configuredTimeout;
+  }
+
+  return DEFAULT_FINERACT_REPORT_TIMEOUT_MS;
+}
+
+const FINERACT_REPORT_TIMEOUT_MS = getFineractReportTimeoutMs();
 
 export interface FineractConfig {
   baseUrl: string;
   username: string;
   password: string;
   tenantId: string;
+}
+
+function normalizeAxiosFineractError(error: any) {
+  const status = error?.response?.status;
+  const statusText = error?.response?.statusText;
+  const normalizedErrorData = normalizeFineractErrorPayload(
+    error?.response?.data,
+    { status, statusText }
+  );
+
+  error.status = status;
+  error.errorData = normalizedErrorData;
+
+  if (error?.response) {
+    error.response.data = normalizedErrorData;
+  }
+
+  if (normalizedErrorData.defaultUserMessage) {
+    error.message = normalizedErrorData.defaultUserMessage;
+  }
+
+  return error;
 }
 
 export interface FineractClient {
@@ -460,15 +496,19 @@ export class FineractAPIService {
     });
 
     // Add response interceptor for error handling
-    this.client.interceptors.response.use(
+    const handleAxiosError = (axiosError: any) => {
+      const normalizedError = normalizeAxiosFineractError(axiosError);
+      console.error(
+        "Fineract API Error:",
+        normalizedError.errorData || normalizedError.message
+      );
+      throw normalizedError;
+    };
+
+    this.client.interceptors.response.use((response) => response, handleAxiosError);
+    this.clientV2.interceptors.response.use(
       (response) => response,
-      (error) => {
-        console.error(
-          "Fineract API Error:",
-          error.response?.data || error.message
-        );
-        throw error;
-      }
+      handleAxiosError
     );
   }
 
@@ -766,7 +806,9 @@ export class FineractAPIService {
       queryString ? `?${queryString}` : ""
     }`;
 
-    const response = await this.client.get(url);
+    const response = await this.client.get(url, {
+      timeout: FINERACT_REPORT_TIMEOUT_MS,
+    });
     return response.data;
   }
 

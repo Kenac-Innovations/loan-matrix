@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 export async function GET(
@@ -16,13 +17,7 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching interest pauses:", error);
-    if (error.status && error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status });
-    }
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch interest pauses" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -42,12 +37,6 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error creating interest pause:", error);
-    if (error.status && error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status });
-    }
-    return NextResponse.json(
-      { error: error.message || "Failed to create interest pause" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

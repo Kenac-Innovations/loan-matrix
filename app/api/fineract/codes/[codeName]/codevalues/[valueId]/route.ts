@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 /**
@@ -40,10 +41,7 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error(`Error fetching code value:`, error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch code value" },
-      { status: error.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -82,10 +80,7 @@ export async function PUT(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error(`Error updating code value:`, error);
-    return NextResponse.json(
-      { error: error.message || "Failed to update code value" },
-      { status: error.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -115,10 +110,7 @@ export async function DELETE(
     return NextResponse.json({ success: true, ...data });
   } catch (error: any) {
     console.error(`Error deleting code value:`, error);
-    return NextResponse.json(
-      { error: error.message || "Failed to delete code value" },
-      { status: error.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 

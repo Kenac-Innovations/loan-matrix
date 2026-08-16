@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
 
 // GET /api/fineract/datatables?apptable=m_client
@@ -10,10 +11,7 @@ export async function GET(request: Request) {
     const data = await fetchFineractAPI(`/datatables?${query.toString()}`);
     return NextResponse.json(data);
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.message || 'Failed to fetch datatables' },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 

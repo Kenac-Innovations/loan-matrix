@@ -51,6 +51,7 @@ import {
   Clock,
   Grid3X3,
   List,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { isOmamaTenantHostname } from "@/lib/omama-tenant";
@@ -60,6 +61,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ReportDateParameterInput } from "./components/report-date-parameter-input";
+import {
+  formatReportDateValue,
+  isReportDateColumn,
+  isReportDateLike,
+} from "./components/report-date-utils";
 import { ReportsDataTable } from "./components/reports-data-table";
 
 interface FineractReport {
@@ -110,6 +117,8 @@ interface ReportData {
   }>;
 }
 
+type ReportColumnHeader = ReportData["columnHeaders"][number];
+
 function safeText(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;
   if (value === null || value === undefined) return fallback;
@@ -118,6 +127,7 @@ function safeText(value: unknown, fallback = ""): string {
 
 export default function ReportsPage() {
   const [isOmamaTenant, setIsOmamaTenant] = useState(false);
+  const [analyticsUrl, setAnalyticsUrl] = useState<string | null>(null);
   const [availableReports, setAvailableReports] = useState<FineractReport[]>(
     []
   );
@@ -223,6 +233,38 @@ export default function ReportsPage() {
   // Load available reports on component mount
   useEffect(() => {
     fetchAvailableReports();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch("/api/tenant/analytics", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then((response) =>
+        response.ok ? response.json() : Promise.resolve({ enabled: false })
+      )
+      .then((data: { enabled?: boolean; url?: string }) => {
+        if (data.enabled !== true || typeof data.url !== "string") {
+          setAnalyticsUrl(null);
+          return;
+        }
+
+        try {
+          const url = new URL(data.url);
+          setAnalyticsUrl(url.protocol === "https:" ? url.toString() : null);
+        } catch {
+          setAnalyticsUrl(null);
+        }
+      })
+      .catch((error) => {
+        if (error instanceof Error && error.name !== "AbortError") {
+          console.warn("Advanced Analytics availability check failed");
+        }
+      });
+
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -466,19 +508,13 @@ export default function ReportsPage() {
     const rows = reportData.data
       .map((item) =>
         item.row
-          .map((cell: any) => {
+          .map((cell: any, cellIndex: number) => {
+            const header = reportData.columnHeaders[cellIndex];
             if (cell === null || cell === undefined) return "";
-            if (
-              Array.isArray(cell) &&
-              cell.length === 3 &&
-              typeof cell[0] === "number"
-            ) {
-              const [year, month, day] = cell;
-              return `${year}-${month.toString().padStart(2, "0")}-${day
-                .toString()
-                .padStart(2, "0")}`;
-            }
-            const str = String(cell);
+            const str =
+              isDateColumn(header) || isReportDateLike(cell)
+              ? formatReportDateValue(cell, "")
+              : String(cell);
             return str.includes(",") || str.includes('"') || str.includes("\n")
               ? `"${str.replace(/"/g, '""')}"`
               : str;
@@ -498,6 +534,9 @@ export default function ReportsPage() {
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  const isDateColumn = (header?: ReportColumnHeader) =>
+    isReportDateColumn(header?.columnType, header?.columnDisplayType);
 
   const handleParameterChange = async (
     paramVariable: string,
@@ -600,12 +639,12 @@ export default function ReportsPage() {
 
       case "date":
         return (
-          <Input
-            type="date"
+          <ReportDateParameterInput
             value={value}
-            onChange={(e) =>
-              handleParameterChange(param.parameter_variable, e.target.value)
+            onChange={(nextValue) =>
+              handleParameterChange(param.parameter_variable, nextValue)
             }
+            placeholder={`Select ${displayLabel}`}
           />
         );
 
@@ -635,20 +674,13 @@ export default function ReportsPage() {
     }
   };
 
-  const formatCellValue = (cell: any) => {
+  const formatCellValue = (cell: any, header?: ReportColumnHeader) => {
     if (cell === null || cell === undefined) {
       return <span className="text-muted-foreground">-</span>;
     }
 
-    if (
-      Array.isArray(cell) &&
-      cell.length === 3 &&
-      typeof cell[0] === "number"
-    ) {
-      const [year, month, day] = cell;
-      return `${year}-${month.toString().padStart(2, "0")}-${day
-        .toString()
-        .padStart(2, "0")}`;
+    if (isDateColumn(header) || isReportDateLike(cell)) {
+      return formatReportDateValue(cell, String(cell));
     }
 
     return String(cell);
@@ -774,6 +806,40 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {analyticsUrl && (
+        <Card className="relative mt-6 overflow-hidden border-cyan-500/30 bg-gradient-to-r from-slate-950 via-slate-900 to-cyan-950 text-white">
+          <div className="absolute inset-y-0 right-0 w-48 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.18),transparent_68%)]" />
+          <CardContent className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="max-w-2xl">
+              <div className="mb-2 flex items-center gap-2 text-cyan-300">
+                <BarChart3 className="h-5 w-5" />
+                <span className="text-xs font-semibold uppercase tracking-[0.18em]">
+                  Goodfellow Analytics
+                </span>
+              </div>
+              <h2 className="text-xl font-semibold">Advanced Analytics</h2>
+              <p className="mt-1 text-sm text-slate-300">
+                Open secure, interactive dashboards in a separate tab.
+                Superset may request its own login.
+              </p>
+            </div>
+            <Button
+              asChild
+              className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300 sm:w-auto"
+            >
+              <a
+                href={analyticsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open Advanced Analytics
+                <ExternalLink className="ml-2 h-4 w-4" />
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Report Categories Overview with Tabs */}
       {Object.keys(reportCategories).length > 0 && (

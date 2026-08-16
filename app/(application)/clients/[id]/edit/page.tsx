@@ -2,7 +2,13 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { hasSuperAdminServer } from "@/lib/authorization";
+import {
+  hasPermissionServer,
+  hasSuperAdminServer,
+} from "@/lib/authorization";
+import { isSensitiveClientEditRestrictionEnabled } from "@/lib/client-edit-restrictions";
+import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { SpecificPermission } from "@/shared/types/auth";
 import { ClientEditForm } from "./components/client-edit-form";
 
 interface PageProps {
@@ -19,7 +25,13 @@ export default async function ClientEditPage({ params }: PageProps) {
     notFound();
   }
 
-  const canEditClient = await hasSuperAdminServer();
+  const [canEditClient, isSuperAdmin, tenant] = await Promise.all([
+    hasPermissionServer(SpecificPermission.UPDATE_CLIENT),
+    hasSuperAdminServer(),
+    getTenantFromHeaders(),
+  ]);
+  const canEditRestrictedClientFields =
+    !isSensitiveClientEditRestrictionEnabled(tenant?.settings) || isSuperAdmin;
 
   return (
     <div className="space-y-6">
@@ -50,7 +62,11 @@ export default async function ClientEditPage({ params }: PageProps) {
       </div>
 
       {/* Client Edit Form */}
-      <ClientEditForm clientId={clientId} canEditClient={canEditClient} />
+      <ClientEditForm
+        clientId={clientId}
+        canEditClient={canEditClient}
+        canEditRestrictedClientFields={canEditRestrictedClientFields}
+      />
     </div>
   );
 } 

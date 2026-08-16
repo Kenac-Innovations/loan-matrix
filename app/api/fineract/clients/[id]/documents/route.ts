@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import {
   extractTenantSlugFromRequest,
   getTenantBySlug,
@@ -129,12 +130,11 @@ export async function GET(
 
     return NextResponse.json(data);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Error fetching client documents:", error);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "client documents",
+    });
   }
 }
 
@@ -243,25 +243,9 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error) {
     console.error("Error uploading client document:", error);
-
-    // If it's a Fineract API error with status code, preserve it
-    const fineractError = error as {
-      status?: number;
-      errorData?: unknown;
-    };
-
-    if (fineractError.status && fineractError.errorData) {
-      return NextResponse.json(fineractError.errorData, {
-        status: fineractError.status,
-      });
-    }
-
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to upload document",
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "upload",
+      resource: "document",
+    });
   }
 }
