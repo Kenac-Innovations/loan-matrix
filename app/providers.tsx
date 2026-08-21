@@ -1,6 +1,7 @@
 "use client";
 
 import { SessionProvider } from "next-auth/react";
+import { SessionExpiryRedirect } from "@/app/components/session-expiry-redirect";
 import { AuthProvider } from "@/contexts/auth-context";
 import { CurrencyProvider } from "@/contexts/currency-context";
 
@@ -10,6 +11,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       refetchInterval={5 * 60} // Refetch session every 5 minutes
       refetchOnWindowFocus={true}
     >
+      <SessionExpiryRedirect />
       <AuthProvider>
         <CurrencyProvider>{children}</CurrencyProvider>
       </AuthProvider>
