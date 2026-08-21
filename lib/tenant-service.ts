@@ -15,6 +15,11 @@ export function extractTenantSlug(host: string): string {
   // Remove port if present
   const hostWithoutPort = host.split(":")[0];
 
+  // ARDA has a dedicated public hostname rather than a tenant-slug subdomain.
+  if (hostWithoutPort === "ardaloanmatrix.kenac.tech") {
+    return "arda";
+  }
+
   // Handle plain localhost (no subdomain)
   if (hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1") {
     return "goodfellow";

@@ -38,7 +38,8 @@ import { prisma } from "@/lib/prisma";
 import { headers } from "next/headers";
 import { extractTenantSlug, getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
-import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { fetchFineractAPI } from "@/lib/api";
+import { getFineractServiceWithServiceAuth } from "@/lib/fineract-api";
 import { callCDEAndStore } from "@/lib/cde-utils";
 import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
 import {
@@ -53,8 +54,6 @@ import {
   getLeadViewerAccessContext,
 } from "@/lib/lead-policy";
 import { buildAutoDisbursementTrail } from "@/lib/auto-disbursement-trail";
-
-const FINERACT_BASE_URL = process.env.FINERACT_BASE_URL || "http://10.10.0.143";
 
 interface FineractLoanInfo {
   status: string | null;
@@ -74,7 +73,7 @@ async function getFineractLoanInfo(
   leadId: string
 ): Promise<FineractLoanInfo> {
   try {
-    const fineractService = await getFineractServiceWithSession();
+    const fineractService = await getFineractServiceWithServiceAuth();
 
     // Try fetching by loan ID first if available
     if (loanId) {
@@ -219,42 +218,24 @@ function getStatusPageHue(status: string | null): string {
  */
 async function getFineractDocuments(
   clientId: number | null,
-  loanId: number | null,
-  tenantSlug: string
+  loanId: number | null
 ): Promise<{ clientDocuments: any[]; loanDocuments: any[] }> {
   try {
-    const session = await getSession();
-    const accessToken =
-      session?.base64EncodedAuthenticationKey || session?.accessToken;
-
-    if (!accessToken) {
-      return { clientDocuments: [], loanDocuments: [] };
-    }
-
     const clientDocuments: any[] = [];
     const loanDocuments: any[] = [];
 
     // Fetch client documents
     if (clientId) {
       try {
-        const clientDocsUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/documents`;
-        const clientDocsRes = await fetch(clientDocsUrl, {
-          method: "GET",
-          headers: {
-            Authorization: `Basic ${accessToken}`,
-            "Fineract-Platform-TenantId": tenantSlug,
-            Accept: "application/json",
-          },
+        const data = await fetchFineractAPI(`/clients/${clientId}/documents`, {
+          authMode: "service",
           cache: "no-store",
         });
 
-        if (clientDocsRes.ok) {
-          const data = await clientDocsRes.json();
-          if (Array.isArray(data)) {
-            clientDocuments.push(...data);
-          } else if (data.pageItems) {
-            clientDocuments.push(...data.pageItems);
-          }
+        if (Array.isArray(data)) {
+          clientDocuments.push(...data);
+        } else if (data.pageItems) {
+          clientDocuments.push(...data.pageItems);
         }
       } catch (err) {
         console.warn("Failed to fetch client documents:", err);
@@ -264,24 +245,15 @@ async function getFineractDocuments(
     // Fetch loan documents
     if (loanId) {
       try {
-        const loanDocsUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/loans/${loanId}/documents`;
-        const loanDocsRes = await fetch(loanDocsUrl, {
-          method: "GET",
-          headers: {
-            Authorization: `Basic ${accessToken}`,
-            "Fineract-Platform-TenantId": tenantSlug,
-            Accept: "application/json",
-          },
+        const data = await fetchFineractAPI(`/loans/${loanId}/documents`, {
+          authMode: "service",
           cache: "no-store",
         });
 
-        if (loanDocsRes.ok) {
-          const data = await loanDocsRes.json();
-          if (Array.isArray(data)) {
-            loanDocuments.push(...data);
-          } else if (data.pageItems) {
-            loanDocuments.push(...data.pageItems);
-          }
+        if (Array.isArray(data)) {
+          loanDocuments.push(...data);
+        } else if (data.pageItems) {
+          loanDocuments.push(...data.pageItems);
         }
       } catch (err) {
         console.warn("Failed to fetch loan documents:", err);
@@ -299,56 +271,30 @@ async function getFineractDocuments(
  * Fetch client datatables from Fineract
  */
 async function getClientDatatables(
-  clientId: number,
-  tenantSlug: string
+  clientId: number
 ): Promise<{ datatables: any[]; datatableData: Record<string, any> }> {
   try {
-    const session = await getSession();
-    const accessToken =
-      session?.base64EncodedAuthenticationKey || session?.accessToken;
-
-    if (!accessToken) {
-      return { datatables: [], datatableData: {} };
-    }
-
     // Fetch list of datatables for clients
-    const datatableListUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables?apptable=m_client`;
-    const datatableListRes = await fetch(datatableListUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Basic ${accessToken}`,
-        "Fineract-Platform-TenantId": tenantSlug,
-        Accept: "application/json",
-      },
+    const datatables = await fetchFineractAPI("/datatables?apptable=m_client", {
+      authMode: "service",
       cache: "no-store",
     });
-
-    if (!datatableListRes.ok) {
-      console.warn("Failed to fetch datatables list:", datatableListRes.status);
-      return { datatables: [], datatableData: {} };
-    }
-
-    const datatables = await datatableListRes.json();
     const datatableData: Record<string, any> = {};
 
     // Fetch data for each datatable
     for (const dt of datatables) {
       try {
-        const dataUrl = `${FINERACT_BASE_URL}/fineract-provider/api/v1/datatables/${encodeURIComponent(
-          dt.registeredTableName
-        )}/${clientId}?genericResultSet=true`;
-        const dataRes = await fetch(dataUrl, {
-          method: "GET",
-          headers: {
-            Authorization: `Basic ${accessToken}`,
-            "Fineract-Platform-TenantId": tenantSlug,
-            Accept: "application/json",
-          },
-          cache: "no-store",
-        });
+        const data = await fetchFineractAPI(
+          `/datatables/${encodeURIComponent(
+            dt.registeredTableName
+          )}/${clientId}?genericResultSet=true`,
+          {
+            authMode: "service",
+            cache: "no-store",
+          }
+        );
 
-        if (dataRes.ok) {
-          const data = await dataRes.json();
+        if (data) {
           datatableData[dt.registeredTableName] = data;
         }
       } catch (err) {
@@ -529,7 +475,7 @@ async function getLeadData(leadId: string) {
   const clientId = lead.fineractClientId;
   if (clientId) {
     try {
-      const result = await getClientDatatables(clientId, tenantSlug);
+      const result = await getClientDatatables(clientId);
       clientDatatables = result.datatables;
       datatableData = result.datatableData;
     } catch (error) {
@@ -542,8 +488,7 @@ async function getLeadData(leadId: string) {
   try {
     const fineractDocs = await getFineractDocuments(
       clientId || null,
-      fineractLoanInfo.loanId || lead.fineractLoanId || null,
-      tenantSlug
+      fineractLoanInfo.loanId || lead.fineractLoanId || null
     );
     clientDocuments = fineractDocs.clientDocuments;
     loanDocuments = fineractDocs.loanDocuments;

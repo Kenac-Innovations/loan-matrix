@@ -46,6 +46,11 @@ ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 
 RUN pnpm run build
 
+# This target contains Prisma's migration engine and migration files. It is
+# published separately and used only by the ARDA PreSync migration job.
+FROM builder AS migrator
+CMD ["pnpm", "prisma", "migrate", "deploy"]
+
 # Production image, copy all the files and run next
 FROM base AS runner
 WORKDIR /app

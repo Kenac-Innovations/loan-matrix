@@ -42,6 +42,10 @@ import {
 } from "@/lib/fineract-business-calendar";
 import { shouldAutoPopulatePrincipalAmount } from "@/lib/tenant-settings";
 import {
+  buildArdaStockLoanSelection,
+  isArdaStockInputLoanProduct,
+} from "@/lib/inventory/arda-stock-loan";
+import {
   recomputeTopupAwareDisbursementChargeAmounts,
   roundMoney,
   isLoanDisbursementChargeTime,
@@ -262,6 +266,19 @@ const loanTermsSchema = z.object({
     )
     .optional()
     .default([]),
+  stockLoanSelection: z
+    .object({
+      inventoryItemId: z.string(),
+      inventoryItemName: z.string(),
+      fineractOfficeId: z.number(),
+      fineractOfficeName: z.string().optional(),
+      unitOfMeasure: z.string().optional(),
+      quantity: z.string(),
+      unitValue: z.string(),
+      totalValue: z.string(),
+      currencyCode: z.string(),
+    })
+    .optional(),
 });
 
 type LoanTermsFormData = z.infer<typeof loanTermsSchema>;
@@ -386,6 +403,11 @@ interface LoanTemplate {
   chargeOptions?: LoanTemplateChargeOption[];
   penaltyOptions?: LoanTemplateChargeOption[];
   canUseForTopup?: boolean;
+  product?: {
+    name?: string;
+    shortName?: string;
+    externalId?: string;
+  } & Record<string, unknown>;
   clientActiveLoanOptions?: Array<{
     id: number;
     accountNo: string;
@@ -393,6 +415,26 @@ interface LoanTemplate {
     loanBalance: number;
   }>;
 }
+
+type ArdaInventoryBalance = {
+  id: string;
+  inventoryItemId: string;
+  fineractOfficeId: number;
+  fineractOfficeName?: string | null;
+  quantityOnHand: string;
+  quantityReserved: string;
+  availableQuantity: string;
+  stockValue: string;
+  currencyCode: string;
+  item: {
+    id: string;
+    sku: string;
+    name: string;
+    unitOfMeasure: string;
+    currencyCode: string;
+    defaultUnitValue?: string;
+  };
+};
 
 interface InvoiceDiscountIncomeChargeRecord {
   id: string;
@@ -722,6 +764,17 @@ export function LoanTermsForm({
   const [autoPopulatePrincipalAmount, setAutoPopulatePrincipalAmount] =
     useState(true);
   const [savedLoanTermsData, setSavedLoanTermsData] = useState<any>(null);
+  const [selectedProductIdentity, setSelectedProductIdentity] = useState<{
+    name?: string | null;
+    shortName?: string | null;
+    externalId?: string | null;
+  } | null>(initialLoanTemplate?.product ?? null);
+  const [inventoryBalances, setInventoryBalances] = useState<ArdaInventoryBalance[]>([]);
+  const [isLoadingInventoryBalances, setIsLoadingInventoryBalances] =
+    useState(false);
+  const [selectedInventoryBalanceId, setSelectedInventoryBalanceId] =
+    useState("");
+  const [stockQuantity, setStockQuantity] = useState("");
 
   // Track if template values have been set
   const frequencyValuesSet = useRef(false);
@@ -731,6 +784,56 @@ export function LoanTermsForm({
   const shouldApplyTemplateDefaultsRef = useRef(true);
   const principalAutoPopulatedRef = useRef(false);
   const appliedInvoiceReserveSignature = useRef<string | null>(null);
+  const selectedInventoryBalance = useMemo(
+    () =>
+      inventoryBalances.find(
+        (balance) => balance.id === selectedInventoryBalanceId
+      ) || null,
+    [inventoryBalances, selectedInventoryBalanceId]
+  );
+  const isArdaStockLoan = isArdaStockInputLoanProduct(selectedProductIdentity);
+  const selectedStockUnitValue = useMemo(() => {
+    if (!selectedInventoryBalance) return "";
+
+    const itemDefault = Number(selectedInventoryBalance.item?.defaultUnitValue);
+    if (Number.isFinite(itemDefault) && itemDefault > 0) {
+      return itemDefault.toFixed(2);
+    }
+
+    const stockValue = Number(selectedInventoryBalance.stockValue);
+    const quantityOnHand = Number(selectedInventoryBalance.quantityOnHand);
+    if (
+      Number.isFinite(stockValue) &&
+      Number.isFinite(quantityOnHand) &&
+      quantityOnHand > 0
+    ) {
+      return (stockValue / quantityOnHand).toFixed(2);
+    }
+
+    return "";
+  }, [selectedInventoryBalance]);
+  const ardaStockLoanSelection = useMemo(() => {
+    if (!selectedInventoryBalance || !stockQuantity || !selectedStockUnitValue) {
+      return null;
+    }
+
+    try {
+      return buildArdaStockLoanSelection({
+        inventoryItemId: selectedInventoryBalance.inventoryItemId,
+        inventoryItemName: selectedInventoryBalance.item.name,
+        fineractOfficeId: selectedInventoryBalance.fineractOfficeId,
+        fineractOfficeName: selectedInventoryBalance.fineractOfficeName || "",
+        unitOfMeasure: selectedInventoryBalance.item.unitOfMeasure,
+        quantity: stockQuantity,
+        unitValue: selectedStockUnitValue,
+        currencyCode:
+          selectedInventoryBalance.currencyCode ||
+          selectedInventoryBalance.item.currencyCode,
+      });
+    } catch {
+      return null;
+    }
+  }, [selectedInventoryBalance, selectedStockUnitValue, stockQuantity]);
   const invoiceIncomeChargeFineractId = Number(
     invoiceIncomeChargeProduct?.fineractChargeId
   );
@@ -992,6 +1095,9 @@ export function LoanTermsForm({
     shouldApplyTemplateDefaultsRef.current = true;
     principalAutoPopulatedRef.current = false;
     appliedInvoiceReserveSignature.current = null;
+    setSelectedProductIdentity(null);
+    setSelectedInventoryBalanceId("");
+    setStockQuantity("");
 
     form.reset({
       principal: 0,
@@ -1127,12 +1233,39 @@ export function LoanTermsForm({
           fetch(`/api/invoice-discounting-products?fineractProductId=${productId}`),
         ]);
 
-        if (!templateRes.ok) {
+        const productData = productRes.ok
+          ? await productRes.json().catch(() => null)
+          : null;
+        const nextProductIdentity = productData
+          ? {
+              name:
+                productData.name ||
+                productData.productName ||
+                initialLoanTemplate?.product?.name,
+              shortName:
+                productData.shortName ||
+                productData.shortname ||
+                initialLoanTemplate?.product?.shortName ||
+                null,
+              externalId:
+                productData.externalId ||
+                productData.externalID ||
+                initialLoanTemplate?.product?.externalId ||
+                null,
+            }
+          : initialLoanTemplate?.product ?? null;
+        const selectedIsArdaStockLoan =
+          isArdaStockInputLoanProduct(nextProductIdentity);
+        setSelectedProductIdentity(nextProductIdentity);
+
+        if (!templateRes.ok && !selectedIsArdaStockLoan) {
           throw new Error("Failed to fetch detailed loan template");
         }
 
         let [detailedTemplate, invoiceDiscountingResult] = await Promise.all([
-          templateRes.json(),
+          templateRes.ok
+            ? templateRes.json()
+            : Promise.resolve(initialLoanTemplate),
           invoiceDiscountingRes.ok
             ? invoiceDiscountingRes.json()
             : Promise.resolve({ isInvoiceDiscounting: false }),
@@ -1142,8 +1275,7 @@ export function LoanTermsForm({
           invoiceDiscountingResult?.isInvoiceDiscounting === true;
 
         // Merge product-level topup config into the template
-        if (productRes.ok) {
-          const productData = await productRes.json();
+        if (productData && detailedTemplate) {
           detailedTemplate = mergeProductChargeDataIntoTemplate(
             detailedTemplate,
             productData
@@ -1173,6 +1305,8 @@ export function LoanTermsForm({
               }
             }
           }
+        } else {
+          setSelectedProductIdentity(initialLoanTemplate?.product ?? null);
         }
 
         let nextTemplate = detailedTemplate;
@@ -1261,6 +1395,84 @@ export function LoanTermsForm({
       cancelled = true;
     };
   }, [clientId, initialLoanTemplate, productId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchInventoryBalances() {
+      if (!isArdaStockLoan) {
+        setInventoryBalances([]);
+        setSelectedInventoryBalanceId("");
+        setStockQuantity("");
+        return;
+      }
+
+      setIsLoadingInventoryBalances(true);
+      try {
+        const response = await fetch("/api/inventory/balances");
+        if (!response.ok) {
+          throw new Error("Failed to load stock balances");
+        }
+        const balances = (await response.json()) as ArdaInventoryBalance[];
+        if (!cancelled) {
+          setInventoryBalances(
+            balances.filter((balance) => Number(balance.availableQuantity) > 0)
+          );
+        }
+      } catch (error) {
+        console.error("Failed to load ARDA stock balances:", error);
+        if (!cancelled) {
+          setInventoryBalances([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingInventoryBalances(false);
+        }
+      }
+    }
+
+    fetchInventoryBalances();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isArdaStockLoan]);
+
+  useEffect(() => {
+    if (!isArdaStockLoan || !ardaStockLoanSelection) return;
+
+    form.setValue("principal", ardaStockLoanSelection.principal, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }, [ardaStockLoanSelection, form, isArdaStockLoan]);
+
+  useEffect(() => {
+    const savedSelection = savedLoanTermsData?.stockLoanSelection;
+    if (
+      !isArdaStockLoan ||
+      !savedSelection ||
+      selectedInventoryBalanceId ||
+      !inventoryBalances.length
+    ) {
+      return;
+    }
+
+    const matchingBalance = inventoryBalances.find(
+      (balance) =>
+        balance.inventoryItemId === savedSelection.inventoryItemId &&
+        Number(balance.fineractOfficeId) === Number(savedSelection.fineractOfficeId)
+    );
+
+    if (matchingBalance) {
+      setSelectedInventoryBalanceId(matchingBalance.id);
+    }
+  }, [
+    inventoryBalances,
+    isArdaStockLoan,
+    savedLoanTermsData,
+    selectedInventoryBalanceId,
+  ]);
 
   // Populate form with template data when it changes
   useEffect(() => {
@@ -1893,11 +2105,15 @@ export function LoanTermsForm({
             const loanTermsData = result.data;
             console.log("Loaded loan terms data:", loanTermsData);
             setSavedLoanTermsData(loanTermsData);
+            if (loanTermsData.stockLoanSelection) {
+              setStockQuantity(String(loanTermsData.stockLoanSelection.quantity || ""));
+            }
 
             // Populate form fields - only if template values weren't already set
             if (
               loanTermsData.principal !== undefined &&
               (loanDetailsData?.facilityType === "INVOICE_DISCOUNTING" ||
+                loanTermsData.stockLoanSelection ||
                 !principalAutoPopulatedRef.current)
             ) {
               form.setValue("principal", loanTermsData.principal);
@@ -2528,8 +2744,10 @@ export function LoanTermsForm({
       watchedValues.numberOfRepayments > 0 &&
       watchedValues.repaymentEvery > 0 &&
       !!watchedValues.repaymentFrequency;
+    // Zero-interest products are valid in Fineract. Treat a configured 0% rate
+    // as complete so stock and other interest-free products are not flagged red.
     const interestScheduleComplete =
-      watchedValues.nominalInterestRate > 0 &&
+      watchedValues.nominalInterestRate >= 0 &&
       !!watchedValues.interestRateFrequency &&
       !!watchedValues.interestMethod &&
       !!watchedValues.amortization &&
@@ -2661,10 +2879,30 @@ export function LoanTermsForm({
   };
 
   const handleSubmit = async (data: LoanTermsFormData) => {
+    if (isArdaStockLoan) {
+      if (!selectedInventoryBalance || !ardaStockLoanSelection) {
+        setError("Please select the stock item and quantity for this ARDA loan.");
+        return;
+      }
+
+      if (
+        Number(stockQuantity) > Number(selectedInventoryBalance.availableQuantity)
+      ) {
+        setError("The selected quantity is higher than the available branch stock.");
+        return;
+      }
+    }
+
     // Use templateDerivedValues as primary source (computed from prop, survives remounts)
     const refValues = frequencyValuesRef.current;
     const submissionData = {
       ...data,
+      ...(isArdaStockLoan && ardaStockLoanSelection
+        ? {
+            principal: ardaStockLoanSelection.principal,
+            stockLoanSelection: ardaStockLoanSelection.stockLoanSelection,
+          }
+        : {}),
       termFrequency:
         templateDerivedValues.termFrequency ||
         refValues.termFrequency ||
@@ -3091,25 +3329,115 @@ export function LoanTermsForm({
             <CardDescription>
               {isInvoiceDiscountingLead
                 ? "Principal is locked to the financed amount from invoice details."
+                : isArdaStockLoan
+                  ? "Choose the stock item and quantity. The stock value becomes the loan amount sent to Fineract."
                 : "Enter the principal loan amount"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {isArdaStockLoan && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-800 dark:bg-blue-950/30">
+                <div className="mb-4">
+                  <p className="font-medium text-blue-950 dark:text-blue-100">
+                    ARDA stock loan
+                  </p>
+                  <p className="text-sm text-blue-900/80 dark:text-blue-100/80">
+                    Select the stock being issued. Loan Matrix will send the
+                    total stock value to Fineract as the principal amount.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">
+                      Stock item <span className="text-red-500">*</span>
+                    </Label>
+                    <Select
+                      value={selectedInventoryBalanceId}
+                      onValueChange={(value) => {
+                        setSelectedInventoryBalanceId(value);
+                        setStockQuantity((current) => current || "1");
+                      }}
+                      disabled={isLoadingInventoryBalances}
+                    >
+                      <SelectTrigger className="h-10">
+                        <SelectValue
+                          placeholder={
+                            isLoadingInventoryBalances
+                              ? "Loading stock..."
+                              : "Select stock in branch"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {inventoryBalances.map((balance) => (
+                          <SelectItem key={balance.id} value={balance.id}>
+                            {balance.item.name} -{" "}
+                            {balance.fineractOfficeName ||
+                              `Office ${balance.fineractOfficeId}`}{" "}
+                            ({balance.availableQuantity}{" "}
+                            {balance.item.unitOfMeasure} available)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!isLoadingInventoryBalances && inventoryBalances.length === 0 && (
+                      <p className="text-sm text-amber-600 dark:text-amber-400">
+                        No available stock balances found. Receive stock first
+                        before creating an ARDA stock loan.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="stockQuantity" className="text-sm font-medium">
+                      Quantity <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="stockQuantity"
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      value={stockQuantity}
+                      onChange={(event) => setStockQuantity(event.target.value)}
+                      placeholder="Enter stock quantity"
+                      disabled={!selectedInventoryBalance}
+                    />
+                    {selectedInventoryBalance && (
+                      <p className="text-xs text-muted-foreground">
+                        Unit value: {selectedInventoryBalance.currencyCode}{" "}
+                        {selectedStockUnitValue || "0.00"} per{" "}
+                        {selectedInventoryBalance.item.unitOfMeasure}. Available:{" "}
+                        {selectedInventoryBalance.availableQuantity}.
+                      </p>
+                    )}
+                    {selectedInventoryBalance &&
+                      Number(stockQuantity) >
+                        Number(selectedInventoryBalance.availableQuantity) && (
+                        <p className="text-sm text-red-500">
+                          Quantity is higher than available stock for this
+                          branch.
+                        </p>
+                      )}
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="principal" className="text-sm font-medium">
-                  Principal Amount <span className="text-red-500">*</span>
+                  {isArdaStockLoan ? "Calculated Loan Amount" : "Principal Amount"}{" "}
+                  <span className="text-red-500">*</span>
                 </Label>
                 <div className="relative">
                   <Input
                     id="principal"
                     type="number"
                     step="0.01"
-                    readOnly={isInvoiceDiscountingLead}
-                    aria-disabled={isInvoiceDiscountingLead}
+                    readOnly={isInvoiceDiscountingLead || isArdaStockLoan}
+                    aria-disabled={isInvoiceDiscountingLead || isArdaStockLoan}
                     className={cn(
                       "h-10 pr-16",
-                      isInvoiceDiscountingLead &&
+                      (isInvoiceDiscountingLead || isArdaStockLoan) &&
                         "cursor-not-allowed bg-muted text-muted-foreground"
                     )}
                     {...form.register("principal", { valueAsNumber: true })}
@@ -3118,6 +3446,13 @@ export function LoanTermsForm({
                 {isInvoiceDiscountingLead && (
                   <p className="text-xs text-muted-foreground">
                     Save invoice details to refresh this amount from the total financed value.
+                  </p>
+                )}
+                {isArdaStockLoan && (
+                  <p className="text-xs text-muted-foreground">
+                    This amount is calculated from the selected stock quantity
+                    and value, then sent to Fineract as the normal loan
+                    principal.
                   </p>
                 )}
                 {form.formState.errors.principal && (

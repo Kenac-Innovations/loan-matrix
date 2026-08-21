@@ -27,6 +27,9 @@ export interface FamilyMember {
 }
 
 export interface ContractData {
+  /** Server-selected, tenant-specific document flow. */
+  documentVariant?: "DEFAULT" | "ARDA_STOCK_INPUT";
+
   // Client Information
   clientName: string;
   nrc: string;
@@ -120,4 +123,14 @@ export interface ContractData {
   familyMembers?: FamilyMember[] | null;
   stateContext?: Record<string, any> | null;
   stateMetadata?: Record<string, any> | null;
+  /** Present only for ARDA in-kind stock loans. */
+  stockLoanSelection?: {
+    inventoryItemName: string;
+    quantity: string;
+    unitOfMeasure?: string | null;
+    unitValue: string;
+    totalValue: string;
+    currencyCode: string;
+    fineractOfficeName?: string | null;
+  } | null;
 }
