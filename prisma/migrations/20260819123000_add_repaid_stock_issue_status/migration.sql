@@ -1,0 +1,1 @@
+ALTER TYPE "StockLoanIssueStatus" ADD VALUE IF NOT EXISTS 'REPAID';

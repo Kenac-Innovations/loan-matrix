@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
+import { isOmamaTenantSlug } from "@/lib/omama-tenant";
+import { isArdaStockInputLoanProduct } from "@/lib/inventory/arda-stock-loan";
 
 type FineractLoanLike = {
   id?: number;
@@ -92,6 +94,24 @@ type LoanDetailsLike = {
 };
 
 type LoanTermsLike = ReturnType<typeof mapFineractLoanToLoanTerms>;
+
+// Fineract stores the monetary loan terms but not Loan Matrix's in-kind issue
+// record. Keep that record when live Fineract data is merged for ARDA loans.
+type StockLoanSelection = {
+  inventoryItemName: string;
+  quantity: string;
+  unitOfMeasure?: string | null;
+  unitValue: string;
+  totalValue: string;
+  currencyCode: string;
+  fineractOfficeName?: string | null;
+};
+
+type LoanTermsWithStockSelection = LoanTermsLike & {
+  stockLoanSelection?: StockLoanSelection | null;
+  // Older saved terms used this name before it was standardised.
+  graceOnArrearsAgeing?: LoanTermsLike["onArrearsAgeing"];
+};
 
 function resolveLoanScheduleTypeCode(
   loanScheduleType: string | undefined,
@@ -451,9 +471,9 @@ function mergeLoanDetailsWithFineract(
 }
 
 function mergeLoanTermsWithFineract(
-  localLoanTerms: Partial<LoanTermsLike> | null,
+  localLoanTerms: Partial<LoanTermsWithStockSelection> | null,
   fineractLoan: FineractLoanLike
-): LoanTermsLike {
+): LoanTermsWithStockSelection {
   const fineractLoanTerms = mapFineractLoanToLoanTerms(fineractLoan);
 
   return {
@@ -559,6 +579,7 @@ function mergeLoanTermsWithFineract(
       fineractLoanTerms.loanIdToClose ||
       localLoanTerms?.loanIdToClose ||
       "",
+    stockLoanSelection: localLoanTerms?.stockLoanSelection ?? null,
   };
 }
 
@@ -1524,7 +1545,25 @@ export async function GET(
       ? format(new Date(lead.expectedDisbursementDate), "yyyy")
       : format(new Date(), "yyyy");
 
+    const stockLoanSelection =
+      loanTerms?.stockLoanSelection &&
+      typeof loanTerms.stockLoanSelection === "object"
+        ? loanTerms.stockLoanSelection
+        : null;
+    // Product identity is the authoritative tenant/Fineract classification.
+    // The stock selection supplies the specific in-kind issue, but a missing
+    // selection must never make an ARDA product fall back to an Omama contract.
+    const isArdaStockInputAgreement =
+      isOmamaTenantSlug(tenant.slug) &&
+      isArdaStockInputLoanProduct({
+        id: lead.loanProductId ?? fineractLoan?.loanProductId,
+        name: lead.loanProductName ?? fineractLoan?.loanProductName,
+      });
+
     const contractData = {
+      documentVariant: isArdaStockInputAgreement
+        ? "ARDA_STOCK_INPUT"
+        : "DEFAULT",
       // Client Information
       clientName,
       nrc: lead.externalId || "N/A",
@@ -1681,6 +1720,7 @@ export async function GET(
       familyMembers: lead.familyMembers || [],
       stateContext: lead.stateContext || null,
       stateMetadata: lead.stateMetadata || null,
+      stockLoanSelection,
     };
 
     return NextResponse.json({

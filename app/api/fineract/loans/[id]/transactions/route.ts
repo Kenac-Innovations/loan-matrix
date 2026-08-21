@@ -7,6 +7,23 @@ import { getOrgRawCurrencyCode } from '@/lib/currency-utils';
 import { fetchLoanNotificationDetails, resolveLoanNotificationTarget } from '@/lib/loan-notification-target';
 import { sendLoanRepaymentSms } from '@/lib/notification-service';
 import { prisma } from '@/lib/prisma';
+import { getSession } from '@/lib/auth';
+import { recordInventoryRepayment } from '@/lib/inventory/inventory-repayment-service';
+import { type InventoryDb } from '@/lib/inventory/inventory-ledger-service';
+
+function repaymentDate(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) return new Date();
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return new Date();
+
+  // Fineract receives a calendar date such as "19 August 2026". Persist the
+  // same calendar day in UTC so finance date filters do not lose it when the
+  // application server has a positive time-zone offset.
+  return new Date(
+    Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 12)
+  );
+}
 
 /**
  * POST /api/fineract/loans/[id]/transactions
@@ -239,6 +256,7 @@ export async function POST(
     );
 
     let cashierAllocateResult: { success: boolean; error?: string; details?: unknown } | undefined;
+    let inventoryRepaymentWarning: string | undefined;
 
     // After successful repayment: if payment is cash, call allocate to update cashier balance
     if (
@@ -285,6 +303,62 @@ export async function POST(
         };
       } else {
         cashierAllocateResult = { success: false, error: 'Skipped - payment type is not cash' };
+      }
+    }
+
+    // ARDA issues stock in place of cash. Once Fineract accepts a repayment,
+    // mirror that transaction in the local stock-recovery ledger. A Fineract
+    // transaction ID makes the operation safe if the browser retries it.
+    if (
+      command === 'repayment' &&
+      tenant &&
+      Number.isFinite(fineractTransactionId) &&
+      fineractTransactionId > 0 &&
+      Number.isFinite(loanId) &&
+      loanId > 0 &&
+      body.transactionAmount != null &&
+      Number(body.transactionAmount) > 0
+    ) {
+      const stockIssue = await prisma.stockLoanIssue.findFirst({
+        where: {
+          tenantId: tenant.id,
+          fineractLoanId: loanId,
+          status: { in: ['ISSUED', 'REPAID'] },
+        },
+        select: {
+          id: true,
+          currencyCode: true,
+        },
+      });
+
+      if (stockIssue) {
+        try {
+          const session = await getSession();
+          await recordInventoryRepayment(prisma as unknown as InventoryDb, {
+            tenantId: tenant.id,
+            stockLoanIssueId: stockIssue.id,
+            amount: String(body.transactionAmount),
+            currencyCode: stockIssue.currencyCode,
+            paymentDate: repaymentDate(body.transactionDate),
+            reference: `Fineract repayment ${fineractTransactionId}`,
+            notes: 'Recorded automatically from the Fineract loan repayment.',
+            actorUserId: String(
+              (session?.user as Record<string, unknown> | undefined)?.userId ??
+                session?.user?.id ??
+                'fineract'
+            ),
+            actorUserName: String(session?.user?.name ?? 'Fineract repayment'),
+            idempotencyKey: `fineract-stock-repayment:${tenant.id}:${loanId}:${fineractTransactionId}`,
+          });
+        } catch (inventoryError) {
+          // Fineract has already accepted the payment. Do not report the
+          // repayment as failed, otherwise retrying could duplicate it there.
+          inventoryRepaymentWarning =
+            inventoryError instanceof Error
+              ? inventoryError.message
+              : 'The ARDA inventory repayment could not be recorded.';
+          console.error('Failed to record ARDA inventory repayment:', inventoryError);
+        }
       }
     }
 
@@ -337,10 +411,15 @@ export async function POST(
     }
 
     // Include allocate result in response so it's visible in network tab when debugging
-    const responseData =
-      cashierAllocateResult != null
-        ? { ...data, _cashierAllocate: cashierAllocateResult }
-        : data;
+    const responseData = {
+      ...data,
+      ...(cashierAllocateResult != null
+        ? { _cashierAllocate: cashierAllocateResult }
+        : {}),
+      ...(inventoryRepaymentWarning
+        ? { _inventoryRepaymentWarning: inventoryRepaymentWarning }
+        : {}),
+    };
 
     return NextResponse.json(responseData);
   } catch (error: unknown) {
