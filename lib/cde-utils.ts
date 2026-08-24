@@ -4,6 +4,39 @@ import { getAccessToken } from "@/lib/api";
 import { normalizeCurrencyCode } from "@/lib/format-currency";
 import { enrichLeadBorrowerProfile } from "@/lib/lead-profile-enrichment";
 
+// CDE requires positive income inputs. This policy value is not persisted on a
+// client or presented to CDE as verified income.
+const CDE_MISSING_INCOME_FALLBACK = 500;
+
+function positiveNumber(value: unknown): number | null {
+  const numericValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+
+  return Number.isFinite(numericValue) && numericValue > 0
+    ? numericValue
+    : null;
+}
+
+export function resolveCdeIncomeValues(
+  lead: Record<string, unknown>,
+  additionalData?: Record<string, unknown>
+) {
+  return {
+    grossMonthlyIncome:
+      positiveNumber(additionalData?.grossMonthlyIncome) ??
+      positiveNumber(lead.grossMonthlyIncome) ??
+      CDE_MISSING_INCOME_FALLBACK,
+    netMonthlyIncome:
+      positiveNumber(additionalData?.netMonthlyIncome) ??
+      positiveNumber(lead.monthlyIncome) ??
+      CDE_MISSING_INCOME_FALLBACK,
+  };
+}
+
 /**
  * Build CDE evaluation payload from lead data
  */
@@ -14,6 +47,7 @@ export function buildCDEPayload(
 ) {
   console.log("Fineract Loan:", fineractLoan);
   const stateMetadata = (lead.stateMetadata as Record<string, unknown> | null) || {};
+  const cdeIncomeValues = resolveCdeIncomeValues(lead, additionalData);
   // Calculate age from date of birth
   const calculateAge = (dob: Date | string | null): number | null => {
     if (!dob) return null;
@@ -139,10 +173,8 @@ export function buildCDEPayload(
           ? stateMetadata.industry
           : "") ||
         "",
-      grossMonthlyIncome:
-        additionalData?.grossMonthlyIncome || lead.grossMonthlyIncome || 0,
-      netMonthlyIncome:
-        additionalData?.netMonthlyIncome || lead.monthlyIncome || 0,
+      grossMonthlyIncome: cdeIncomeValues.grossMonthlyIncome,
+      netMonthlyIncome: cdeIncomeValues.netMonthlyIncome,
       existingDebts: [],
       totalMonthlyDebtPayments:
         additionalData?.monthlyDebtPayments ||
