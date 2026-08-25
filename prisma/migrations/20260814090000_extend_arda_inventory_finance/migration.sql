@@ -20,6 +20,10 @@ ADD COLUMN "externalReference" TEXT,
 ADD COLUMN "currencyCode" TEXT NOT NULL DEFAULT 'USD',
 ADD COLUMN "notes" TEXT;
 
+-- The original inventory migration created this as a standalone unique index.
+-- PostgreSQL does not remove that index when no matching constraint exists.
+DROP INDEX IF EXISTS "StockLoanIssue_leadId_key";
+
 ALTER TABLE "StockLoanIssueLine"
 ADD COLUMN "currencyCode" TEXT NOT NULL DEFAULT 'USD';
 
