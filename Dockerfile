@@ -46,10 +46,14 @@ ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 
 RUN pnpm run build
 
-# This target contains Prisma's migration engine and migration files. It is
-# published separately and used only by the ARDA PreSync migration job.
-FROM builder AS migrator
-CMD ["pnpm", "prisma", "migrate", "deploy"]
+# This target contains only Prisma's migration engine, schema, and migration
+# history. Keeping it independent of the Next.js build avoids delaying a
+# release while a worker pulls the full application dependency tree.
+FROM base AS migrator
+WORKDIR /app
+RUN npm install -g prisma@6.7.0
+COPY prisma ./prisma
+CMD ["prisma", "migrate", "deploy", "--schema=prisma/schema.prisma"]
 
 # Production image, copy all the files and run next
 FROM base AS runner
