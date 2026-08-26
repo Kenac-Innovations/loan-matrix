@@ -111,6 +111,7 @@ export function TellerActions({
       <AllocateCashModal
         tellerId={tellerId}
         tellerName={tellerName}
+        tellerGlAccountId={teller.glAccountId ?? null}
         defaultSourceGlAccountId={teller.bankGlAccountId ?? null}
         defaultSourceGlAccountName={teller.bankGlAccountName ?? null}
         defaultSourceGlAccountCode={teller.bankGlAccountCode ?? null}

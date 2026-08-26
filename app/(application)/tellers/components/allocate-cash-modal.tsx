@@ -1,7 +1,7 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AlertCircle } from "lucide-react";
 import {
   Dialog,
@@ -29,6 +29,7 @@ interface AllocateCashModalProps {
   cashierId?: string;
   tellerName?: string;
   cashierName?: string;
+  tellerGlAccountId?: number | null;
   defaultSourceGlAccountId?: number | null;
   defaultSourceGlAccountName?: string | null;
   defaultSourceGlAccountCode?: string | null;
@@ -119,6 +120,7 @@ export function AllocateCashModal({
   cashierId,
   tellerName,
   cashierName,
+  tellerGlAccountId,
   defaultSourceGlAccountId,
   defaultSourceGlAccountName,
   defaultSourceGlAccountCode,
@@ -145,24 +147,34 @@ export function AllocateCashModal({
     notes: "",
     date: new Date().toISOString().split("T")[0],
   });
+  const defaultSourceGlAccount = useMemo(() => {
+    if (
+      defaultSourceGlAccountId === null ||
+      defaultSourceGlAccountId === undefined ||
+      defaultSourceGlAccountId === tellerGlAccountId
+    ) {
+      return null;
+    }
+
+    return {
+      id: defaultSourceGlAccountId,
+      name: defaultSourceGlAccountName || "Configured bank GL",
+      glCode: defaultSourceGlAccountCode || String(defaultSourceGlAccountId),
+    };
+  }, [
+    defaultSourceGlAccountId,
+    defaultSourceGlAccountName,
+    defaultSourceGlAccountCode,
+    tellerGlAccountId,
+  ]);
 
   useEffect(() => {
     if (open) {
       fetchCurrencies();
-      setSourceGlAccountId(defaultSourceGlAccountId?.toString() || "");
-      setSourceGlAccounts(
-        defaultSourceGlAccountId
-          ? [
-              {
-                id: defaultSourceGlAccountId,
-                name: defaultSourceGlAccountName || "Configured bank GL",
-                glCode:
-                  defaultSourceGlAccountCode ||
-                  String(defaultSourceGlAccountId),
-              },
-            ]
-          : []
+      setSourceGlAccountId(
+        defaultSourceGlAccount ? defaultSourceGlAccount.id.toString() : ""
       );
+      setSourceGlAccounts(defaultSourceGlAccount ? [defaultSourceGlAccount] : []);
       // If cashierId is provided, set allocation type to cashier
       if (cashierId) {
         setAllocationType("cashier");
@@ -190,9 +202,8 @@ export function AllocateCashModal({
   }, [
     open,
     cashierId,
-    defaultSourceGlAccountId,
-    defaultSourceGlAccountName,
-    defaultSourceGlAccountCode,
+    defaultSourceGlAccount,
+    tellerGlAccountId,
   ]);
 
   const fetchCurrencies = async () => {
@@ -251,19 +262,16 @@ export function AllocateCashModal({
       }
 
       const data = await response.json();
-      const accounts = Array.isArray(data) ? data : [];
-      const defaultAccount = defaultSourceGlAccountId
-        ? {
-            id: defaultSourceGlAccountId,
-            name: defaultSourceGlAccountName || "Configured bank GL",
-            glCode: defaultSourceGlAccountCode || String(defaultSourceGlAccountId),
-          }
-        : null;
+      const accounts = (Array.isArray(data) ? data : []).filter(
+        (account: GLAccount) => account.id !== tellerGlAccountId
+      );
 
       setSourceGlAccounts(
-        defaultAccount &&
-          !accounts.some((account: GLAccount) => account.id === defaultAccount.id)
-          ? [defaultAccount, ...accounts]
+        defaultSourceGlAccount &&
+          !accounts.some(
+            (account: GLAccount) => account.id === defaultSourceGlAccount.id
+          )
+          ? [defaultSourceGlAccount, ...accounts]
           : accounts
       );
     } catch (error) {
