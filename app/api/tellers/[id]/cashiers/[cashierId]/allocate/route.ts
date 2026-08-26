@@ -351,11 +351,6 @@ export async function POST(
         return NextResponse.json(
           {
             error: "Fineract did not return a valid allocation ID",
-            details:
-              "The allocate request may not have reached Fineract, or Fineract returned an invalid response. Allocation cannot be verified.",
-            fineractRequest,
-            rawFineractResponse: result,
-            proofRequired: "resourceId must be present in Fineract response to confirm allocation",
           },
           { status: 502 }
         );
@@ -371,13 +366,6 @@ export async function POST(
       return NextResponse.json(
         {
           error: "Failed to allocate cash in Fineract",
-          details:
-            error.response?.data?.defaultUserMessage ||
-            error.response?.data?.errors?.[0]?.defaultUserMessage ||
-            error.message,
-          fineractError: error.response?.data || null,
-          fineractRequest,
-          rawFineractResponse: error.response?.data ?? null,
         },
         { status: error.response?.status || 500 }
       );
@@ -518,10 +506,7 @@ export async function POST(
   } catch (error) {
     console.error("Error allocating cash:", error);
     return NextResponse.json(
-      {
-        error: "Failed to allocate cash",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Cash allocation could not be completed" },
       { status: 500 }
     );
   }
