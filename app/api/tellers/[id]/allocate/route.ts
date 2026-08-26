@@ -261,10 +261,7 @@ export async function POST(
         sourceGlBalance.source !== "fineract_empty"
       ) {
         return NextResponse.json(
-          {
-            error: "Unable to verify the selected credit GL balance",
-            details: sourceGlBalance.error || "Fineract GL balance is unavailable",
-          },
+          { error: "Unable to verify the selected credit GL balance" },
           { status: 502 },
         );
       }
@@ -388,10 +385,7 @@ export async function POST(
   } catch (error) {
     console.error("Error allocating cash:", error);
     return NextResponse.json(
-      {
-        error: "Failed to allocate cash",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Cash allocation could not be completed" },
       { status: 500 },
     );
   }

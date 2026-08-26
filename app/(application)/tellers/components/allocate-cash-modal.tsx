@@ -54,6 +54,64 @@ interface GLAccount {
   glCode: string;
 }
 
+const GENERIC_ALLOCATION_ERROR =
+  "The cash allocation could not be completed. Please try again or contact your system administrator.";
+
+const ALLOCATION_ERROR_MESSAGES: Record<string, string> = {
+  "Tenant not found": "Your organisation could not be found. Refresh the page and try again.",
+  Unauthorized: "Your session has expired. Please sign in again.",
+  "Amount must be greater than 0": "Enter an amount greater than zero.",
+  "Currency is required": "Select a currency before allocating cash.",
+  "Teller not found": "The selected teller could not be found.",
+  "Invalid cashier ID format": "The selected cashier is invalid.",
+  "Teller not found or does not have a Fineract ID":
+    "The selected teller is not ready for cashier allocations.",
+  "A valid credit GL account is required": "Select a valid credit GL account.",
+  "Select a credit GL account to fund this teller allocation":
+    "Select the credit GL account that will fund this allocation.",
+  "Teller has no destination GL account configured":
+    "This teller does not have a destination GL account configured.",
+  "The credit GL account must be different from the teller GL account":
+    "Choose a credit GL account that is different from the teller GL account.",
+  "The selected credit GL must be an active detail account that allows manual entries":
+    "Choose an active detail GL account that allows manual entries.",
+  "Unable to validate the selected credit GL account":
+    "The selected credit GL account could not be validated. Please try again.",
+  "Bank not found": "The teller's bank configuration could not be found.",
+  "Insufficient bank balance":
+    "The teller's bank GL does not have enough available balance for this allocation.",
+  "Unable to verify the selected credit GL balance":
+    "The selected credit GL balance could not be verified. Please try again.",
+  "Insufficient balance in the selected credit GL account":
+    "The selected credit GL account does not have enough available balance.",
+  "Insufficient available balance in teller vault":
+    "The teller vault does not have enough available balance for this allocation.",
+  "Fineract did not return a journal entry ID":
+    "The allocation could not be confirmed. Please try again or contact your system administrator.",
+  "Fineract did not return a valid allocation ID":
+    "The allocation could not be confirmed. Please try again or contact your system administrator.",
+  "Failed to post the teller allocation journal entry in Fineract":
+    "The allocation could not be posted. Please try again or contact your system administrator.",
+  "Failed to allocate cash in Fineract":
+    "The allocation could not be completed. Please try again or contact your system administrator.",
+  "Cashier not found": "The selected cashier could not be found.",
+  "Allocation already exists":
+    "An allocation with the same amount already exists for this cashier today.",
+  "Cash allocation could not be completed": GENERIC_ALLOCATION_ERROR,
+  "Failed to allocate cash": GENERIC_ALLOCATION_ERROR,
+};
+
+function getAllocationErrorMessage(payload: unknown): string {
+  if (typeof payload !== "object" || payload === null || !("error" in payload)) {
+    return GENERIC_ALLOCATION_ERROR;
+  }
+
+  const error = (payload as { error?: unknown }).error;
+  return typeof error === "string"
+    ? ALLOCATION_ERROR_MESSAGES[error] || GENERIC_ALLOCATION_ERROR
+    : GENERIC_ALLOCATION_ERROR;
+}
+
 export function AllocateCashModal({
   open,
   onOpenChange,
@@ -271,15 +329,11 @@ export function AllocateCashModal({
         window.location.reload();
       } else {
         const error = await response.json().catch(() => null);
-        setFormError(
-          error?.details ||
-            error?.error ||
-            "Failed to allocate cash. Please try again."
-        );
+        setFormError(getAllocationErrorMessage(error));
       }
     } catch (error) {
       console.error("Error allocating cash:", error);
-      setFormError("Failed to allocate cash. Please try again.");
+      setFormError(GENERIC_ALLOCATION_ERROR);
     } finally {
       setLoading(false);
     }
