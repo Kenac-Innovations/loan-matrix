@@ -2,7 +2,7 @@
 
 import { useCurrency } from "@/contexts/currency-context";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { AlertCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/searchable-select";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 
 interface AllocateCashModalProps {
   open: boolean;
@@ -60,9 +65,9 @@ export function AllocateCashModal({
   defaultSourceGlAccountName,
   defaultSourceGlAccountCode,
 }: AllocateCashModalProps) {
-  const router = useRouter();
   const { currencyCode: orgCurrency } = useCurrency();
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
@@ -215,15 +220,18 @@ export function AllocateCashModal({
 
     // If allocating to cashier, require cashier selection
     if (allocationType === "cashier" && !cashierId && !selectedCashierId) {
-      alert("Please select a cashier to allocate cash to");
+      setFormError("Please select a cashier to allocate cash to.");
       return;
     }
 
     if (allocationType === "teller" && !sourceGlAccountId) {
-      alert("Please select the credit GL account that will fund this teller allocation");
+      setFormError(
+        "Please select the credit GL account that will fund this teller allocation."
+      );
       return;
     }
 
+    setFormError(null);
     setLoading(true);
 
     try {
@@ -258,23 +266,34 @@ export function AllocateCashModal({
       });
 
       if (response.ok) {
-        onOpenChange(false);
+        handleDialogOpenChange(false);
         // Force page reload for server component
         window.location.reload();
       } else {
-        const error = await response.json();
-        alert(error.error || "Failed to allocate cash");
+        const error = await response.json().catch(() => null);
+        setFormError(
+          error?.details ||
+            error?.error ||
+            "Failed to allocate cash. Please try again."
+        );
       }
     } catch (error) {
       console.error("Error allocating cash:", error);
-      alert("Failed to allocate cash");
+      setFormError("Failed to allocate cash. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setFormError(null);
+    }
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>
@@ -290,6 +309,13 @@ export function AllocateCashModal({
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
+            {formError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Unable to allocate cash</AlertTitle>
+                <AlertDescription>{formError}</AlertDescription>
+              </Alert>
+            )}
             {!cashierId && (
               <div className="space-y-2">
                 <Label>Allocation Type *</Label>
@@ -478,7 +504,7 @@ export function AllocateCashModal({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleDialogOpenChange(false)}
             >
               Cancel
             </Button>
