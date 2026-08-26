@@ -8,7 +8,8 @@ import { getGlAccountBalance } from "@/lib/gl-balance";
 
 /**
  * POST /api/tellers/[id]/allocate
- * Allocate cash to a teller from the linked bank GL or a selected source GL.
+ * Allocate cash to a teller from the linked bank GL. Super users may select a
+ * different source GL; all other users always use the linked bank GL.
  */
 export async function POST(
   request: NextRequest,
@@ -61,7 +62,14 @@ export async function POST(
     const requestedAmount = parseFloat(amount);
     const allocationCurrency = currency || orgCurrency;
 
+    const canOverrideSourceGl =
+      session.user.roles?.some(
+        (role) =>
+          !role.disabled &&
+          role.name.replace(/[\s_-]/g, "").toLowerCase() === "superuser"
+      ) ?? false;
     const hasSourceGlOverride =
+      canOverrideSourceGl &&
       sourceGlAccountId !== undefined &&
       sourceGlAccountId !== null &&
       String(sourceGlAccountId).trim() !== "";
