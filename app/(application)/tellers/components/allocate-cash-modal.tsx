@@ -30,6 +30,7 @@ interface AllocateCashModalProps {
   tellerName?: string;
   cashierName?: string;
   tellerGlAccountId?: number | null;
+  canOverrideSourceGl?: boolean;
   defaultSourceGlAccountId?: number | null;
   defaultSourceGlAccountName?: string | null;
   defaultSourceGlAccountCode?: string | null;
@@ -121,6 +122,7 @@ export function AllocateCashModal({
   tellerName,
   cashierName,
   tellerGlAccountId,
+  canOverrideSourceGl = false,
   defaultSourceGlAccountId,
   defaultSourceGlAccountName,
   defaultSourceGlAccountCode,
@@ -172,9 +174,15 @@ export function AllocateCashModal({
     if (open) {
       fetchCurrencies();
       setSourceGlAccountId(
-        defaultSourceGlAccount ? defaultSourceGlAccount.id.toString() : ""
+        canOverrideSourceGl && defaultSourceGlAccount
+          ? defaultSourceGlAccount.id.toString()
+          : ""
       );
-      setSourceGlAccounts(defaultSourceGlAccount ? [defaultSourceGlAccount] : []);
+      setSourceGlAccounts(
+        canOverrideSourceGl && defaultSourceGlAccount
+          ? [defaultSourceGlAccount]
+          : []
+      );
       // If cashierId is provided, set allocation type to cashier
       if (cashierId) {
         setAllocationType("cashier");
@@ -183,7 +191,9 @@ export function AllocateCashModal({
         // When called from teller page, default to teller vault allocation
         setAllocationType("teller");
         fetchCashiers();
-        fetchSourceGlAccounts();
+        if (canOverrideSourceGl) {
+          fetchSourceGlAccounts();
+        }
       }
     } else {
       // Reset form when modal closes
@@ -204,6 +214,7 @@ export function AllocateCashModal({
     cashierId,
     defaultSourceGlAccount,
     tellerGlAccountId,
+    canOverrideSourceGl,
   ]);
 
   const fetchCurrencies = async () => {
@@ -290,7 +301,11 @@ export function AllocateCashModal({
       return;
     }
 
-    if (allocationType === "teller" && !sourceGlAccountId) {
+    if (
+      allocationType === "teller" &&
+      canOverrideSourceGl &&
+      !sourceGlAccountId
+    ) {
       setFormError(
         "Please select the credit GL account that will fund this teller allocation."
       );
@@ -311,7 +326,9 @@ export function AllocateCashModal({
           amount: parseFloat(formData.amount),
           currency: formData.currency,
           notes: formData.notes,
-          sourceGlAccountId: Number(sourceGlAccountId),
+          ...(canOverrideSourceGl
+            ? { sourceGlAccountId: Number(sourceGlAccountId) }
+            : {}),
         };
       } else {
         // Allocate to cashier (goes through Fineract)
@@ -458,7 +475,7 @@ export function AllocateCashModal({
                 placeholder="0.00"
               />
             </div>
-            {allocationType === "teller" && (
+            {allocationType === "teller" && canOverrideSourceGl && (
               <div className="space-y-2">
                 <Label>Credit GL Account (Source of Cash) *</Label>
                 <SearchableSelect
