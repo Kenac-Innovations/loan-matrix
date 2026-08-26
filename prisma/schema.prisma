@@ -997,6 +997,9 @@ model CashAllocation {
   tellerId             String
   cashierId             String? // null for teller vault allocations, set for cashier allocations
   fineractAllocationId Int?     @unique
+  sourceGlAccountId    Int?     // GL credited to fund a teller-vault allocation
+  sourceGlAccountName  String?  // Cached source GL name for allocation audit history
+  sourceGlAccountCode  String?  // Cached source GL code for allocation audit history
   amount               Float
   currency             String   @default("ZMW") // DB-level fallback only; app code provides currency from Fineract
   allocatedDate        DateTime @default(now())
