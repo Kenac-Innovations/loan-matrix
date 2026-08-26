@@ -18,6 +18,7 @@ import { ReturnToBankModal } from "../../components/return-to-bank-modal";
 interface TellerActionsProps {
   tellerId: string;
   tellerName: string;
+  canOverrideAllocationSourceGl: boolean;
   teller: {
     name: string;
     description?: string;
@@ -44,6 +45,7 @@ export function TellerActions({
   tellerId,
   tellerName,
   teller,
+  canOverrideAllocationSourceGl,
 }: TellerActionsProps) {
   const router = useRouter();
   const [showAllocateModal, setShowAllocateModal] = useState(false);
@@ -112,6 +114,7 @@ export function TellerActions({
         tellerId={tellerId}
         tellerName={tellerName}
         tellerGlAccountId={teller.glAccountId ?? null}
+        canOverrideSourceGl={canOverrideAllocationSourceGl}
         defaultSourceGlAccountId={teller.bankGlAccountId ?? null}
         defaultSourceGlAccountName={teller.bankGlAccountName ?? null}
         defaultSourceGlAccountCode={teller.bankGlAccountCode ?? null}
