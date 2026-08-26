@@ -32,6 +32,8 @@ interface TellerActionsProps {
     bankId?: string | null;
     bankName?: string | null;
     bankGlAccountId?: number | null;
+    bankGlAccountName?: string | null;
+    bankGlAccountCode?: string | null;
     vaultBalance?: number | null;
     vaultBalanceSource?: "fineract_gl" | "unavailable";
     currency?: string | null;
@@ -109,6 +111,9 @@ export function TellerActions({
       <AllocateCashModal
         tellerId={tellerId}
         tellerName={tellerName}
+        defaultSourceGlAccountId={teller.bankGlAccountId ?? null}
+        defaultSourceGlAccountName={teller.bankGlAccountName ?? null}
+        defaultSourceGlAccountCode={teller.bankGlAccountCode ?? null}
         open={showAllocateModal}
         onOpenChange={setShowAllocateModal}
       />

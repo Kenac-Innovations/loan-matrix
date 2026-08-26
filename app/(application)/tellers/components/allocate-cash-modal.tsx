@@ -24,6 +24,9 @@ interface AllocateCashModalProps {
   cashierId?: string;
   tellerName?: string;
   cashierName?: string;
+  defaultSourceGlAccountId?: number | null;
+  defaultSourceGlAccountName?: string | null;
+  defaultSourceGlAccountCode?: string | null;
 }
 
 interface Currency {
@@ -40,6 +43,12 @@ interface Cashier {
   lastName?: string;
 }
 
+interface GLAccount {
+  id: number;
+  name: string;
+  glCode: string;
+}
+
 export function AllocateCashModal({
   open,
   onOpenChange,
@@ -47,6 +56,9 @@ export function AllocateCashModal({
   cashierId,
   tellerName,
   cashierName,
+  defaultSourceGlAccountId,
+  defaultSourceGlAccountName,
+  defaultSourceGlAccountCode,
 }: AllocateCashModalProps) {
   const router = useRouter();
   const { currencyCode: orgCurrency } = useCurrency();
@@ -55,9 +67,12 @@ export function AllocateCashModal({
   const [loadingCurrencies, setLoadingCurrencies] = useState(false);
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [loadingCashiers, setLoadingCashiers] = useState(false);
+  const [sourceGlAccounts, setSourceGlAccounts] = useState<GLAccount[]>([]);
+  const [loadingSourceGlAccounts, setLoadingSourceGlAccounts] = useState(false);
   const [showAddCurrencyDialog, setShowAddCurrencyDialog] = useState(false);
   const [newCurrencyCode, setNewCurrencyCode] = useState("");
   const [selectedCashierId, setSelectedCashierId] = useState<string>("");
+  const [sourceGlAccountId, setSourceGlAccountId] = useState<string>("");
   const [allocationType, setAllocationType] = useState<"teller" | "cashier">(
     "teller"
   );
@@ -71,6 +86,20 @@ export function AllocateCashModal({
   useEffect(() => {
     if (open) {
       fetchCurrencies();
+      setSourceGlAccountId(defaultSourceGlAccountId?.toString() || "");
+      setSourceGlAccounts(
+        defaultSourceGlAccountId
+          ? [
+              {
+                id: defaultSourceGlAccountId,
+                name: defaultSourceGlAccountName || "Configured bank GL",
+                glCode:
+                  defaultSourceGlAccountCode ||
+                  String(defaultSourceGlAccountId),
+              },
+            ]
+          : []
+      );
       // If cashierId is provided, set allocation type to cashier
       if (cashierId) {
         setAllocationType("cashier");
@@ -79,6 +108,7 @@ export function AllocateCashModal({
         // When called from teller page, default to teller vault allocation
         setAllocationType("teller");
         fetchCashiers();
+        fetchSourceGlAccounts();
       }
     } else {
       // Reset form when modal closes
@@ -89,11 +119,18 @@ export function AllocateCashModal({
         date: new Date().toISOString().split("T")[0],
       });
       setSelectedCashierId("");
+      setSourceGlAccountId("");
       setAllocationType("teller");
       setShowAddCurrencyDialog(false);
       setNewCurrencyCode("");
     }
-  }, [open, cashierId]);
+  }, [
+    open,
+    cashierId,
+    defaultSourceGlAccountId,
+    defaultSourceGlAccountName,
+    defaultSourceGlAccountCode,
+  ]);
 
   const fetchCurrencies = async () => {
     setLoadingCurrencies(true);
@@ -140,12 +177,50 @@ export function AllocateCashModal({
     }
   };
 
+  const fetchSourceGlAccounts = async () => {
+    setLoadingSourceGlAccounts(true);
+    try {
+      const response = await fetch(
+        "/api/fineract/glaccounts/detail?usage=1&disabled=false&manualEntriesAllowed=true"
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch GL accounts");
+      }
+
+      const data = await response.json();
+      const accounts = Array.isArray(data) ? data : [];
+      const defaultAccount = defaultSourceGlAccountId
+        ? {
+            id: defaultSourceGlAccountId,
+            name: defaultSourceGlAccountName || "Configured bank GL",
+            glCode: defaultSourceGlAccountCode || String(defaultSourceGlAccountId),
+          }
+        : null;
+
+      setSourceGlAccounts(
+        defaultAccount &&
+          !accounts.some((account: GLAccount) => account.id === defaultAccount.id)
+          ? [defaultAccount, ...accounts]
+          : accounts
+      );
+    } catch (error) {
+      console.error("Error fetching source GL accounts:", error);
+    } finally {
+      setLoadingSourceGlAccounts(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // If allocating to cashier, require cashier selection
     if (allocationType === "cashier" && !cashierId && !selectedCashierId) {
       alert("Please select a cashier to allocate cash to");
+      return;
+    }
+
+    if (allocationType === "teller" && !sourceGlAccountId) {
+      alert("Please select the credit GL account that will fund this teller allocation");
       return;
     }
 
@@ -162,6 +237,7 @@ export function AllocateCashModal({
           amount: parseFloat(formData.amount),
           currency: formData.currency,
           notes: formData.notes,
+          sourceGlAccountId: Number(sourceGlAccountId),
         };
       } else {
         // Allocate to cashier (goes through Fineract)
@@ -294,6 +370,29 @@ export function AllocateCashModal({
                 placeholder="0.00"
               />
             </div>
+            {allocationType === "teller" && (
+              <div className="space-y-2">
+                <Label>Credit GL Account (Source of Cash) *</Label>
+                <SearchableSelect
+                  options={sourceGlAccounts.map((account) => ({
+                    value: account.id.toString(),
+                    label: `${account.glCode} — ${account.name}`,
+                  }))}
+                  value={sourceGlAccountId}
+                  onValueChange={setSourceGlAccountId}
+                  placeholder={
+                    loadingSourceGlAccounts
+                      ? "Loading GL accounts..."
+                      : "Select credit GL account"
+                  }
+                  emptyMessage="No eligible GL accounts found"
+                  disabled={loadingSourceGlAccounts}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Defaults to the teller&apos;s bank GL. Selecting another account overrides the credit side only.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="currency">Currency *</Label>
               <SearchableSelect
