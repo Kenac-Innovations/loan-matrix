@@ -1,6 +1,7 @@
 export type UssdAdminUser = {
   userId: number;
   fullName: string;
+  externalId?: number | null;
   nationalIdMask?: string | null;
   phoneNumber: string;
   otherPhoneNumber?: string | null;
@@ -86,6 +87,15 @@ function optionalBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
+function optionalNumber(value: unknown): number | null {
+  if (value == null) {
+    return null;
+  }
+
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function numericId(value: unknown, fieldName: string): number {
   const id = typeof value === "number" ? value : Number(value);
 
@@ -108,6 +118,7 @@ function parseUssdAdminUser(payload: unknown): UssdAdminUser {
   return {
     userId: numericId(payload.userId, "userId"),
     fullName: payload.fullName,
+    externalId: optionalNumber(payload.externalId),
     nationalIdMask: optionalString(payload.nationalIdMask),
     phoneNumber: payload.phoneNumber,
     createdAt: optionalString(payload.createdAt),
