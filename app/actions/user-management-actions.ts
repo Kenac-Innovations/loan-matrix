@@ -75,6 +75,7 @@ const createUserSchema = z
     canOverrideInitiatorDisbursement: z.boolean().default(false),
     canConfirmPayments: z.boolean().default(false),
     canResetUssdPin: z.boolean().default(false),
+    canUpdateUssdClientDetails: z.boolean().default(false),
     exemptFromAutoCashierResolution: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
@@ -179,6 +180,7 @@ const updateUserSchema = z
     canOverrideInitiatorDisbursement: z.boolean().default(false),
     canConfirmPayments: z.boolean().default(false),
     canResetUssdPin: z.boolean().default(false),
+    canUpdateUssdClientDetails: z.boolean().default(false),
     exemptFromAutoCashierResolution: z.boolean().default(false),
     officeId: z.coerce.number().int().positive("Office is required"),
     staffId: z
@@ -454,6 +456,7 @@ function mapUserDetail(user: unknown): UserDetail {
     canOverrideInitiatorDisbursement: false,
     canConfirmPayments: false,
     canResetUssdPin: false,
+    canUpdateUssdClientDetails: false,
     exemptFromAutoCashierResolution: false,
     visibleLeadOffices: [],
     blockedSource: null,
@@ -662,6 +665,7 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
       canOverrideInitiatorDisbursement: true,
       canConfirmPayments: true,
       canResetUssdPin: true,
+      canUpdateUssdClientDetails: true,
       exemptFromAutoCashierResolution: true,
       leadBranchAccesses: {
         orderBy: {
@@ -695,6 +699,8 @@ export async function getUserAction(userId: number): Promise<UserDetail> {
       localLogin?.canOverrideInitiatorDisbursement ?? false,
     canConfirmPayments: localLogin?.canConfirmPayments ?? false,
     canResetUssdPin: localLogin?.canResetUssdPin ?? false,
+    canUpdateUssdClientDetails:
+      localLogin?.canUpdateUssdClientDetails ?? false,
     exemptFromAutoCashierResolution:
       localLogin?.exemptFromAutoCashierResolution ?? false,
     visibleLeadOffices: collapsedVisibleLeadOfficeIds.map((officeId) =>
@@ -900,6 +906,7 @@ export async function createUserAction(
           parsed.data.canOverrideInitiatorDisbursement,
         canConfirmPayments: parsed.data.canConfirmPayments,
         canResetUssdPin: parsed.data.canResetUssdPin,
+        canUpdateUssdClientDetails: parsed.data.canUpdateUssdClientDetails,
         exemptFromAutoCashierResolution:
           parsed.data.exemptFromAutoCashierResolution,
       });
@@ -987,6 +994,7 @@ export async function updateUserAction(
         parsed.data.canOverrideInitiatorDisbursement,
       canConfirmPayments: parsed.data.canConfirmPayments,
       canResetUssdPin: parsed.data.canResetUssdPin,
+      canUpdateUssdClientDetails: parsed.data.canUpdateUssdClientDetails,
       exemptFromAutoCashierResolution:
         parsed.data.exemptFromAutoCashierResolution,
     });

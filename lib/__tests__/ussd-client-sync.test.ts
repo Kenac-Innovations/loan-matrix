@@ -23,6 +23,7 @@ test("updateUssdClientPhone sends normalized phone numbers to the external-id ph
         externalId: 9911,
         oldPhoneNumber: "260977123456",
         newPhoneNumber: "260966654321",
+        primaryPhoneUpdated: true,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
@@ -41,6 +42,7 @@ test("updateUssdClientPhone sends normalized phone numbers to the external-id ph
     assert.equal(result.status, "UPDATED");
     assert.equal(result.oldPhoneNumber, "260977123456");
     assert.equal(result.newPhoneNumber, "260966654321");
+    assert.equal(result.primaryPhoneUpdated, true);
 
     assert.equal(
       capturedUrl,

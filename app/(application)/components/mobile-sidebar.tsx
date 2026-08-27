@@ -28,12 +28,14 @@ interface MobileSidebarProps {
   tenantLogoUrl?: string | null;
   canReadUsers: boolean;
   canResetUssdPin: boolean;
+  canUpdateUssdClientDetails: boolean;
 }
 
 export function MobileSidebar({
   tenantLogoUrl,
   canReadUsers,
   canResetUssdPin,
+  canUpdateUssdClientDetails,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
@@ -315,7 +317,8 @@ export function MobileSidebar({
                 href="/clients"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
                   pathname.startsWith("/clients") ||
-                  pathname.startsWith("/ussd-pin-reset")
+                  pathname.startsWith("/ussd-pin-reset") ||
+                  pathname.startsWith("/ussd-details")
                     ? `${activeBgColor} ${textColor}`
                     : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
                 }`}
@@ -323,7 +326,8 @@ export function MobileSidebar({
                 <Users
                   className={`h-5 w-5 ${
                     pathname.startsWith("/clients") ||
-                    pathname.startsWith("/ussd-pin-reset")
+                    pathname.startsWith("/ussd-pin-reset") ||
+                    pathname.startsWith("/ussd-details")
                       ? iconColorActive
                       : iconColor
                   }`}
@@ -332,7 +336,8 @@ export function MobileSidebar({
               </Link>
 
               {(pathname.startsWith("/clients") ||
-                pathname.startsWith("/ussd-pin-reset")) && (
+                pathname.startsWith("/ussd-pin-reset") ||
+                pathname.startsWith("/ussd-details")) && (
                 <div className="pl-10 space-y-1">
                   <Link
                     href="/clients"
@@ -364,6 +369,18 @@ export function MobileSidebar({
                       }`}
                     >
                       USSD PIN Reset
+                    </Link>
+                  )}
+                  {canUpdateUssdClientDetails && (
+                    <Link
+                      href="/ussd-details"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/ussd-details"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      USSD Details
                     </Link>
                   )}
                 </div>

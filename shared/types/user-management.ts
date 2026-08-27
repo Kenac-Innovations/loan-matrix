@@ -58,6 +58,7 @@ export interface UserDetail extends UserSummary {
   isSelfServiceUser: boolean;
   canOverrideInitiatorDisbursement: boolean;
   canResetUssdPin: boolean;
+  canUpdateUssdClientDetails: boolean;
   exemptFromAutoCashierResolution: boolean;
   visibleLeadOffices: OfficeOption[];
   blockedSource?: UserLoginBlockSource | null;
@@ -88,6 +89,7 @@ export interface UserFormInput {
   canOverrideInitiatorDisbursement?: boolean;
   canConfirmPayments?: boolean;
   canResetUssdPin?: boolean;
+  canUpdateUssdClientDetails?: boolean;
   exemptFromAutoCashierResolution?: boolean;
   officeId: number | string;
   staffId?: number | string | null;
