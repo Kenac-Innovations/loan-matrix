@@ -31,6 +31,7 @@ interface UserRoleResponse {
   isSuperAdmin: boolean;
   canConfirmPayments: boolean;
   canResetUssdPin: boolean;
+  canUpdateUssdClientDetails: boolean;
 }
 
 /**
@@ -108,6 +109,8 @@ export function useUserRoles() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [canConfirmPayments, setCanConfirmPayments] = useState(false);
   const [canResetUssdPin, setCanResetUssdPin] = useState(false);
+  const [canUpdateUssdClientDetails, setCanUpdateUssdClientDetails] =
+    useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -124,6 +127,7 @@ export function useUserRoles() {
         setIsSuperAdmin(data.isSuperAdmin);
         setCanConfirmPayments(Boolean(data.canConfirmPayments));
         setCanResetUssdPin(Boolean(data.canResetUssdPin));
+        setCanUpdateUssdClientDetails(Boolean(data.canUpdateUssdClientDetails));
       } catch (error) {
         console.error("Error fetching user roles:", error);
       } finally {
@@ -151,6 +155,7 @@ export function useUserRoles() {
     isSuperAdmin,
     canConfirmPayments,
     canResetUssdPin,
+    canUpdateUssdClientDetails,
     isLoading,
     hasRole,
     hasAnyRole,

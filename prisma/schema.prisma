@@ -37,6 +37,7 @@ model Tenant {
   userSignatures         UserSignature[]
   userLoginBlockEvents   UserLoginBlockEvent[]
   ussdPinResetLogs       UssdPinResetLog[]
+  ussdClientInfoUpdateLogs UssdClientInfoUpdateLog[]
   mfaChallenges          MfaChallenge[]
   passwordResetChallenges PasswordResetChallenge[]
   passwordResetLogs      PasswordResetLog[]
@@ -885,6 +886,34 @@ model UssdPinResetLog {
   @@index([actorUserId, createdAt])
 }
 
+model UssdClientInfoUpdateLog {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  updateType         String    @default("PHONE")
+  sourcePhoneNumber  String
+  requestedPhoneNumber String
+  ussdUserId         Int?
+  fineractClientId   Int?
+  clientName         String?
+  actorUserId        Int
+  actorName          String?
+  status             String    @default("PENDING")
+  ussdStatus         String?
+  fineractStatus     String?
+  responseMessage    String?   @db.Text
+  errorMessage       String?   @db.Text
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, sourcePhoneNumber])
+  @@index([tenantId, fineractClientId])
+  @@index([tenantId, status])
+  @@index([actorUserId, createdAt])
+}
+
 // Bank is the top level of the cash management hierarchy
 // Banks receive fund allocations which can then be distributed to tellers
 model Bank {
@@ -1220,6 +1249,7 @@ model UserLogin {
   canOverrideInitiatorDisbursement Boolean  @default(false)
   canConfirmPayments   Boolean              @default(false)
   canResetUssdPin      Boolean              @default(false)
+  canUpdateUssdClientDetails Boolean         @default(false)
   exemptFromAutoCashierResolution Boolean   @default(false)
   isBlocked            Boolean              @default(false)
   blockedAt            DateTime?
