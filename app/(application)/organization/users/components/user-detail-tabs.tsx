@@ -375,6 +375,10 @@ export function UserDetailTabs({
               value={user.canResetUssdPin ? "Yes" : "No"}
             />
             <DetailField
+              label="Can Update USSD Client Details"
+              value={user.canUpdateUssdClientDetails ? "Yes" : "No"}
+            />
+            <DetailField
               label="Lead Visibility"
               value={
                 restrictLeadVisibilityToBranches
