@@ -14,16 +14,19 @@ test("USSD client details stores an auditable tenant-scoped update log", () => {
   const migration = readRepoFile(
     "prisma/migrations/20260827010000_add_ussd_client_details/migration.sql"
   );
+  const accessMigration = readRepoFile(
+    "prisma/migrations/20260830090000_add_ussd_details_access/migration.sql"
+  );
 
   assert.match(schema, /model UssdClientInfoUpdateLog/);
   assert.match(schema, /ussdClientInfoUpdateLogs\s+UssdClientInfoUpdateLog\[\]/);
-  assert.match(schema, /canUpdateUssdClientDetails\s+Boolean\s+@default\(false\)/);
+  assert.match(schema, /canAccessUssdDetails\s+Boolean\s+@default\(false\)/);
   assert.match(schema, /sourcePhoneNumber\s+String/);
   assert.match(schema, /requestedPhoneNumber\s+String/);
   assert.match(schema, /fineractClientId\s+Int\?/);
   assert.match(schema, /actorUserId\s+Int/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS "UssdClientInfoUpdateLog"/);
-  assert.match(migration, /canUpdateUssdClientDetails/);
+  assert.match(accessMigration, /canAccessUssdDetails/);
 });
 
 test("ordinary client editing no longer calls USSD", () => {
@@ -48,17 +51,22 @@ test("USSD client details uses the same per-user permission pattern as PIN reset
   const userForm = readRepoFile(
     "app/(application)/organization/users/components/user-form.tsx"
   );
+  const userLoginService = readRepoFile("lib/user-login-service.ts");
+  const userRoles = readRepoFile("app/api/auth/user-roles/route.ts");
 
-  assert.match(access, /canUpdateUssdClientDetails/);
+  assert.match(access, /canAccessUssdDetails/);
+  assert.doesNotMatch(access, /canUpdateUssdClientDetails/);
   assert.match(access, /requireUssdClientDetailsAccess/);
-  assert.match(actions, /canUpdateUssdClientDetails/);
-  assert.match(layout, /canUpdateUssdClientDetailsServer/);
+  assert.match(actions, /canAccessUssdDetails/);
+  assert.match(layout, /canAccessUssdDetailsServer/);
   assert.match(lookup, /requireUssdClientDetailsAccess/);
   assert.match(logs, /requireUssdClientDetailsAccess/);
   assert.match(update, /requireUssdClientDetailsAccess/);
   assert.match(sidebar, /USSD Details/);
   assert.match(mobileSidebar, /USSD Details/);
-  assert.match(userForm, /Can update USSD client details/);
+  assert.match(userForm, /Can access USSD Details/);
+  assert.match(userLoginService, /canAccessUssdDetails/);
+  assert.match(userRoles, /canAccessUssdDetails/);
 });
 
 test("USSD phone update logs every outcome and returns success only after Fineract verification", () => {

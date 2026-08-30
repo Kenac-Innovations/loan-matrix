@@ -28,7 +28,7 @@ interface SubMenuItem {
 interface SidebarNavProps {
   canReadUsers: boolean;
   canResetUssdPin: boolean;
-  canUpdateUssdClientDetails: boolean;
+  canAccessUssdDetails: boolean;
 }
 
 /**
@@ -38,7 +38,7 @@ interface SidebarNavProps {
 export function SidebarNav({
   canReadUsers,
   canResetUssdPin,
-  canUpdateUssdClientDetails,
+  canAccessUssdDetails,
 }: Readonly<SidebarNavProps>) {
   const {
     canConfirmPayments,
@@ -97,7 +97,7 @@ export function SidebarNav({
     });
   }
 
-  if (canUpdateUssdClientDetails) {
+  if (canAccessUssdDetails) {
     clientsSubMenuItems.push({
       label: "USSD Details",
       href: "/ussd-details",
