@@ -34,8 +34,10 @@ test("ordinary client editing no longer calls USSD", () => {
   assert.match(clientUpdateRoute, /fetchFineractAPI\(`\/clients\/\$\{clientId\}`/);
 });
 
-test("USSD client details access is enforced for the menu, lookup, logs, and update", () => {
+test("USSD client details uses the same per-user permission pattern as PIN reset", () => {
   const access = readRepoFile("lib/ussd-client-details-access.ts");
+  const actions = readRepoFile("app/actions/user-management-actions.ts");
+  const layout = readRepoFile("app/(application)/layout.tsx");
   const lookup = readRepoFile("app/api/ussd-client-details/lookup/route.ts");
   const logs = readRepoFile("app/api/ussd-client-details/logs/route.ts");
   const update = readRepoFile("app/api/ussd-client-details/update-phone/route.ts");
@@ -49,6 +51,8 @@ test("USSD client details access is enforced for the menu, lookup, logs, and upd
 
   assert.match(access, /canUpdateUssdClientDetails/);
   assert.match(access, /requireUssdClientDetailsAccess/);
+  assert.match(actions, /canUpdateUssdClientDetails/);
+  assert.match(layout, /canUpdateUssdClientDetailsServer/);
   assert.match(lookup, /requireUssdClientDetailsAccess/);
   assert.match(logs, /requireUssdClientDetailsAccess/);
   assert.match(update, /requireUssdClientDetailsAccess/);
@@ -71,7 +75,7 @@ test("USSD phone update logs every outcome and returns success only after Finera
   assert.match(update, /"FINERACT_SYNC_FAILED"/);
 });
 
-test("USSD details page is log-first and presents the two country-code phone steps", () => {
+test("USSD details page is log-first and keeps update feedback in its modal", () => {
   const page = readRepoFile("app/(application)/ussd-details/page.tsx");
   const component = readRepoFile(
     "app/(application)/ussd-details/components/ussd-details-client.tsx"
@@ -83,6 +87,11 @@ test("USSD details page is log-first and presents the two country-code phone ste
   assert.match(component, /Current USSD phone number/);
   assert.match(component, /New phone number/);
   assert.match(component, /AFRICAN_COUNTRY_CODES/);
-  assert.match(component, /Fineract client ID/);
+  assert.match(component, /Client ID/);
+  assert.doesNotMatch(component, /Fineract client ID/);
+  assert.match(component, /const \[modalNotice, setModalNotice\]/);
+  assert.match(component, /\{modalNotice && \(/);
+  assert.match(component, /setUser\(null\);\n      await loadLogs\(\);/);
+  assert.doesNotMatch(component, /setIsDialogOpen\(false\);\n      resetDialog\(\);/);
   assert.match(component, /Save update/);
 });
