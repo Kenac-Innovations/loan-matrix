@@ -85,7 +85,7 @@ type FormState = {
   canOverrideInitiatorDisbursement: boolean;
   canConfirmPayments: boolean;
   canResetUssdPin: boolean;
-  canUpdateUssdClientDetails: boolean;
+  canAccessUssdDetails: boolean;
   exemptFromAutoCashierResolution: boolean;
   officeId: string;
   staffId: string;
@@ -115,8 +115,7 @@ function buildInitialState(
       initialUser?.canOverrideInitiatorDisbursement ?? false,
     canConfirmPayments: initialUser?.canConfirmPayments ?? false,
     canResetUssdPin: initialUser?.canResetUssdPin ?? false,
-    canUpdateUssdClientDetails:
-      initialUser?.canUpdateUssdClientDetails ?? false,
+    canAccessUssdDetails: initialUser?.canAccessUssdDetails ?? false,
     exemptFromAutoCashierResolution:
       initialUser?.exemptFromAutoCashierResolution ?? false,
     officeId: initialUser?.officeId ? String(initialUser.officeId) : "",
@@ -509,7 +508,7 @@ export function UserForm({
       canOverrideInitiatorDisbursement: form.canOverrideInitiatorDisbursement,
       canConfirmPayments: form.canConfirmPayments,
       canResetUssdPin: form.canResetUssdPin,
-      canUpdateUssdClientDetails: form.canUpdateUssdClientDetails,
+      canAccessUssdDetails: form.canAccessUssdDetails,
       exemptFromAutoCashierResolution: form.exemptFromAutoCashierResolution,
       officeId: form.officeId,
       staffId: form.staffId || null,
@@ -861,13 +860,13 @@ export function UserForm({
 
         <label className="flex items-start gap-3 rounded-lg border p-4">
           <Checkbox
-            checked={form.canUpdateUssdClientDetails}
+            checked={form.canAccessUssdDetails}
             onCheckedChange={(checked) =>
-              handleChange("canUpdateUssdClientDetails", checked === true)
+              handleChange("canAccessUssdDetails", checked === true)
             }
           />
           <div className="space-y-1">
-            <span className="font-medium">Can update USSD client details</span>
+            <span className="font-medium">Can access USSD Details</span>
             <p className="text-sm text-muted-foreground">
               Allow this user to view USSD update logs and update a client phone
               number in USSD and Loan Matrix.

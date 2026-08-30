@@ -99,7 +99,7 @@ type UpsertUserLoginInput = {
   canOverrideInitiatorDisbursement?: boolean;
   canConfirmPayments?: boolean;
   canResetUssdPin?: boolean;
-  canUpdateUssdClientDetails?: boolean;
+  canAccessUssdDetails?: boolean;
   exemptFromAutoCashierResolution?: boolean;
   lastLoginAt?: Date | null;
   lastMfaChannel?: string | null;
@@ -117,7 +117,7 @@ export async function upsertUserLogin(input: UpsertUserLoginInput) {
     canOverrideInitiatorDisbursement,
     canConfirmPayments,
     canResetUssdPin,
-    canUpdateUssdClientDetails,
+    canAccessUssdDetails,
     exemptFromAutoCashierResolution,
     lastLoginAt,
     lastMfaChannel,
@@ -179,8 +179,8 @@ export async function upsertUserLogin(input: UpsertUserLoginInput) {
     updateData.canResetUssdPin = canResetUssdPin;
   }
 
-  if (canUpdateUssdClientDetails !== undefined) {
-    updateData.canUpdateUssdClientDetails = canUpdateUssdClientDetails;
+  if (canAccessUssdDetails !== undefined) {
+    updateData.canAccessUssdDetails = canAccessUssdDetails;
   }
 
   if (exemptFromAutoCashierResolution !== undefined) {
@@ -206,7 +206,7 @@ export async function upsertUserLogin(input: UpsertUserLoginInput) {
         canOverrideInitiatorDisbursement ?? false,
       canConfirmPayments: canConfirmPayments ?? false,
       canResetUssdPin: canResetUssdPin ?? false,
-      canUpdateUssdClientDetails: canUpdateUssdClientDetails ?? false,
+      canAccessUssdDetails: canAccessUssdDetails ?? false,
       exemptFromAutoCashierResolution: exemptFromAutoCashierResolution ?? false,
       lastLoginAt: lastLoginAt ?? null,
       lastMfaChannel: lastMfaChannel ?? null,

@@ -33,7 +33,7 @@ function isSuperAdminSession(session: SessionLike): boolean {
   );
 }
 
-export async function canUpdateUssdClientDetailsServer(): Promise<boolean> {
+export async function canAccessUssdDetailsServer(): Promise<boolean> {
   const [tenant, session] = await Promise.all([
     getTenantFromHeaders(),
     getSession(),
@@ -55,11 +55,11 @@ export async function canUpdateUssdClientDetailsServer(): Promise<boolean> {
       },
     },
     select: {
-      canUpdateUssdClientDetails: true,
+      canAccessUssdDetails: true,
     },
   });
 
-  return Boolean(userLogin?.canUpdateUssdClientDetails);
+  return Boolean(userLogin?.canAccessUssdDetails);
 }
 
 export async function requireUssdClientDetailsAccess() {
@@ -92,13 +92,13 @@ export async function requireUssdClientDetailsAccess() {
       },
     },
     select: {
-      canUpdateUssdClientDetails: true,
+      canAccessUssdDetails: true,
     },
   });
 
-  if (!userLogin?.canUpdateUssdClientDetails) {
+  if (!userLogin?.canAccessUssdDetails) {
     throw new UssdClientDetailsAccessError(
-      "You do not have permission to update USSD client details",
+      "You do not have permission to access USSD Details",
       403
     );
   }
