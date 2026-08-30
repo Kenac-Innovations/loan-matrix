@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { canUpdateUssdClientDetailsServer } from "@/lib/ussd-client-details-access";
+import { canAccessUssdDetailsServer } from "@/lib/ussd-client-details-access";
 import { UssdDetailsClient } from "./components/ussd-details-client";
 
 export const metadata: Metadata = {
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 };
 
 export default async function UssdDetailsPage() {
-  const hasAccess = await canUpdateUssdClientDetailsServer();
+  const hasAccess = await canAccessUssdDetailsServer();
 
   if (!hasAccess) {
     return (

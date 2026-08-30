@@ -28,14 +28,14 @@ interface MobileSidebarProps {
   tenantLogoUrl?: string | null;
   canReadUsers: boolean;
   canResetUssdPin: boolean;
-  canUpdateUssdClientDetails: boolean;
+  canAccessUssdDetails: boolean;
 }
 
 export function MobileSidebar({
   tenantLogoUrl,
   canReadUsers,
   canResetUssdPin,
-  canUpdateUssdClientDetails,
+  canAccessUssdDetails,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
@@ -371,7 +371,7 @@ export function MobileSidebar({
                       USSD PIN Reset
                     </Link>
                   )}
-                  {canUpdateUssdClientDetails && (
+                  {canAccessUssdDetails && (
                     <Link
                       href="/ussd-details"
                       className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
