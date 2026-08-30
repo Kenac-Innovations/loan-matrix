@@ -129,7 +129,8 @@ export function UssdDetailsClient() {
   const [newPhoneNumber, setNewPhoneNumber] = useState("");
   const [user, setUser] = useState<UssdUser | null>(null);
   const [logs, setLogs] = useState<UpdateLog[]>([]);
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const [pageNotice, setPageNotice] = useState<Notice | null>(null);
+  const [modalNotice, setModalNotice] = useState<Notice | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
@@ -143,8 +144,9 @@ export function UssdDetailsClient() {
     setIsLoadingLogs(true);
     try {
       setLogs(await fetchUpdateLogs());
+      setPageNotice(null);
     } catch (error) {
-      setNotice({
+      setPageNotice({
         type: "error",
         title: "Log refresh failed",
         message:
@@ -158,7 +160,11 @@ export function UssdDetailsClient() {
   }, []);
 
   useEffect(() => {
-    void loadLogs();
+    const initialLoad = window.setTimeout(() => {
+      void loadLogs();
+    }, 0);
+
+    return () => window.clearTimeout(initialLoad);
   }, [loadLogs]);
 
   function resetDialog() {
@@ -167,6 +173,7 @@ export function UssdDetailsClient() {
     setNewCountryCode(DEFAULT_AFRICAN_COUNTRY_CODE);
     setNewPhoneNumber("");
     setUser(null);
+    setModalNotice(null);
     setIsSearching(false);
     setIsSaving(false);
   }
@@ -180,7 +187,7 @@ export function UssdDetailsClient() {
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNotice(null);
+    setModalNotice(null);
     setUser(null);
     setIsSearching(true);
 
@@ -207,7 +214,7 @@ export function UssdDetailsClient() {
       );
       setNewPhoneNumber("");
     } catch (error) {
-      setNotice({
+      setModalNotice({
         type: "error",
         title: "Search failed",
         message:
@@ -225,7 +232,7 @@ export function UssdDetailsClient() {
       return;
     }
 
-    setNotice(null);
+    setModalNotice(null);
     setIsSaving(true);
 
     try {
@@ -248,7 +255,7 @@ export function UssdDetailsClient() {
         );
       }
 
-      setNotice({
+      setModalNotice({
         type: "success",
         title: "Phone numbers updated",
         message: String(
@@ -256,11 +263,10 @@ export function UssdDetailsClient() {
             "USSD and Loan Matrix client phone numbers are now in sync."
         ),
       });
-      setIsDialogOpen(false);
-      resetDialog();
+      setUser(null);
       await loadLogs();
     } catch (error) {
-      setNotice({
+      setModalNotice({
         type: "error",
         title: "Phone update failed",
         message:
@@ -276,15 +282,15 @@ export function UssdDetailsClient() {
 
   return (
     <div className="space-y-6">
-      {notice && (
-        <Alert variant={notice.type === "error" ? "destructive" : "default"}>
-          {notice.type === "error" ? (
+      {pageNotice && (
+        <Alert variant={pageNotice.type === "error" ? "destructive" : "default"}>
+          {pageNotice.type === "error" ? (
             <AlertCircle className="h-4 w-4" />
           ) : (
             <CheckCircle2 className="h-4 w-4" />
           )}
-          <AlertTitle>{notice.title}</AlertTitle>
-          <AlertDescription>{notice.message}</AlertDescription>
+          <AlertTitle>{pageNotice.title}</AlertTitle>
+          <AlertDescription>{pageNotice.message}</AlertDescription>
         </Alert>
       )}
 
@@ -344,7 +350,7 @@ export function UssdDetailsClient() {
                   <TableCell>
                     <div className="font-medium">{log.clientName || "-"}</div>
                     <div className="text-xs text-muted-foreground">
-                      Fineract client #{log.fineractClientId ?? "-"}
+                      Client #{log.fineractClientId ?? "-"}
                     </div>
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
@@ -381,6 +387,22 @@ export function UssdDetailsClient() {
               number to update USSD and Loan Matrix together.
             </DialogDescription>
           </DialogHeader>
+
+          {modalNotice && (
+            <Alert
+              variant={
+                modalNotice.type === "error" ? "destructive" : "default"
+              }
+            >
+              {modalNotice.type === "error" ? (
+                <AlertCircle className="h-4 w-4" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              <AlertTitle>{modalNotice.title}</AlertTitle>
+              <AlertDescription>{modalNotice.message}</AlertDescription>
+            </Alert>
+          )}
 
           <form className="space-y-3" onSubmit={handleSearch}>
             <Label>Current USSD phone number</Label>
@@ -429,7 +451,7 @@ export function UssdDetailsClient() {
                 <p className="font-semibold">{user.fullName}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Fineract client ID</p>
+                <p className="text-sm text-muted-foreground">Client ID</p>
                 <p className="font-medium">{user.externalId}</p>
               </div>
               <div>
@@ -475,7 +497,7 @@ export function UssdDetailsClient() {
               onClick={() => handleDialogChange(false)}
               disabled={isSaving}
             >
-              Cancel
+              {modalNotice?.type === "success" ? "Close" : "Cancel"}
             </Button>
             <Button
               type="button"
