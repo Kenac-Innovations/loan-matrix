@@ -5,6 +5,7 @@ import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { fillOmamaContractTemplate } from "@/app/(application)/leads/new/components/omama-contract-template";
 import { generateContractHTML } from "@/app/(application)/leads/new/components/contract-template";
+import { generateArdaStockLoanContractHTML } from "@/app/(application)/leads/new/components/arda-stock-loan-contract";
 import type { ContractData } from "@/app/(application)/leads/new/components/contract-types";
 import type { FineractLoan } from "@/lib/fineract-api";
 
@@ -18,6 +19,27 @@ type ContractDataResponse = {
   data?: ContractData;
   error?: string;
 };
+
+function getArdaContractData(contractData: ContractData): ContractData {
+  if (contractData.stockLoanSelection) {
+    return contractData;
+  }
+
+  // Older ARDA leads can predate the stock-selection field. Keep their
+  // document branded as ARDA rather than falling back to a cash-loan template.
+  return {
+    ...contractData,
+    stockLoanSelection: {
+      inventoryItemName: "Stock item not recorded",
+      quantity: "Not recorded",
+      unitOfMeasure: "Not recorded",
+      unitValue: "0.00",
+      totalValue: String(contractData.loanAmount || 0),
+      currencyCode: contractData.currency || "USD",
+      fineractOfficeName: contractData.branch,
+    },
+  };
+}
 
 function getRequestOrigin(request: NextRequest): string {
   const forwardedProto = request.headers.get("x-forwarded-proto");
@@ -262,13 +284,18 @@ export async function GET(
       ? ((await templateResponse.json()) as TemplateResponse)
       : null;
 
-    const contractHtml = templatePayload?.html
-      ? fillOmamaContractTemplate(
-          templatePayload.html,
-          contractPayload.data,
-          templatePayload.logoUrl || null
-        )
-      : generateContractHTML(contractPayload.data);
+    const contractHtml =
+      contractPayload.data.documentVariant === "ARDA_STOCK_INPUT"
+        ? generateArdaStockLoanContractHTML(
+            getArdaContractData(contractPayload.data)
+          )
+        : templatePayload?.html
+          ? fillOmamaContractTemplate(
+              templatePayload.html,
+              contractPayload.data,
+              templatePayload.logoUrl || null
+            )
+          : generateContractHTML(contractPayload.data);
 
     const contractFileName = `loan-contract-${leadId}.pdf`;
     const printableHtml = injectContractChrome(contractHtml, requestOrigin, {

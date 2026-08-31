@@ -36,6 +36,8 @@ import jsPDF from "jspdf";
 import { generateContractHTML } from "./contract-template";
 import { ContractData } from "./contract-types";
 import { fillOmamaContractTemplate } from "./omama-contract-template";
+import { generateArdaStockLoanContractHTML } from "./arda-stock-loan-contract";
+import { generateArdaStockLoanMandateHTML } from "./arda-stock-loan-mandate";
 import {
   generateKeyFactsStatementHTML,
   KeyFactsData,
@@ -370,6 +372,81 @@ export function LoanContracts({
     return html;
   }, [tenantContractHtml, contractData, tenantLogoUrl, borrowerSignature, guarantorSignature, loanOfficerSignature]);
 
+  // The server selects this only for Omama ARDA stock loans. It avoids relying
+  // on a separate client-side tenant lookup to choose the correct document.
+  const isArdaStockLoanContract =
+    contractData?.documentVariant === "ARDA_STOCK_INPUT";
+
+  const ardaDocumentData = useMemo<ContractData | null>(() => {
+    if (!contractData || !isArdaStockLoanContract) return null;
+
+    // An old ARDA lead may predate stock-selection persistence. Keep it in
+    // the ARDA document flow and make the missing record explicit rather
+    // than ever falling back to Omama's cash-loan documents.
+    if (contractData.stockLoanSelection) return contractData;
+
+    return {
+      ...contractData,
+      stockLoanSelection: {
+        inventoryItemName: "Stock item not recorded",
+        quantity: "Not recorded",
+        unitOfMeasure: "Not recorded",
+        unitValue: "0.00",
+        totalValue: String(contractData.loanAmount || 0),
+        currencyCode: contractData.currency || "USD",
+        fineractOfficeName: contractData.branch,
+      },
+    };
+  }, [contractData, isArdaStockLoanContract]);
+
+  const generatedContractHtml = useMemo(() => {
+    if (!contractData) return null;
+
+    // An in-kind ARDA issue must use its own agreement, not the tenant's
+    // cash-loan contract. Other loans retain the existing template behaviour.
+    if (ardaDocumentData) {
+      return generateArdaStockLoanContractHTML(ardaDocumentData, {
+        borrower: borrowerSignature,
+        loanOfficer: loanOfficerSignature,
+      });
+    }
+
+    return (
+      filledTenantContractHtml ||
+      generateContractHTML(contractData, {
+        borrower: borrowerSignature,
+        guarantor: guarantorSignature,
+        loanOfficer: loanOfficerSignature,
+      })
+    );
+  }, [
+    borrowerSignature,
+    ardaDocumentData,
+    contractData,
+    filledTenantContractHtml,
+    guarantorSignature,
+    isArdaStockLoanContract,
+    loanOfficerSignature,
+  ]);
+
+  const generatedMandateHtml = useMemo(() => {
+    if (!contractData) return null;
+
+    if (ardaDocumentData) {
+      return generateArdaStockLoanMandateHTML(ardaDocumentData, {
+        borrower: borrowerSignature,
+      });
+    }
+
+    return generateMandateFormHTML(contractData, {
+      borrower: borrowerSignature,
+      organization: {
+        name: tenantName,
+        logoUrl: tenantLogoUrl,
+      },
+    });
+  }, [ardaDocumentData, borrowerSignature, contractData, tenantLogoUrl, tenantName]);
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -476,20 +553,22 @@ export function LoanContracts({
   const salaryAdvanceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // If we have the repayment schedule and other required data, build contract data locally
+    // The server is the source of truth for tenant- and product-specific
+    // document selection. Local schedule data is only a fallback for a lead
+    // that has not been saved yet.
+    if (leadId) {
+      void loadContractData();
+      return;
+    }
+
     if (
       !initialContractData &&
       repaymentSchedule &&
       loanDetails &&
-      loanTerms &&
-      leadId
+      loanTerms
     ) {
       console.log("Building contract data from provided schedule");
-      buildContractDataFromSchedule();
-    } else if (!initialContractData && leadId && !repaymentSchedule) {
-      // Fallback to API call if no schedule is provided
-      console.log("No schedule provided, loading from API");
-      loadContractData();
+      void buildContractDataFromSchedule();
     }
   }, [leadId, initialContractData, repaymentSchedule, loanDetails, loanTerms]);
 
@@ -1574,22 +1653,12 @@ export function LoanContracts({
       });
       printWindow.document.write(kfsHTML);
     } else if (printType === "contract") {
-      const contractHTML =
-        filledTenantContractHtml ||
-        generateContractHTML(contractData, {
-          borrower: borrowerSignature,
-          guarantor: guarantorSignature,
-          loanOfficer: loanOfficerSignature,
-        });
+      const contractHTML = generatedContractHtml;
+      if (!contractHTML) return;
       printWindow.document.write(contractHTML);
     } else if (printType === "mandate") {
-      const mandateHTML = generateMandateFormHTML(contractData, {
-        borrower: borrowerSignature,
-        organization: {
-          name: tenantName,
-          logoUrl: tenantLogoUrl,
-        },
-      });
+      const mandateHTML = generatedMandateHtml;
+      if (!mandateHTML) return;
       printWindow.document.write(mandateHTML);
     } else {
       // Print all three: KFS + Contract + Mandate
@@ -1610,21 +1679,11 @@ export function LoanContracts({
           )}</div>`
         : "";
 
-      const contractHTML =
-        filledTenantContractHtml ||
-        generateContractHTML(contractData, {
-          borrower: borrowerSignature,
-          guarantor: guarantorSignature,
-          loanOfficer: loanOfficerSignature,
-        });
+      const contractHTML = generatedContractHtml;
+      if (!contractHTML) return;
 
-      const mandateHTML = generateMandateFormHTML(contractData, {
-        borrower: borrowerSignature,
-        organization: {
-          name: tenantName,
-          logoUrl: tenantLogoUrl,
-        },
-      });
+      const mandateHTML = generatedMandateHtml;
+      if (!mandateHTML) return;
 
       const kfsStyles = keyFactsData
         ? extractStyles(
@@ -1639,7 +1698,7 @@ export function LoanContracts({
       const combinedStyles = [
         ...kfsStyles,
         ...extractStyles(contractHTML),
-        ...extractStyles(mandateHTML),
+        ...(mandateHTML ? extractStyles(mandateHTML) : []),
       ].join("\n");
 
       const combinedHTML = `<!DOCTYPE html>
@@ -1647,7 +1706,7 @@ export function LoanContracts({
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GFL - All Documents</title>
+  <title>${isArdaStockLoanContract ? "ARDA Agricultural Input Agreement and Repayment Mandate" : "Loan Documents"}</title>
   ${combinedStyles}
   <style>
     .page-break { page-break-after: always; break-after: page; }
@@ -1656,8 +1715,8 @@ export function LoanContracts({
 </head>
 <body>
   ${kfsSection}
-  <div class="page-break">${extractBody(contractHTML)}</div>
-  <div>${extractBody(mandateHTML)}</div>
+  <div${mandateHTML ? ' class="page-break"' : ""}>${extractBody(contractHTML)}</div>
+  ${mandateHTML ? `<div>${extractBody(mandateHTML)}</div>` : ""}
 </body>
 </html>`;
 
@@ -2984,30 +3043,19 @@ export function LoanContracts({
               />
             ) : activeDoc === "mandate" ? (
               <iframe
-                srcDoc={
-                  contractData
-                    ? generateMandateFormHTML(contractData, {
-                        borrower: borrowerSignature,
-                        organization: {
-                          name: tenantName,
-                          logoUrl: tenantLogoUrl,
-                        },
-                      })
-                    : "<p>Loading...</p>"
-                }
+                srcDoc={generatedMandateHtml || "<p>Loading...</p>"}
                 className="w-full border rounded bg-white"
                 style={{ height: "700px", minHeight: "500px" }}
-                title="Mandate Form Preview"
+                title={
+                  isArdaStockLoanContract
+                    ? "ARDA Repayment Mandate Preview"
+                    : "Mandate Form Preview"
+                }
               />
             ) : (
               <iframe
                 srcDoc={
-                  filledTenantContractHtml ??
-                  generateContractHTML(contractData, {
-                    borrower: borrowerSignature,
-                    guarantor: guarantorSignature,
-                    loanOfficer: loanOfficerSignature,
-                  })
+                  generatedContractHtml || "<p>Loading...</p>"
                 }
                 className="w-full border rounded bg-white"
                 style={{ height: "700px", minHeight: "500px" }}
@@ -3650,7 +3698,7 @@ export function LoanContracts({
                 <FileText className="mr-2 h-4 w-4" />
                 Print Mandate
               </Button>
-              {!tenantContractHtml && (
+              {(!tenantContractHtml || isArdaStockLoanContract) && (
                 <Button onClick={handlePrintBoth} variant="outline" size="sm">
                   <FileText className="mr-2 h-4 w-4" />
                   Print All

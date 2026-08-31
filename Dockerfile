@@ -13,12 +13,12 @@ FROM node:20-alpine AS base
 # Install dependencies only when needed
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
-# Install pnpm
-RUN npm install -g pnpm
+# Pin pnpm to the first release that supports the reviewed allowBuilds policy.
+RUN npm install -g pnpm@10.26.0
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 RUN \
     if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; \
     else echo "Lockfile not found." && exit 1; \
@@ -26,10 +26,10 @@ RUN \
 
 # Rebuild the source code only when needed
 FROM base AS builder
-# Install pnpm
-RUN npm install -g pnpm
+# Pin pnpm to the first release that supports the reviewed allowBuilds policy.
+RUN npm install -g pnpm@10.26.0
 WORKDIR /app
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 RUN pnpm install --no-frozen-lockfile
 COPY . .
 
@@ -45,6 +45,15 @@ RUN pnpm prisma generate
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 
 RUN pnpm run build
+
+# This target contains only Prisma's migration engine, schema, and migration
+# history. Keeping it independent of the Next.js build avoids delaying a
+# release while a worker pulls the full application dependency tree.
+FROM base AS migrator
+WORKDIR /app
+RUN npm install -g prisma@6.7.0
+COPY prisma ./prisma
+CMD ["prisma", "migrate", "deploy", "--schema=prisma/schema.prisma"]
 
 # Production image, copy all the files and run next
 FROM base AS runner

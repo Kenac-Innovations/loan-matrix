@@ -225,6 +225,14 @@ export default function ReportsPage() {
       return;
     }
 
+    // An All-capable parent has no concrete default. Use its standard All
+    // value while loading dependent options, instead of arbitrarily loading
+    // only office 1 before the parent control is initialized.
+    if (parentParam.selectAll === "Y") {
+      fetchParams[parentParam.parameter_variable] = "-1";
+      return;
+    }
+
     if (parentParam.parameter_variable === "officeId") {
       fetchParams[parentParam.parameter_variable] = "1";
     }

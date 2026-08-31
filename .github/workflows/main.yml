@@ -2,9 +2,9 @@ name: loan-matrix CI/CD
 
 on:
   push:
-    branches: [main, master, prod, dev, qa, uat]
+    branches: [main, master, prod, dev, qa, uat, ARDA]
   pull_request:
-    branches: [main, master, prod, dev, qa, uat]
+    branches: [main, master, prod, dev, qa, uat, ARDA]
 
 env:
   REGISTRY: ghcr.io
@@ -41,12 +41,15 @@ jobs:
         elif [[ "$BRANCH_NAME" == "dev" || "$BRANCH_NAME" == "qa" || "$BRANCH_NAME" == "uat" ]]; then
           echo "environment=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
           echo "is_deploy_branch=true" >> "$GITHUB_OUTPUT"
+        elif [[ "$BRANCH_NAME" == "ARDA" ]]; then
+          echo "environment=arda" >> "$GITHUB_OUTPUT"
+          echo "is_deploy_branch=true" >> "$GITHUB_OUTPUT"
         else
           echo "environment=" >> "$GITHUB_OUTPUT"
           echo "is_deploy_branch=false" >> "$GITHUB_OUTPUT"
         fi
 
-        if [[ "${{ github.event_name }}" == "push" && ( "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "master" || "$BRANCH_NAME" == "prod" || "$BRANCH_NAME" == "dev" || "$BRANCH_NAME" == "qa" || "$BRANCH_NAME" == "uat" ) ]]; then
+        if [[ "${{ github.event_name }}" == "push" && ( "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "master" || "$BRANCH_NAME" == "prod" || "$BRANCH_NAME" == "dev" || "$BRANCH_NAME" == "qa" || "$BRANCH_NAME" == "uat" || "$BRANCH_NAME" == "ARDA" ) ]]; then
           echo "should_publish=true" >> "$GITHUB_OUTPUT"
         else
           echo "should_publish=false" >> "$GITHUB_OUTPUT"
@@ -81,8 +84,23 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: Kenac-Innovations/loan-matrix
+        # Build the commit that triggered this workflow, not the repository default branch.
+        ref: ${{ github.sha }}
         path: app-source
         fetch-depth: 0
+
+    - name: Extract image tag
+      if: steps.branch-context.outputs.should_publish == 'true'
+      id: image-tag
+      run: |
+        TAGS="${{ steps.meta.outputs.tags }}"
+        SHA_TAG=$(echo "$TAGS" | grep -E "${{ steps.branch-context.outputs.branch_name }}-[a-f0-9]{7}" | head -1 | cut -d':' -f2)
+        if [ -z "$SHA_TAG" ]; then
+          # Fallback to branch name if no SHA tag found
+          SHA_TAG="${{ steps.branch-context.outputs.branch_name }}"
+        fi
+        echo "tag=$SHA_TAG" >> $GITHUB_OUTPUT
+        echo "Found image tag: $SHA_TAG"
 
     - name: Build and push Docker image
       if: steps.branch-context.outputs.should_publish == 'true'
@@ -98,24 +116,25 @@ jobs:
         provenance: false
         sbom: false
 
+    - name: Build and push Prisma migration image
+      if: steps.branch-context.outputs.should_publish == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./app-source
+        file: ./app-source/Dockerfile
+        target: migrator
+        push: true
+        tags: ${{ env.IMAGE_NAME }}:${{ steps.image-tag.outputs.tag }}-migrator
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        provenance: false
+        sbom: false
+
     - name: Determine environment
       if: steps.branch-context.outputs.should_publish == 'true'
       id: env
       run: |
         echo "environment=${{ steps.branch-context.outputs.environment }}" >> "$GITHUB_OUTPUT"
-
-    - name: Extract image tag
-      if: steps.branch-context.outputs.should_publish == 'true'
-      id: image-tag
-      run: |
-        TAGS="${{ steps.meta.outputs.tags }}"
-        SHA_TAG=$(echo "$TAGS" | grep -E "${{ steps.branch-context.outputs.branch_name }}-[a-f0-9]{7}" | head -1 | cut -d':' -f2)
-        if [ -z "$SHA_TAG" ]; then
-          # Fallback to branch name if no SHA tag found
-          SHA_TAG="${{ steps.branch-context.outputs.branch_name }}"
-        fi
-        echo "tag=$SHA_TAG" >> $GITHUB_OUTPUT
-        echo "Found image tag: $SHA_TAG"
 
     # GitHub App Token Generation
     - name: Generate GitHub App Token
@@ -144,7 +163,7 @@ jobs:
         NEW_TAG="${{ steps.image-tag.outputs.tag }}"
 
         # Checkout the correct branch before making changes
-        if [[ "$ENV" == "prod" ]]; then
+        if [[ "$ENV" == "prod" || "$ENV" == "arda" ]]; then
           git fetch origin prod
           git checkout prod
         fi

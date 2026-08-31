@@ -16,6 +16,7 @@ import {
   TrendingUp,
   X,
   Landmark,
+  Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TenantDisplayClient } from "@/components/tenant-display-client";
@@ -257,6 +258,22 @@ export function MobileSidebar({
                 }`}
               />
               Loans
+            </Link>
+
+            <Link
+              href="/inventory"
+              className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
+                pathname.startsWith("/inventory")
+                  ? `${activeBgColor} ${textColor}`
+                  : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
+              }`}
+            >
+              <Package
+                className={`h-5 w-5 ${
+                  pathname.startsWith("/inventory") ? iconColorActive : iconColor
+                }`}
+              />
+              Inventory
             </Link>
 
             <div className="space-y-1">

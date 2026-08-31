@@ -56,6 +56,11 @@ model Tenant {
   revolvingCreditFacilities  RevolvingCreditFacility[]
   paymentConfirmationUploads PaymentConfirmationUpload[]
   paymentConfirmationActionLogs PaymentConfirmationActionLog[]
+  inventoryItems          InventoryItem[]
+  inventoryBalances       InventoryBalance[]
+  inventoryMovements      InventoryMovement[]
+  stockLoanIssues         StockLoanIssue[]
+  stockLoanRepayments     StockLoanRepayment[]
 
   @@index([slug])
   @@index([isActive])
@@ -319,6 +324,7 @@ model Lead {
   stageApprovals             StageApproval[]
   stateTransitions           StateTransition[]
   revolving                  RevolvingCreditFacility?
+  stockLoanIssue             StockLoanIssue?
 
   @@index([tenantId, userId])
   @@index([tenantId, status])
@@ -1159,6 +1165,172 @@ enum MobileMoneyTransactionType {
 enum MobileMoneyTransactionStatus {
   ACTIVE
   REVERSED
+}
+
+enum InventoryMovementType {
+  RECEIPT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  RESERVATION
+  RESERVATION_RELEASE
+  ISSUE
+  RETURN
+  ISSUE_REVERSAL
+  TRANSFER_OUT
+  TRANSFER_IN
+}
+
+enum StockLoanIssueStatus {
+  DRAFT
+  RESERVED
+  PROCESSING
+  ISSUED
+  REPAID
+  FAILED
+  RETURNED
+  CANCELLED
+}
+
+model InventoryItem {
+  id               String              @id @default(cuid())
+  tenantId         String
+  sku              String
+  name             String
+  description      String?
+  unitOfMeasure    String
+  defaultUnitValue Decimal             @db.Decimal(18, 2)
+  currencyCode     String              @default("USD")
+  isActive         Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  balances         InventoryBalance[]
+  movements        InventoryMovement[]
+  issueLines       StockLoanIssueLine[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, isActive])
+}
+
+model InventoryBalance {
+  id               String        @id @default(cuid())
+  tenantId         String
+  fineractOfficeId Int
+  fineractOfficeName String?
+  inventoryItemId  String
+  quantityOnHand   Decimal       @default(0) @db.Decimal(18, 3)
+  quantityReserved Decimal       @default(0) @db.Decimal(18, 3)
+  stockValue       Decimal       @default(0) @db.Decimal(18, 2)
+  currencyCode     String        @default("USD")
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  tenant           Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inventoryItem    InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, fineractOfficeId, inventoryItemId, currencyCode])
+  @@index([tenantId, fineractOfficeId])
+  @@index([inventoryItemId])
+}
+
+model StockLoanIssue {
+  id               String              @id @default(cuid())
+  tenantId         String
+  leadId           String?             @unique
+  fineractLoanId   Int?
+  fineractOfficeId Int
+  fineractOfficeName String?
+  reference        String
+  status           StockLoanIssueStatus @default(DRAFT)
+  totalValue       Decimal             @default(0) @db.Decimal(18, 2)
+  currencyCode     String              @default("USD")
+  issuedAt         DateTime?
+  issuedByUserId   String?
+  issuedByUserName String?
+  borrowerName     String?
+  loanAccountNo    String?
+  externalReference String?
+  notes            String?
+  failureReason    String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead             Lead?               @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  lines            StockLoanIssueLine[]
+  movements        InventoryMovement[]
+  repayments       StockLoanRepayment[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, fineractOfficeId, status])
+  @@index([tenantId, fineractLoanId])
+  @@index([tenantId, borrowerName])
+}
+
+model StockLoanIssueLine {
+  id               String         @id @default(cuid())
+  stockLoanIssueId String
+  inventoryItemId  String
+  quantity         Decimal        @db.Decimal(18, 3)
+  issuedQuantity   Decimal        @default(0) @db.Decimal(18, 3)
+  unitValue        Decimal        @db.Decimal(18, 2)
+  lineValue        Decimal        @db.Decimal(18, 2)
+  currencyCode     String         @default("USD")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  stockLoanIssue   StockLoanIssue @relation(fields: [stockLoanIssueId], references: [id], onDelete: Cascade)
+  inventoryItem    InventoryItem  @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+
+  @@unique([stockLoanIssueId, inventoryItemId])
+  @@index([inventoryItemId])
+}
+
+model InventoryMovement {
+  id               String                @id @default(cuid())
+  tenantId         String
+  inventoryItemId  String
+  fineractOfficeId Int
+  fineractOfficeName String?
+  stockLoanIssueId String?
+  fineractLoanId   Int?
+  type             InventoryMovementType
+  quantityDelta    Decimal               @db.Decimal(18, 3)
+  valueDelta       Decimal               @db.Decimal(18, 2)
+  currencyCode     String                @default("USD")
+  idempotencyKey   String
+  reason           String?
+  actorUserId      String
+  actorUserName    String?
+  createdAt        DateTime              @default(now())
+  tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inventoryItem    InventoryItem         @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  stockLoanIssue   StockLoanIssue?       @relation(fields: [stockLoanIssueId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, fineractOfficeId, createdAt])
+  @@index([inventoryItemId, createdAt])
+  @@index([stockLoanIssueId])
+  @@index([tenantId, fineractLoanId])
+}
+
+model StockLoanRepayment {
+  id               String   @id @default(cuid())
+  tenantId         String
+  stockLoanIssueId String
+  amount           Decimal  @db.Decimal(18, 2)
+  currencyCode     String   @default("USD")
+  paymentDate      DateTime
+  reference        String?
+  notes            String?
+  actorUserId      String
+  actorUserName    String?
+  idempotencyKey   String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stockLoanIssue   StockLoanIssue @relation(fields: [stockLoanIssueId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, paymentDate])
+  @@index([stockLoanIssueId])
 }
 
 model MobileMoneyTransaction {
