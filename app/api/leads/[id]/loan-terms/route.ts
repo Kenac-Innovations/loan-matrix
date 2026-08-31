@@ -90,6 +90,7 @@ export async function POST(
         balloonRepaymentAmount: data.balloonRepaymentAmount,
         collaterals: data.collaterals,
         charges: data.charges || [],
+        stockLoanSelection: data.stockLoanSelection || null,
         isTopup: data.isTopup || false,
         loanIdToClose: data.loanIdToClose || "",
       },

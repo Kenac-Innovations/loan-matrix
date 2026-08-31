@@ -6,6 +6,8 @@ import {
   extractTenantSlugFromRequest,
 } from "@/lib/tenant-service";
 
+class PipelineStageRequestError extends Error {}
+
 /**
  * GET /api/pipeline/stages
  * Fetches all pipeline stages for the current tenant
@@ -78,9 +80,31 @@ export async function PUT(request: NextRequest) {
       });
       const existingIds = existingStages.map((s) => s.id);
 
+      const existingIdSet = new Set(existingIds);
+      const incomingExistingIds = stages
+        .filter((stage: any) => !String(stage.id || "").startsWith("new-"))
+        .map((stage: any) => String(stage.id));
+      const unknownIncomingIds = incomingExistingIds.filter(
+        (id: string) => !existingIdSet.has(id)
+      );
+
+      // A tenant with no saved stages is shown the application's starter
+      // pipeline. Those starter IDs are not database IDs yet, so save them as
+      // new records. For an established tenant, reject stale or cross-tenant
+      // IDs before any deletion can occur.
+      if (existingStages.length > 0 && unknownIncomingIds.length > 0) {
+        throw new PipelineStageRequestError(
+          "The pipeline configuration has changed. Refresh the page before saving your changes."
+        );
+      }
+      const isInitialTenantPipeline = existingStages.length === 0;
+
       // Determine which stages to create, update, or delete
       const incomingIds = stages
-        .filter((s: any) => !s.id.startsWith("new-"))
+        .filter(
+          (s: any) =>
+            !String(s.id || "").startsWith("new-") && existingIdSet.has(s.id)
+        )
         .map((s: any) => s.id);
 
       const stagesToDelete = existingIds.filter(
@@ -146,13 +170,19 @@ export async function PUT(request: NextRequest) {
         });
       }
 
-      // Create or update stages
+      // Create or update stages. During the first save, every displayed
+      // starter stage becomes a new tenant-owned record.
+      const stageIdMap = new Map<string, string>();
       for (let i = 0; i < stages.length; i++) {
         const stage = stages[i];
-        const isNew = stage.id.startsWith("new-");
+        const sourceId = String(stage.id || "");
+        const isNew =
+          isInitialTenantPipeline ||
+          sourceId.startsWith("new-") ||
+          !existingIdSet.has(sourceId);
 
         if (isNew) {
-          await tx.pipelineStage.create({
+          const created = await tx.pipelineStage.create({
             data: {
               tenantId: tenant!.id,
               name: stage.name,
@@ -162,14 +192,16 @@ export async function PUT(request: NextRequest) {
               isActive: true,
               isInitialState: stage.isInitialState || false,
               isFinalState: stage.isFinalState || false,
-              allowedTransitions: stage.allowedTransitions || [],
+              allowedTransitions: [],
               fineractStatus: stage.fineractStatus || null,
               fineractAction: stage.fineractAction || null,
               requiredApprovals: stage.requiredApprovals ?? 1,
               skipBelowAmount: stage.skipBelowAmount ?? null,
             },
           });
+          stageIdMap.set(sourceId, created.id);
         } else {
+          stageIdMap.set(sourceId, sourceId);
           await tx.pipelineStage.update({
             where: { id: stage.id },
             data: {
@@ -179,12 +211,48 @@ export async function PUT(request: NextRequest) {
               order: i + 1,
               isInitialState: stage.isInitialState || false,
               isFinalState: stage.isFinalState || false,
-              allowedTransitions: stage.allowedTransitions || [],
+              allowedTransitions: [],
               fineractStatus: stage.fineractStatus || null,
               fineractAction: stage.fineractAction || null,
               requiredApprovals: stage.requiredApprovals ?? 1,
               skipBelowAmount: stage.skipBelowAmount ?? null,
             },
+          });
+        }
+      }
+
+      // All new IDs are known now, so keep transitions valid when a starter
+      // pipeline or newly added stages are saved for the first time.
+      for (const stage of stages) {
+        const persistedStageId = stageIdMap.get(String(stage.id || ""));
+        if (!persistedStageId) continue;
+
+        const allowedTransitions = (stage.allowedTransitions || [])
+          .map((id: unknown) => stageIdMap.get(String(id)))
+          .filter((id: string | undefined): id is string => Boolean(id));
+
+        await tx.pipelineStage.update({
+          where: { id: persistedStageId },
+          data: { allowedTransitions },
+        });
+      }
+
+      // Leads created before a tenant saves its first pipeline do not yet have
+      // a persisted stage. Attach only those orphaned leads to the configured
+      // initial stage so the normal transition permissions can apply.
+      if (isInitialTenantPipeline) {
+        const initialStage = stages.find((stage: any) => stage.isInitialState);
+        const initialStageId = initialStage
+          ? stageIdMap.get(String(initialStage.id || ""))
+          : undefined;
+
+        if (initialStageId) {
+          await tx.lead.updateMany({
+            where: {
+              tenantId: tenant!.id,
+              currentStageId: null,
+            },
+            data: { currentStageId: initialStageId },
           });
         }
       }
@@ -205,6 +273,9 @@ export async function PUT(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error updating pipeline stages:", error);
+    if (error instanceof PipelineStageRequestError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     return NextResponse.json(
       { error: "Failed to update pipeline stages" },
       { status: 500 }

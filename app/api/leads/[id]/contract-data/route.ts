@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
+import { getArdaDocumentVariant } from "@/lib/arda-contract-variant";
 
 type FineractLoanLike = {
   id?: number;
@@ -92,6 +93,24 @@ type LoanDetailsLike = {
 };
 
 type LoanTermsLike = ReturnType<typeof mapFineractLoanToLoanTerms>;
+
+// Fineract stores the monetary loan terms but not Loan Matrix's in-kind issue
+// record. Keep that record when live Fineract data is merged for ARDA loans.
+type StockLoanSelection = {
+  inventoryItemName: string;
+  quantity: string;
+  unitOfMeasure?: string | null;
+  unitValue: string;
+  totalValue: string;
+  currencyCode: string;
+  fineractOfficeName?: string | null;
+};
+
+type LoanTermsWithStockSelection = LoanTermsLike & {
+  stockLoanSelection?: StockLoanSelection | null;
+  // Older saved terms used this name before it was standardised.
+  graceOnArrearsAgeing?: LoanTermsLike["onArrearsAgeing"];
+};
 
 function resolveLoanScheduleTypeCode(
   loanScheduleType: string | undefined,
@@ -451,9 +470,9 @@ function mergeLoanDetailsWithFineract(
 }
 
 function mergeLoanTermsWithFineract(
-  localLoanTerms: Partial<LoanTermsLike> | null,
+  localLoanTerms: Partial<LoanTermsWithStockSelection> | null,
   fineractLoan: FineractLoanLike
-): LoanTermsLike {
+): LoanTermsWithStockSelection {
   const fineractLoanTerms = mapFineractLoanToLoanTerms(fineractLoan);
 
   return {
@@ -559,6 +578,7 @@ function mergeLoanTermsWithFineract(
       fineractLoanTerms.loanIdToClose ||
       localLoanTerms?.loanIdToClose ||
       "",
+    stockLoanSelection: localLoanTerms?.stockLoanSelection ?? null,
   };
 }
 
@@ -568,7 +588,10 @@ async function resolveFineractLoan(
 ): Promise<FineractLoanLike | null> {
   if (fineractLoanId) {
     try {
-      return (await fetchFineractAPI(`/loans/${fineractLoanId}?associations=all`)) as FineractLoanLike;
+      return (await fetchFineractAPI(
+        `/loans/${fineractLoanId}?associations=all`,
+        { authMode: "service" },
+      )) as FineractLoanLike;
     } catch (error) {
       console.warn(
         `Failed to fetch Fineract loan by ID ${fineractLoanId}, trying external ID lookup:`,
@@ -579,7 +602,8 @@ async function resolveFineractLoan(
 
   try {
     const loans = (await fetchFineractAPI(
-      `/loans?externalId=${encodeURIComponent(leadId)}`
+      `/loans?externalId=${encodeURIComponent(leadId)}`,
+      { authMode: "service" },
     )) as any;
     const loanList = Array.isArray(loans)
       ? loans
@@ -593,7 +617,8 @@ async function resolveFineractLoan(
     if (!matchingLoan?.id) return null;
 
     return (await fetchFineractAPI(
-      `/loans/${matchingLoan.id}?associations=all`
+      `/loans/${matchingLoan.id}?associations=all`,
+      { authMode: "service" },
     )) as FineractLoanLike;
   } catch (error) {
     console.warn(`Failed to fetch Fineract loan by external ID ${leadId}:`, error);
@@ -745,6 +770,19 @@ export async function GET(
       console.log("Live Fineract loan fetched for contract data:", fineractLoan.id);
     } else {
       console.warn("No live Fineract loan found for contract data");
+
+      // A submitted loan's financial figures must come from Fineract. Never
+      // create a compliance document with placeholder zero values on failure.
+      if (lead.loanSubmittedToFineract && lead.fineractLoanId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Live loan terms are unavailable. The contract cannot be generated until they can be retrieved from Fineract.",
+          },
+          { status: 503 },
+        );
+      }
     }
 
     // Fetch loan details
@@ -1098,17 +1136,17 @@ export async function GET(
       fineractLoan?.proposedPrincipal ||
       0;
     const interest =
-      repaymentSchedule?.totalInterestCharged ||
-      fineractLoan?.summary?.interestCharged ||
+      repaymentSchedule?.totalInterestCharged ??
+      fineractLoan?.summary?.interestCharged ??
       0;
     const fees =
-      repaymentSchedule?.totalFeeChargesCharged ||
-      ((fineractLoan?.summary?.feeChargesCharged || 0) +
-        (fineractLoan?.summary?.penaltyChargesCharged || 0));
+      repaymentSchedule?.totalFeeChargesCharged ??
+      ((fineractLoan?.summary?.feeChargesCharged ?? 0) +
+        (fineractLoan?.summary?.penaltyChargesCharged ?? 0));
     const totalRepayment =
-      repaymentSchedule?.totalRepaymentExpected ||
-      fineractLoan?.summary?.totalExpectedRepayment ||
-      fineractLoan?.summary?.totalRepayment ||
+      repaymentSchedule?.totalRepaymentExpected ??
+      fineractLoan?.summary?.totalExpectedRepayment ??
+      fineractLoan?.summary?.totalRepayment ??
       principal + interest + fees;
 
     // Calculate monthly percentage rate
@@ -1524,7 +1562,21 @@ export async function GET(
       ? format(new Date(lead.expectedDisbursementDate), "yyyy")
       : format(new Date(), "yyyy");
 
+    const stockLoanSelection =
+      loanTerms?.stockLoanSelection &&
+      typeof loanTerms.stockLoanSelection === "object"
+        ? loanTerms.stockLoanSelection
+        : null;
+    // Product identity is the authoritative tenant/Fineract classification.
+    // The stock selection supplies the specific in-kind issue, but a missing
+    // selection must never make an ARDA product fall back to an Omama contract.
+    const documentVariant = getArdaDocumentVariant(tenant.slug, {
+      id: lead.loanProductId ?? fineractLoan?.loanProductId,
+      name: lead.loanProductName ?? fineractLoan?.loanProductName,
+    });
+
     const contractData = {
+      documentVariant,
       // Client Information
       clientName,
       nrc: lead.externalId || "N/A",
@@ -1681,6 +1733,7 @@ export async function GET(
       familyMembers: lead.familyMembers || [],
       stateContext: lead.stateContext || null,
       stateMetadata: lead.stateMetadata || null,
+      stockLoanSelection,
     };
 
     return NextResponse.json({
