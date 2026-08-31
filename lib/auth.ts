@@ -125,6 +125,7 @@ export const authOptions: NextAuthOptions = {
         if (
           urlObj.hostname.endsWith(".kenacloanmatrix.com") ||
           urlObj.hostname.endsWith(".kenac.co.zw") ||
+          urlObj.hostname.endsWith(".kenac.tech") ||
           urlObj.hostname === baseObj.hostname ||
           (isTrustedLocalDevHost(urlObj.hostname) &&
             isTrustedLocalDevHost(baseObj.hostname))

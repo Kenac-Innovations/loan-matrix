@@ -1,5 +1,8 @@
 import { headers } from "next/headers";
-import { getTenantFromHeaders } from "./tenant-service";
+import {
+  getRequestedTenantSlugFromHeaders,
+  getTenantFromHeaders,
+} from "./tenant-service";
 
 /**
  * Mapping from application tenant slugs to Fineract tenant IDs
@@ -11,34 +14,61 @@ const TENANT_TO_FINERACT_MAPPING: Record<string, string> = {
   // "another-tenant": "another-fineract-id",
 };
 
+export class FineractTenantResolutionError extends Error {
+  constructor(readonly tenantSlug: string) {
+    super(`Fineract tenant \"${tenantSlug}\" is not configured for this request`);
+    this.name = "FineractTenantResolutionError";
+  }
+}
+
+export function resolveFineractTenantId(input: {
+  requestedSlug: string;
+  resolvedTenantSlug?: string | null;
+  fallbackTenantId?: string;
+}): string {
+  const requestedSlug = input.requestedSlug.trim().toLowerCase();
+  const resolvedTenantSlug = input.resolvedTenantSlug?.trim().toLowerCase();
+
+  if (requestedSlug === "arda" && resolvedTenantSlug !== "arda") {
+    throw new FineractTenantResolutionError("arda");
+  }
+
+  if (resolvedTenantSlug) {
+    return TENANT_TO_FINERACT_MAPPING[resolvedTenantSlug] || resolvedTenantSlug;
+  }
+
+  if (requestedSlug) {
+    throw new FineractTenantResolutionError(requestedSlug);
+  }
+
+  return input.fallbackTenantId || "goodfellow";
+}
+
 /**
  * Get the Fineract tenant ID for the current request
  * Uses tenant slug mapping or falls back to slug directly
  */
 export async function getFineractTenantId(): Promise<string> {
   try {
+    const requestedSlug = await getRequestedTenantSlugFromHeaders();
     const tenant = await getTenantFromHeaders();
 
-  if (!tenant) {
-    console.warn(
-      "No tenant found, using goodfellow Fineract tenant"
-    );
-    return process.env.FINERACT_TENANT_ID || "goodfellow";
-  }
-
-  // Check if there's a specific mapping for this tenant
-  // Otherwise use tenant slug directly, or "goodfellow" as fallback
-  const fineractTenantId =
-    TENANT_TO_FINERACT_MAPPING[tenant.slug] ||
-    tenant.slug ||
-    "goodfellow";
+    const fineractTenantId = resolveFineractTenantId({
+      requestedSlug,
+      resolvedTenantSlug: tenant?.slug,
+      fallbackTenantId: process.env.FINERACT_TENANT_ID || "goodfellow",
+    });
 
     console.log(
-      `Mapped tenant ${tenant.slug} to Fineract tenant: ${fineractTenantId}`
+      `Mapped tenant ${tenant?.slug || "legacy fallback"} to Fineract tenant: ${fineractTenantId}`
     );
 
     return fineractTenantId;
   } catch (error) {
+    if (error instanceof FineractTenantResolutionError) {
+      throw error;
+    }
+
     console.error("Error getting Fineract tenant ID:", error);
     return process.env.FINERACT_TENANT_ID || "goodfellow";
   }

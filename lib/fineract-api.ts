@@ -732,6 +732,11 @@ export class FineractAPIService {
     return response.data;
   }
 
+  async createLoanProduct(payload: Record<string, unknown>): Promise<{ resourceId: number }> {
+    const response = await this.client.post("/loanproducts", payload);
+    return response.data;
+  }
+
   // Transaction operations
   async getLoanTransactions(loanId: number): Promise<FineractTransaction[]> {
     // First try: get loan with transactions association (most reliable)
