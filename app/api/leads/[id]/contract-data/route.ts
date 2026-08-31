@@ -588,7 +588,10 @@ async function resolveFineractLoan(
 ): Promise<FineractLoanLike | null> {
   if (fineractLoanId) {
     try {
-      return (await fetchFineractAPI(`/loans/${fineractLoanId}?associations=all`)) as FineractLoanLike;
+      return (await fetchFineractAPI(
+        `/loans/${fineractLoanId}?associations=all`,
+        { authMode: "service" },
+      )) as FineractLoanLike;
     } catch (error) {
       console.warn(
         `Failed to fetch Fineract loan by ID ${fineractLoanId}, trying external ID lookup:`,
@@ -599,7 +602,8 @@ async function resolveFineractLoan(
 
   try {
     const loans = (await fetchFineractAPI(
-      `/loans?externalId=${encodeURIComponent(leadId)}`
+      `/loans?externalId=${encodeURIComponent(leadId)}`,
+      { authMode: "service" },
     )) as any;
     const loanList = Array.isArray(loans)
       ? loans
@@ -613,7 +617,8 @@ async function resolveFineractLoan(
     if (!matchingLoan?.id) return null;
 
     return (await fetchFineractAPI(
-      `/loans/${matchingLoan.id}?associations=all`
+      `/loans/${matchingLoan.id}?associations=all`,
+      { authMode: "service" },
     )) as FineractLoanLike;
   } catch (error) {
     console.warn(`Failed to fetch Fineract loan by external ID ${leadId}:`, error);
@@ -765,6 +770,19 @@ export async function GET(
       console.log("Live Fineract loan fetched for contract data:", fineractLoan.id);
     } else {
       console.warn("No live Fineract loan found for contract data");
+
+      // A submitted loan's financial figures must come from Fineract. Never
+      // create a compliance document with placeholder zero values on failure.
+      if (lead.loanSubmittedToFineract && lead.fineractLoanId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Live loan terms are unavailable. The contract cannot be generated until they can be retrieved from Fineract.",
+          },
+          { status: 503 },
+        );
+      }
     }
 
     // Fetch loan details
@@ -1118,17 +1136,17 @@ export async function GET(
       fineractLoan?.proposedPrincipal ||
       0;
     const interest =
-      repaymentSchedule?.totalInterestCharged ||
-      fineractLoan?.summary?.interestCharged ||
+      repaymentSchedule?.totalInterestCharged ??
+      fineractLoan?.summary?.interestCharged ??
       0;
     const fees =
-      repaymentSchedule?.totalFeeChargesCharged ||
-      ((fineractLoan?.summary?.feeChargesCharged || 0) +
-        (fineractLoan?.summary?.penaltyChargesCharged || 0));
+      repaymentSchedule?.totalFeeChargesCharged ??
+      ((fineractLoan?.summary?.feeChargesCharged ?? 0) +
+        (fineractLoan?.summary?.penaltyChargesCharged ?? 0));
     const totalRepayment =
-      repaymentSchedule?.totalRepaymentExpected ||
-      fineractLoan?.summary?.totalExpectedRepayment ||
-      fineractLoan?.summary?.totalRepayment ||
+      repaymentSchedule?.totalRepaymentExpected ??
+      fineractLoan?.summary?.totalExpectedRepayment ??
+      fineractLoan?.summary?.totalRepayment ??
       principal + interest + fees;
 
     // Calculate monthly percentage rate
