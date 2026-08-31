@@ -44,6 +44,10 @@ import { getRequiredPaymentServiceCallbackUrl } from "./payment-service-callback
 import { getTenantAutoDisbursementRules } from "./tenant-auto-disbursement-rules";
 import { resolvePaymentTypeForPreferredMethod } from "./payment-method-resolution";
 import { resolveYangoUssdDisbursementDetailsForLead } from "./yango-ussd-disbursement";
+import {
+  applyArdaInventoryWorkflowOperation,
+  validateArdaInventoryWorkflowOperation,
+} from "./inventory/arda-stock-workflow-service";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -923,6 +927,22 @@ export class TeamAwareStateMachineService {
         !isBackward &&
         Boolean(request.fineractOverrides?.payoutMethod);
 
+      // ARDA stock must be available before Fineract is asked to approve or
+      // disburse the loan. The matching ledger operation is recorded only
+      // after all external actions for this transition have succeeded.
+      try {
+        await validateArdaInventoryWorkflowOperation({
+          lead,
+          targetStage: targetStage || {},
+        });
+      } catch (inventoryError) {
+        const message =
+          inventoryError instanceof Error
+            ? inventoryError.message
+            : "The ARDA stock reservation could not be validated.";
+        return { success: false, message };
+      }
+
       if (combinedPayoutWithDisbursement) {
         request.fineractOverrides = await this.validateCombinedDisbursementPayout(
           lead,
@@ -1102,6 +1122,25 @@ export class TeamAwareStateMachineService {
             message: `Payout failed: ${errorDetail}`,
           };
         }
+      }
+
+      // Keep the local stock ledger aligned with the successful workflow
+      // outcome: reserve in approval, release on rejection, issue on disbursement.
+      try {
+        await applyArdaInventoryWorkflowOperation({
+          lead,
+          targetStage: targetStage || {},
+          actor: {
+            userId: request.triggeredBy,
+            userName: lead.createdByUserName,
+          },
+        });
+      } catch (inventoryError) {
+        const message =
+          inventoryError instanceof Error
+            ? inventoryError.message
+            : "The ARDA stock ledger could not be updated.";
+        return { success: false, message };
       }
 
       const approvalAssignment =

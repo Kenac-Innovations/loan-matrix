@@ -139,6 +139,13 @@ export function SidebarNav({
       />
 
       <MenuItemWithSubmenu
+        icon={<Package />}
+        label="Inventory"
+        href="/inventory"
+        subMenuItems={[{ label: "Stock Control", href: "/inventory" }]}
+      />
+
+      <MenuItemWithSubmenu
         icon={<Receipt />}
         label="Collections"
         href="/collections"

@@ -15,6 +15,11 @@ export function extractTenantSlug(host: string): string {
   // Remove port if present
   const hostWithoutPort = host.split(":")[0];
 
+  // ARDA has a dedicated public hostname rather than a tenant-slug subdomain.
+  if (hostWithoutPort === "ardaloanmatrix.kenac.tech") {
+    return "arda";
+  }
+
   // Handle plain localhost (no subdomain)
   if (hostWithoutPort === "localhost" || hostWithoutPort === "127.0.0.1") {
     return "goodfellow";
@@ -40,6 +45,30 @@ function normalizeHostHeader(host: string | null): string | null {
   if (!host) return null;
   const firstHost = host.split(",")[0]?.trim();
   return firstHost || null;
+}
+
+/**
+ * Resolve only the tenant slug requested by the current HTTP host context.
+ * Unlike getTenantFromHeaders, this deliberately has no environment fallback.
+ */
+export async function getRequestedTenantSlugFromHeaders(): Promise<string> {
+  const headersList = await headers();
+
+  for (const headerName of ["origin", "referer"] as const) {
+    const value = headersList.get(headerName);
+    if (!value) continue;
+
+    try {
+      return extractTenantSlug(new URL(value).hostname);
+    } catch {}
+  }
+
+  for (const headerName of ["x-forwarded-host", "host"] as const) {
+    const host = normalizeHostHeader(headersList.get(headerName));
+    if (host) return extractTenantSlug(host);
+  }
+
+  return "";
 }
 
 /**

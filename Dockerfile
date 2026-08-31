@@ -46,6 +46,15 @@ ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 
 RUN pnpm run build
 
+# This target contains only Prisma's migration engine, schema, and migration
+# history. Keeping it independent of the Next.js build avoids delaying a
+# release while a worker pulls the full application dependency tree.
+FROM base AS migrator
+WORKDIR /app
+RUN npm install -g prisma@6.7.0
+COPY prisma ./prisma
+CMD ["prisma", "migrate", "deploy", "--schema=prisma/schema.prisma"]
+
 # Production image, copy all the files and run next
 FROM base AS runner
 WORKDIR /app

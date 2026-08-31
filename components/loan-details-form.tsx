@@ -55,6 +55,7 @@ import {
   buildFineractBusinessCalendarRules,
   type FineractBusinessCalendar,
 } from "@/lib/fineract-business-calendar";
+import { isArdaStockInputLoanProduct } from "@/lib/inventory/arda-stock-loan";
 
 import type { FirstRepaymentDateConfig } from "@/shared/types/tenant";
 import { InvoiceDiscountingForm } from "@/app/(application)/leads/new/components/invoice-discounting-form";
@@ -163,6 +164,8 @@ type LoanDetailsFormData = z.infer<typeof loanDetailsSchema>;
 interface LoanProduct {
   id: number;
   name: string;
+  shortName?: string;
+  externalId?: string;
 }
 
 interface LoanOfficer {
@@ -675,7 +678,7 @@ export function LoanDetailsForm({
       } catch (err) {
         console.error("Error parsing template for selected product:", err);
       }
-    } else if (!isIdProduct) {
+    } else if (!isIdProduct && !isArdaStockInputLoanProduct(selectedProduct)) {
       // Only surface a template error for non-invoice-discounting products,
       // since Fineract may legitimately reject 0%-interest products from the template endpoint.
       const reason =
@@ -685,10 +688,11 @@ export function LoanDetailsForm({
       console.error("Error fetching template for selected product:", reason);
       setError(reason ?? "Failed to fetch loan template for selected product");
     } else {
-      // Invoice discounting product — template unavailable from Fineract, but that's fine.
+      // Special products like invoice discounting and ARDA stock loans may not always
+      // produce a Fineract template, but the regular lead flow can still proceed.
       // Keep the existing template so the rest of the form still works.
       console.warn(
-        `Fineract template unavailable for invoice discounting product ${selectedProduct.id} — skipping template update.`,
+        `Fineract template unavailable for special product ${selectedProduct.id} — skipping template update.`,
       );
       setError(null);
     }
@@ -1162,6 +1166,7 @@ export function LoanDetailsForm({
     const templateWithProductId = {
       ...loanTemplate,
       productId: selectedProduct?.id,
+      product: selectedProduct,
     } as LoanTemplate;
 
     onNext({
