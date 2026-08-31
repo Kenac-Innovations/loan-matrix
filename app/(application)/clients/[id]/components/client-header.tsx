@@ -3,6 +3,7 @@ import { ArrowLeft, Edit, Users, Plus, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import type { ClientLoanAvailability } from "@/lib/client-loan-availability";
 
 interface FineractClient {
   id: number;
@@ -31,7 +32,7 @@ interface ClientHeaderProps {
   client: FineractClient | null;
   clientImage: string | null;
   canEditClient: boolean;
-  hasLoans: boolean;
+  loanAvailability: ClientLoanAvailability;
 }
 
 export function ClientHeader({
@@ -39,7 +40,7 @@ export function ClientHeader({
   client,
   clientImage,
   canEditClient,
-  hasLoans,
+  loanAvailability,
 }: ClientHeaderProps) {
   const getStatusBadgeColor = (status: string | null, active: boolean) => {
     if (active) return "bg-green-500";
@@ -180,7 +181,7 @@ export function ClientHeader({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {hasLoans && (
+              {loanAvailability !== "no-loans" && (
                 <Button asChild size="sm" variant="outline">
                   <Link
                     href={`/api/fineract/clients/${clientId}/statement?format=html`}

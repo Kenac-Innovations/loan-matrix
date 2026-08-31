@@ -11,6 +11,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hasPermissionServer } from "@/lib/authorization";
 import { getClientDetailsPageFineractHeaders } from "@/lib/client-details-page-fineract-auth";
+import {
+  deriveClientLoanAvailability,
+  type ClientLoanAvailability,
+} from "@/lib/client-loan-availability";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { prisma } from "@/lib/prisma";
 import { SpecificPermission } from "@/shared/types/auth";
@@ -102,10 +106,6 @@ type PagedResponse<T> = {
   pageItems?: T[];
   content?: T[];
   documents?: T[];
-};
-
-type ClientAccountsResponse = {
-  loanAccounts?: Array<{ id: number | string }>;
 };
 
 /**
@@ -363,7 +363,9 @@ async function getClientDocuments(
   }
 }
 
-async function getClientHasLoans(clientId: number): Promise<boolean> {
+async function getClientLoanAvailability(
+  clientId: number
+): Promise<ClientLoanAvailability> {
   try {
     const fineractTenantId = await getFineractTenantId();
     const response = await fetch(
@@ -380,14 +382,13 @@ async function getClientHasLoans(clientId: number): Promise<boolean> {
         `Failed to fetch accounts for client ${clientId}:`,
         response.status
       );
-      return false;
+      return "unknown";
     }
 
-    const data = (await response.json()) as ClientAccountsResponse;
-    return Array.isArray(data.loanAccounts) && data.loanAccounts.length > 0;
+    return deriveClientLoanAvailability(await response.json());
   } catch (error) {
     console.error("Error fetching client accounts:", error);
-    return false;
+    return "unknown";
   }
 }
 
@@ -400,13 +401,13 @@ export default async function ClientDetailPage({ params }: PageProps) {
   }
 
   // Fetch all data server-side in parallel
-  const [client, clientImage, datatables, canEditClient, hasLoans] =
+  const [client, clientImage, datatables, canEditClient, loanAvailability] =
     await Promise.all([
       getClientData(clientId),
       getClientImage(clientId),
       getDatatables(),
       hasPermissionServer(SpecificPermission.UPDATE_CLIENT),
-      getClientHasLoans(clientId),
+      getClientLoanAvailability(clientId),
     ]);
 
   // Fetch datatable data after we have the datatables list
@@ -444,7 +445,7 @@ export default async function ClientDetailPage({ params }: PageProps) {
         client={client}
         clientImage={clientImage}
         canEditClient={canEditClient}
-        hasLoans={hasLoans}
+        loanAvailability={loanAvailability}
       />
 
       {/* Client Overview Cards */}
