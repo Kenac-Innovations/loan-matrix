@@ -5,8 +5,7 @@ import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
-import { isOmamaTenantSlug } from "@/lib/omama-tenant";
-import { isArdaStockInputLoanProduct } from "@/lib/inventory/arda-stock-loan";
+import { getArdaDocumentVariant } from "@/lib/arda-contract-variant";
 
 type FineractLoanLike = {
   id?: number;
@@ -1553,17 +1552,13 @@ export async function GET(
     // Product identity is the authoritative tenant/Fineract classification.
     // The stock selection supplies the specific in-kind issue, but a missing
     // selection must never make an ARDA product fall back to an Omama contract.
-    const isArdaStockInputAgreement =
-      isOmamaTenantSlug(tenant.slug) &&
-      isArdaStockInputLoanProduct({
-        id: lead.loanProductId ?? fineractLoan?.loanProductId,
-        name: lead.loanProductName ?? fineractLoan?.loanProductName,
-      });
+    const documentVariant = getArdaDocumentVariant(tenant.slug, {
+      id: lead.loanProductId ?? fineractLoan?.loanProductId,
+      name: lead.loanProductName ?? fineractLoan?.loanProductName,
+    });
 
     const contractData = {
-      documentVariant: isArdaStockInputAgreement
-        ? "ARDA_STOCK_INPUT"
-        : "DEFAULT",
+      documentVariant,
       // Client Information
       clientName,
       nrc: lead.externalId || "N/A",
