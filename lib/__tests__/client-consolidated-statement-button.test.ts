@@ -22,5 +22,5 @@ test("client header exposes consolidated statement action in a new tab", () => {
 test("client details page passes loan availability into the client header", () => {
   const source = readRepoFile("app/(application)/clients/[id]/page.tsx");
 
-  assert.match(source, /hasLoans=/);
+  assert.match(source, /loanAvailability=/);
 });
