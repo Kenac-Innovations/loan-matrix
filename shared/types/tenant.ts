@@ -97,6 +97,11 @@ export interface TenantAutoProgressToDisbursementRule {
   loanProductId: number;
   triggerStageId: string;
   allowedCdeDecisions: AutoDisbursementDecision[];
+  /**
+   * Whether CDE should evaluate income for this product. Omitted rules keep
+   * the existing income-based decision path.
+   */
+  incomeEvaluationRequired?: boolean;
 }
 
 export interface TenantUssdAutoLeadRule {
