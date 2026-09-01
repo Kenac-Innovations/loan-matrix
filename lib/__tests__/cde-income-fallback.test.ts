@@ -14,6 +14,26 @@ test("uses the ZMW 500 policy value for missing income", async () => {
 
   assert.equal(payload.applicant.grossMonthlyIncome, 500);
   assert.equal(payload.applicant.netMonthlyIncome, 500);
+  assert.equal(payload.incomeEvaluationRequired, true);
+});
+
+test("omits income values only when the product explicitly disables income evaluation", async () => {
+  const { buildCDEPayload } = await import("../cde-utils.ts");
+
+  const payload = buildCDEPayload(
+    {
+      id: "lead-1",
+      monthlyIncome: 3200,
+      grossMonthlyIncome: 3600,
+    },
+    undefined,
+    undefined,
+    { incomeEvaluationRequired: false }
+  );
+
+  assert.equal(payload.incomeEvaluationRequired, false);
+  assert.equal(payload.applicant.grossMonthlyIncome, null);
+  assert.equal(payload.applicant.netMonthlyIncome, null);
 });
 
 test("preserves supplied income values", async () => {

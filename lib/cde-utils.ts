@@ -3,6 +3,7 @@ import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getAccessToken } from "@/lib/api";
 import { normalizeCurrencyCode } from "@/lib/format-currency";
 import { enrichLeadBorrowerProfile } from "@/lib/lead-profile-enrichment";
+import { isIncomeEvaluationRequiredForLoanProduct } from "@/lib/tenant-auto-disbursement-rules";
 
 // CDE requires positive income inputs. This policy value is not persisted on a
 // client or presented to CDE as verified income.
@@ -43,11 +44,15 @@ export function resolveCdeIncomeValues(
 export function buildCDEPayload(
   lead: any,
   additionalData?: any,
-  fineractLoan?: any
+  fineractLoan?: any,
+  options?: { incomeEvaluationRequired?: boolean }
 ) {
   console.log("Fineract Loan:", fineractLoan);
   const stateMetadata = (lead.stateMetadata as Record<string, unknown> | null) || {};
-  const cdeIncomeValues = resolveCdeIncomeValues(lead, additionalData);
+  const incomeEvaluationRequired = options?.incomeEvaluationRequired !== false;
+  const cdeIncomeValues = incomeEvaluationRequired
+    ? resolveCdeIncomeValues(lead, additionalData)
+    : { grossMonthlyIncome: null, netMonthlyIncome: null };
   // Calculate age from date of birth
   const calculateAge = (dob: Date | string | null): number | null => {
     if (!dob) return null;
@@ -137,6 +142,7 @@ export function buildCDEPayload(
 
   const payload = {
     mifosLoanId: mifosLoanId,
+    incomeEvaluationRequired,
     applicant: {
       firstName: lead.firstname || "",
       lastName: lead.lastname || "",
@@ -412,13 +418,24 @@ export async function callCDEAndStore(
       stateMetadata: (lead.stateMetadata as any) || {},
     });
 
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: lead.tenantId },
+      select: { settings: true },
+    });
+    const incomeEvaluationRequired = isIncomeEvaluationRequiredForLoanProduct(
+      (tenant?.settings as Record<string, unknown> | null) || null,
+      lead.loanProductId
+    );
+
     const enrichedLead = await enrichLeadBorrowerProfile(lead);
 
     // Fetch Fineract loan details if available
     const fineractLoan = await fetchFineractLoanForLead(enrichedLead);
 
     // Build CDE payload with Fineract loan data if available
-    const cdePayload = buildCDEPayload(enrichedLead, undefined, fineractLoan);
+    const cdePayload = buildCDEPayload(enrichedLead, undefined, fineractLoan, {
+      incomeEvaluationRequired,
+    });
     console.log("\n==========================================");
     console.log("=== CDE API CALL - PAYLOAD ===");
     console.log("==========================================");
@@ -439,6 +456,7 @@ export async function callCDEAndStore(
     );
     console.log("Requested Amount:", cdePayload.requestedAmount);
     console.log("Requested Term:", cdePayload.requestedTerm, "months");
+    console.log("Income Evaluation Required:", cdePayload.incomeEvaluationRequired);
     console.log(
       "Gross Monthly Income:",
       cdePayload.applicant.grossMonthlyIncome

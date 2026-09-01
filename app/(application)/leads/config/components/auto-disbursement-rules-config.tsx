@@ -17,6 +17,7 @@ type RuleDraft = {
   loanProductId: string;
   triggerStageId: string;
   allowedCdeDecisions: AutoDisbursementDecision[];
+  incomeEvaluationRequired: boolean;
 };
 
 type LoanProduct = {
@@ -46,6 +47,7 @@ function makeRuleDraft(): RuleDraft {
     loanProductId: "",
     triggerStageId: "",
     allowedCdeDecisions: ["APPROVED"],
+    incomeEvaluationRequired: true,
   };
 }
 
@@ -101,6 +103,7 @@ export function AutoDisbursementRulesConfig() {
               allowedCdeDecisions: Array.isArray(rule.allowedCdeDecisions)
                 ? rule.allowedCdeDecisions
                 : ["APPROVED"],
+              incomeEvaluationRequired: rule.incomeEvaluationRequired !== false,
             }))
           : [];
 
@@ -209,6 +212,7 @@ export function AutoDisbursementRulesConfig() {
         loanProductId: Number(rule.loanProductId),
         triggerStageId: rule.triggerStageId,
         allowedCdeDecisions: rule.allowedCdeDecisions,
+        incomeEvaluationRequired: rule.incomeEvaluationRequired,
       }));
 
       const response = await fetch("/api/tenant/auto-disbursement-rules", {
@@ -233,6 +237,7 @@ export function AutoDisbursementRulesConfig() {
             allowedCdeDecisions: Array.isArray(rule.allowedCdeDecisions)
               ? rule.allowedCdeDecisions
               : ["APPROVED"],
+            incomeEvaluationRequired: rule.incomeEvaluationRequired !== false,
           }))
         : [];
 
@@ -337,6 +342,24 @@ export function AutoDisbursementRulesConfig() {
                 checked={rule.enabled}
                 onCheckedChange={(checked) =>
                   updateRule(rule.id, { enabled: Boolean(checked) })
+                }
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <p className="font-medium">Use Income in CDE</p>
+                <p className="text-sm text-muted-foreground">
+                  Turn this off only for products whose CDE decision must not use
+                  gross or net income. Existing products remain on by default.
+                </p>
+              </div>
+              <Switch
+                checked={rule.incomeEvaluationRequired}
+                onCheckedChange={(checked) =>
+                  updateRule(rule.id, {
+                    incomeEvaluationRequired: Boolean(checked),
+                  })
                 }
               />
             </div>
