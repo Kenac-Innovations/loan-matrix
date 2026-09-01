@@ -19,8 +19,8 @@ test("client header exposes consolidated statement action in a new tab", () => {
   assert.match(source, /target=\"_blank\"/);
 });
 
-test("client details page passes loan availability into the client header", () => {
+test("client details page is always rendered fresh", () => {
   const source = readRepoFile("app/(application)/clients/[id]/page.tsx");
 
-  assert.match(source, /loanAvailability=/);
+  assert.match(source, /export const dynamic = "force-dynamic"/);
 });
