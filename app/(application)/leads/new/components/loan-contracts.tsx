@@ -1449,10 +1449,11 @@ export function LoanContracts({
       console.log("Contract data response status:", response.status);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Contract data API error:", errorText);
+        const errorPayload = await response.json().catch(() => null);
+        console.error("Contract data API error:", errorPayload);
         throw new Error(
-          `Failed to load contract data: ${response.status} ${response.statusText}`,
+          errorPayload?.error ||
+            `Failed to load contract data: ${response.status} ${response.statusText}`,
         );
       }
 

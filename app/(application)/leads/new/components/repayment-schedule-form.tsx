@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format } from "date-fns";
+import { formatFineractBusinessDate } from "@/lib/fineract-business-date";
 import {
   recomputeTopupAwareDisbursementChargeAmounts,
   type EditableLoanChargeRow,
@@ -306,27 +307,13 @@ export function RepaymentScheduleForm({
 
     try {
       // Format dates
-      const submittedDate = loanDetails.submittedOn
-        ? format(
-            new Date(
-              typeof loanDetails.submittedOn === "string"
-                ? loanDetails.submittedOn
-                : loanDetails.submittedOn,
-            ),
-            "dd MMMM yyyy",
-          )
-        : format(new Date(), "dd MMMM yyyy");
+      const submittedDate =
+        formatFineractBusinessDate(loanDetails.submittedOn) ||
+        formatFineractBusinessDate(new Date())!;
 
-      const disbursementDate = loanDetails.disbursementOn
-        ? format(
-            new Date(
-              typeof loanDetails.disbursementOn === "string"
-                ? loanDetails.disbursementOn
-                : loanDetails.disbursementOn,
-            ),
-            "dd MMMM yyyy",
-          )
-        : format(new Date(), "dd MMMM yyyy");
+      const disbursementDate =
+        formatFineractBusinessDate(loanDetails.disbursementOn) ||
+        formatFineractBusinessDate(new Date())!;
 
       // editableCharges are already rebased on load — no need to recompute again.
       // Fineract's calculateLoanSchedule treats `amount` as a percentage for % charges and

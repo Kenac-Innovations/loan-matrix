@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
+import { formatFineractBusinessDate } from "@/lib/fineract-business-date";
+import { parseFineractErrorResponse } from "@/lib/fineract-error";
 import { getArdaDocumentVariant } from "@/lib/arda-contract-variant";
 
 type FineractLoanLike = {
@@ -997,13 +999,13 @@ export async function GET(
 
     if (!repaymentSchedule && loanTerms && loanDetails && loanTemplate) {
       try {
-        const submittedDate = loanDetails.submittedOn
-          ? format(new Date(loanDetails.submittedOn), "dd MMMM yyyy")
-          : format(new Date(), "dd MMMM yyyy");
+        const submittedDate =
+          formatFineractBusinessDate(loanDetails.submittedOn) ||
+          formatFineractBusinessDate(new Date())!;
 
-        const disbursementDate = loanDetails.disbursementOn
-          ? format(new Date(loanDetails.disbursementOn), "dd MMMM yyyy")
-          : format(new Date(), "dd MMMM yyyy");
+        const disbursementDate =
+          formatFineractBusinessDate(loanDetails.disbursementOn) ||
+          formatFineractBusinessDate(new Date())!;
         const resolvedLoanScheduleType = resolveLoanScheduleTypeCode(
           loanTerms.loanScheduleType,
           loanTemplate?.loanScheduleTypeOptions,
@@ -1047,12 +1049,12 @@ export async function GET(
             loanTerms.repaymentFrequencyNthDay || "",
           repaymentFrequencyDayOfWeekType:
             loanTerms.repaymentFrequencyDayOfWeek || "",
-          repaymentsStartingFromDate: loanTerms.firstRepaymentOn
-            ? format(new Date(loanTerms.firstRepaymentOn), "dd MMMM yyyy")
-            : null,
-          interestChargedFromDate: loanTerms.interestChargedFrom
-            ? format(new Date(loanTerms.interestChargedFrom), "dd MMMM yyyy")
-            : null,
+          repaymentsStartingFromDate: formatFineractBusinessDate(
+            loanTerms.firstRepaymentOn,
+          ),
+          interestChargedFromDate: formatFineractBusinessDate(
+            loanTerms.interestChargedFrom,
+          ),
           interestType: loanTerms.interestMethod
             ? parseInt(loanTerms.interestMethod)
             : loanTemplate?.interestType?.id || 1,
@@ -1106,9 +1108,26 @@ export async function GET(
           },
         );
 
-        if (scheduleResponse.ok) {
-          repaymentSchedule = await scheduleResponse.json();
+        if (!scheduleResponse.ok) {
+          const scheduleError = await scheduleResponse
+            .json()
+            .catch(() => null);
+
+          console.error("Contract repayment schedule calculation failed:", {
+            status: scheduleResponse.status,
+            error: scheduleError,
+          });
+
+          return NextResponse.json(
+            {
+              success: false,
+              error: parseFineractErrorResponse(scheduleError || {}),
+            },
+            { status: 422 },
+          );
         }
+
+        repaymentSchedule = await scheduleResponse.json();
       } catch (err) {
         console.error("Error calculating repayment schedule:", err);
       }
