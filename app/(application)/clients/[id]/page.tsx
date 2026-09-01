@@ -11,10 +11,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hasPermissionServer } from "@/lib/authorization";
 import { getClientDetailsPageFineractHeaders } from "@/lib/client-details-page-fineract-auth";
-import {
-  deriveClientLoanAvailability,
-  type ClientLoanAvailability,
-} from "@/lib/client-loan-availability";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { prisma } from "@/lib/prisma";
 import { SpecificPermission } from "@/shared/types/auth";
@@ -363,35 +359,6 @@ async function getClientDocuments(
   }
 }
 
-async function getClientLoanAvailability(
-  clientId: number
-): Promise<ClientLoanAvailability> {
-  try {
-    const fineractTenantId = await getFineractTenantId();
-    const response = await fetch(
-      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/accounts`,
-      {
-        method: "GET",
-        headers: getClientDetailsPageFineractHeaders(fineractTenantId),
-        cache: "no-store",
-      }
-    );
-
-    if (!response.ok) {
-      console.error(
-        `Failed to fetch accounts for client ${clientId}:`,
-        response.status
-      );
-      return "unknown";
-    }
-
-    return deriveClientLoanAvailability(await response.json());
-  } catch (error) {
-    console.error("Error fetching client accounts:", error);
-    return "unknown";
-  }
-}
-
 export default async function ClientDetailPage({ params }: PageProps) {
   const { id } = await params;
   const clientId = Number.parseInt(id);
@@ -401,13 +368,12 @@ export default async function ClientDetailPage({ params }: PageProps) {
   }
 
   // Fetch all data server-side in parallel
-  const [client, clientImage, datatables, canEditClient, loanAvailability] =
+  const [client, clientImage, datatables, canEditClient] =
     await Promise.all([
       getClientData(clientId),
       getClientImage(clientId),
       getDatatables(),
       hasPermissionServer(SpecificPermission.UPDATE_CLIENT),
-      getClientLoanAvailability(clientId),
     ]);
 
   // Fetch datatable data after we have the datatables list
@@ -445,7 +411,6 @@ export default async function ClientDetailPage({ params }: PageProps) {
         client={client}
         clientImage={clientImage}
         canEditClient={canEditClient}
-        loanAvailability={loanAvailability}
       />
 
       {/* Client Overview Cards */}

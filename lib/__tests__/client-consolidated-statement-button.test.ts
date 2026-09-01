@@ -19,8 +19,14 @@ test("client header exposes consolidated statement action in a new tab", () => {
   assert.match(source, /target=\"_blank\"/);
 });
 
-test("client details page passes loan availability into the client header", () => {
-  const source = readRepoFile("app/(application)/clients/[id]/page.tsx");
+test("client header keeps the consolidated statement available without a loan-list gate", () => {
+  const source = readRepoFile(
+    "app/(application)/clients/[id]/components/client-header.tsx"
+  );
 
-  assert.match(source, /loanAvailability=/);
+  assert.doesNotMatch(
+    source,
+    /loanAvailability\s*!==\s*["']no-loans["']/,
+    "a failed or stale account lookup must not hide the statement action"
+  );
 });
