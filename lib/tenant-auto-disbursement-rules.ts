@@ -42,6 +42,7 @@ function sanitizeRule(
     loanProductId,
     triggerStageId,
     allowedCdeDecisions: Array.from(new Set(allowedCdeDecisions)),
+    incomeEvaluationRequired: candidate.incomeEvaluationRequired !== false,
   };
 }
 
@@ -76,4 +77,21 @@ export function sanitizeTenantAutoDisbursementRulesInput(
     .filter(
       (rule): rule is TenantAutoProgressToDisbursementRule => rule !== null
     );
+}
+
+/**
+ * CDE continues to use income unless the configured product rule explicitly
+ * opts out. This preserves the behaviour of every pre-existing rule.
+ */
+export function isIncomeEvaluationRequiredForLoanProduct(
+  settings: TenantSettings | Record<string, unknown> | null | undefined,
+  loanProductId: number | null | undefined
+): boolean {
+  if (!Number.isInteger(loanProductId) || Number(loanProductId) <= 0) {
+    return true;
+  }
+
+  return !getTenantAutoDisbursementRules(settings)
+    .filter((rule) => Number(rule.loanProductId) === Number(loanProductId))
+    .some((rule) => rule.incomeEvaluationRequired === false);
 }
