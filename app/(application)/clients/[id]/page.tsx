@@ -24,6 +24,8 @@ import { ClientEntityKyc } from "./components/client-entity-kyc";
 import { ClientSavings } from "./components/client-savings";
 import { ClientFacility } from "./components/client-facility";
 
+export const dynamic = "force-dynamic";
+
 const FINERACT_BASE_URL =
   process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
