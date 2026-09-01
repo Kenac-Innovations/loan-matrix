@@ -24,3 +24,15 @@ test("client details page is always rendered fresh", () => {
 
   assert.match(source, /export const dynamic = "force-dynamic"/);
 });
+
+test("client header keeps the consolidated statement available without a loan-list gate", () => {
+  const source = readRepoFile(
+    "app/(application)/clients/[id]/components/client-header.tsx"
+  );
+
+  assert.doesNotMatch(
+    source,
+    /loanAvailability\s*!==\s*["']no-loans["']/,
+    "a failed or stale account lookup must not hide the statement action"
+  );
+});
