@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { shouldBeginEligibilityReplacement } from "@/lib/loan-eligibility-upload-mode";
 
 const BATCH_SIZE = 100;
 
@@ -52,7 +53,7 @@ async function pushBatch(params: {
 export async function performEligibilitySync(uploadId: string): Promise<void> {
   const upload = await prisma.loanEligibilityUpload.findUnique({
     where: { id: uploadId },
-    select: { id: true, productExternalId: true, syncedRows: true, status: true },
+    select: { id: true, productExternalId: true, replaceExisting: true, syncedRows: true, status: true },
   });
 
   if (!upload || upload.status === "SYNCING") return;
@@ -85,7 +86,11 @@ export async function performEligibilitySync(uploadId: string): Promise<void> {
 
   for (let i = 0; i < chunks.length; i++) {
     const batch = chunks[i];
-    const isFirstBatch = isFirstSync && i === 0;
+    const isFirstBatch = shouldBeginEligibilityReplacement({
+      replaceExisting: upload.replaceExisting,
+      isFirstSync,
+      batchIndex: i,
+    });
 
     try {
       const result = await pushBatch({
