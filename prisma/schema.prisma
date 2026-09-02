@@ -1725,6 +1725,7 @@ model LoanEligibilityUpload {
   productExternalId String
   productName       String
   uploadedBy        String
+  replaceExisting   Boolean                   @default(false)
   status            String                    @default("STAGING") // STAGING, SYNCING, SYNCED, FAILED
   totalRows         Int                       @default(0)
   syncedRows        Int                       @default(0)
