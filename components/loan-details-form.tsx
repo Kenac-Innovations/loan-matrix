@@ -55,6 +55,7 @@ import {
   buildFineractBusinessCalendarRules,
   type FineractBusinessCalendar,
 } from "@/lib/fineract-business-calendar";
+import { isFineractBusinessDateAfter } from "@/lib/fineract-business-date";
 import { isArdaStockInputLoanProduct } from "@/lib/inventory/arda-stock-loan";
 
 import type { FirstRepaymentDateConfig } from "@/shared/types/tenant";
@@ -670,7 +671,25 @@ export function LoanDetailsForm({
 
         if (data.expectedDisbursementDate) {
           const [year, month, day] = data.expectedDisbursementDate;
-          form.setValue("disbursementOn", new Date(year, month - 1, day));
+          const templateDisbursementDate = new Date(year, month - 1, day);
+          form.setValue("disbursementOn", templateDisbursementDate);
+
+          // The Fineract template is the source of the default disbursement
+          // date. Keep a new draft's submitted date at or before that date so
+          // the schedule request cannot be rejected before the user can edit it.
+          const submittedOn = form.getValues("submittedOn");
+          if (
+            !submittedOn ||
+            isFineractBusinessDateAfter(
+              submittedOn,
+              templateDisbursementDate,
+            )
+          ) {
+            form.setValue("submittedOn", templateDisbursementDate, {
+              shouldValidate: true,
+              shouldDirty: true,
+            });
+          }
         }
 
         // Clear any previous template error for this product
@@ -754,8 +773,9 @@ export function LoanDetailsForm({
             if (result.data.fund) {
               form.setValue("fund", result.data.fund);
             }
-            // Always use today's date for submittedOn (not saved value)
-            form.setValue("submittedOn", new Date());
+            if (result.data.submittedOn) {
+              form.setValue("submittedOn", new Date(result.data.submittedOn));
+            }
             if (result.data.disbursementOn) {
               form.setValue(
                 "disbursementOn",
