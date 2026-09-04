@@ -1,6 +1,11 @@
 const FINERACT_BUSINESS_TIME_ZONE = "Africa/Harare";
 
-type FineractBusinessDateValue = Date | string | number | null | undefined;
+export type FineractBusinessDateValue =
+  | Date
+  | string
+  | number
+  | null
+  | undefined;
 
 function getFineractBusinessDateParts(
   value: FineractBusinessDateValue,
@@ -44,6 +49,19 @@ export function formatFineractBusinessDate(
 }
 
 /**
+ * Returns an instant in today's Fineract business-calendar day. Noon Harare
+ * avoids a UTC date rollover when the value is persisted and later rendered
+ * as a calendar date.
+ */
+export function getFineractBusinessToday(now: Date = new Date()): Date {
+  const parts = getFineractBusinessDateParts(now, "2-digit");
+
+  if (!parts) return now;
+
+  return new Date(`${parts.year}-${parts.month}-${parts.day}T12:00:00+02:00`);
+}
+
+/**
  * Compares loan calendar days in the same timezone that is used when the
  * value is submitted to Fineract. This intentionally ignores the time of day.
  */
@@ -60,4 +78,34 @@ export function isFineractBusinessDateAfter(
   const referenceKey = `${referenceParts.year}-${referenceParts.month}-${referenceParts.day}`;
 
   return valueKey > referenceKey;
+}
+
+/**
+ * Returns the latest safe submission date for a schedule. Fineract rejects a
+ * submitted-on date after the expected disbursement date (and may reject it as
+ * future-dated when the tenant business date trails the wall clock). The
+ * caller can pass the live loan-template date as an additional upper bound.
+ */
+export function normalizeFineractSubmittedOnDate(
+  submittedOn: FineractBusinessDateValue,
+  expectedDisbursementDate: FineractBusinessDateValue,
+  templateExpectedDisbursementDate?: FineractBusinessDateValue,
+): FineractBusinessDateValue {
+  let latestAllowedDate = expectedDisbursementDate;
+
+  if (
+    templateExpectedDisbursementDate &&
+    (!latestAllowedDate ||
+      isFineractBusinessDateAfter(
+        latestAllowedDate,
+        templateExpectedDisbursementDate,
+      ))
+  ) {
+    latestAllowedDate = templateExpectedDisbursementDate;
+  }
+
+  return latestAllowedDate &&
+    isFineractBusinessDateAfter(submittedOn, latestAllowedDate)
+    ? latestAllowedDate
+    : submittedOn;
 }
