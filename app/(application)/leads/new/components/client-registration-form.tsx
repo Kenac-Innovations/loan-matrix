@@ -133,6 +133,7 @@ import {
   getExistingClientTransferUiState,
   type ExistingClientTransferRequirement,
 } from "@/lib/fineract-client-office-transfer";
+import { getClientSubmittedOnDate } from "@/lib/lead-client-submitted-date";
 import {
   getInputErrorStyling,
   getSelectErrorStyling,
@@ -2417,7 +2418,10 @@ export function ClientRegistrationForm({
               clientTypeId: lead.clientTypeId?.toString() || undefined,
               clientClassificationId:
                 lead.clientClassificationId?.toString() || undefined,
-              submittedOnDate: lead.submittedOnDate || new Date(),
+              submittedOnDate:
+                getClientSubmittedOnDate(lead.stateMetadata) ||
+                lead.submittedOnDate ||
+                new Date(),
               active: lead.active,
               activationDate: lead.activationDate || undefined,
               openSavingsAccount: lead.openSavingsAccount || false,
