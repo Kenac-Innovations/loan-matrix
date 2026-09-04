@@ -11,6 +11,8 @@ import {
   assertExistingClientBranchTransferCompleted,
   ensureExistingClientInCreatorOffice,
 } from "@/lib/fineract-client-office-transfer";
+import { getFineractBusinessToday } from "@/lib/fineract-business-date";
+import { withClientSubmittedOnDate } from "@/lib/lead-client-submitted-date";
 
 // Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
@@ -151,7 +153,7 @@ export async function autoSaveField(
       console.log("Updating existing lead:", leadId);
       const existingLead = await prisma.lead.findUnique({
         where: { id: leadId },
-        select: { currentStageId: true },
+        select: { currentStageId: true, stateMetadata: true },
       });
 
       // Update existing lead
@@ -239,9 +241,11 @@ export async function autoSaveField(
           ...(validatedData.clientClassificationName !== undefined && {
             clientClassificationName: validatedData.clientClassificationName,
           }),
-          ...(validatedData.submittedOnDate !== undefined && {
-            submittedOnDate: validatedData.submittedOnDate,
-          }),
+          // Client-form autosave must not replace the loan submitted-on date.
+          stateMetadata: withClientSubmittedOnDate(
+            existingLead?.stateMetadata,
+            validatedData.submittedOnDate,
+          ),
           ...(validatedData.active !== undefined && {
             active: validatedData.active,
           }),
@@ -318,7 +322,11 @@ export async function autoSaveField(
               validatedData.clientClassificationId || null,
             clientClassificationName:
               validatedData.clientClassificationName || null,
-            submittedOnDate: validatedData.submittedOnDate || new Date(),
+            submittedOnDate: getFineractBusinessToday(),
+            stateMetadata: withClientSubmittedOnDate(
+              undefined,
+              validatedData.submittedOnDate,
+            ),
             active: validatedData.active || true,
             activationDate: validatedData.activationDate || null,
             openSavingsAccount: validatedData.openSavingsAccount || false,
@@ -387,7 +395,11 @@ export async function autoSaveField(
               validatedData.clientClassificationId || null,
             clientClassificationName:
               validatedData.clientClassificationName || null,
-            submittedOnDate: validatedData.submittedOnDate || new Date(),
+            submittedOnDate: getFineractBusinessToday(),
+            stateMetadata: withClientSubmittedOnDate(
+              undefined,
+              validatedData.submittedOnDate,
+            ),
             active: validatedData.active || true,
             activationDate: validatedData.activationDate || null,
             openSavingsAccount: validatedData.openSavingsAccount || false,

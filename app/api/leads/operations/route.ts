@@ -15,6 +15,11 @@ import {
   assertExistingClientBranchTransferCompleted,
   ensureExistingClientInCreatorOffice,
 } from "@/lib/fineract-client-office-transfer";
+import { getFineractBusinessToday } from "@/lib/fineract-business-date";
+import {
+  getClientSubmittedOnDate,
+  withClientSubmittedOnDate,
+} from "@/lib/lead-client-submitted-date";
 
 // Helper to resolve the current tenant, optionally using the raw request
 // so we can read middleware-set and proxy-set headers directly.
@@ -498,6 +503,12 @@ async function handleSaveDraft(data: any, leadId?: string) {
     const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
     const tenantId = currentTenant.id;
     const initialStageId = await getInitialStageId(tenantId);
+    const existingLead = leadId
+      ? await prisma.lead.findUnique({
+          where: { id: leadId },
+          select: { stateMetadata: true },
+        })
+      : null;
 
     if (leadId) {
       // Update existing lead
@@ -530,7 +541,12 @@ async function handleSaveDraft(data: any, leadId?: string) {
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          // Client Details stores the registration date separately and must
+          // not overwrite an already-selected loan submitted-on date.
+          stateMetadata: withClientSubmittedOnDate(
+            existingLead?.stateMetadata,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,
@@ -588,7 +604,11 @@ async function handleSaveDraft(data: any, leadId?: string) {
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          submittedOnDate: getFineractBusinessToday(),
+          stateMetadata: withClientSubmittedOnDate(
+            undefined,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,
@@ -1091,7 +1111,13 @@ async function handleCreateLeadWithClient(data: any) {
                 clientTypeName: validatedData.clientTypeName,
                 clientClassificationId: validatedData.clientClassificationId || undefined,
                 clientClassificationName: validatedData.clientClassificationName,
-                submittedOnDate: validatedData.submittedOnDate,
+                // This is a new loan application, not the client's original
+                // registration. Do not inherit a historical client date.
+                submittedOnDate: getFineractBusinessToday(),
+                stateMetadata: withClientSubmittedOnDate(
+                  undefined,
+                  validatedData.submittedOnDate,
+                ),
                 active: validatedData.active,
                 activationDate: validatedData.activationDate || undefined,
                 openSavingsAccount: validatedData.openSavingsAccount,
@@ -1251,7 +1277,11 @@ async function handleCreateLeadWithClient(data: any) {
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          submittedOnDate: getFineractBusinessToday(),
+          stateMetadata: withClientSubmittedOnDate(
+            undefined,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,
@@ -1443,6 +1473,8 @@ async function handleCreateClientInFineract(leadId: string) {
 
     // Prepare client data for Fineract (entity vs individual)
     const isEntitySubmit = lead.legalFormId === 2;
+    const clientSubmittedOnDate =
+      getClientSubmittedOnDate(lead.stateMetadata) ?? lead.submittedOnDate;
     const clientData: Record<string, any> = {
       officeId: lead.officeId,
       legalFormId: lead.legalFormId,
@@ -1460,8 +1492,8 @@ async function handleCreateClientInFineract(leadId: string) {
       }),
       dateFormat: "yyyy-MM-dd",
       locale: "en",
-      submittedOnDate: lead.submittedOnDate
-        ? formatDateForFineract(lead.submittedOnDate)
+      submittedOnDate: clientSubmittedOnDate
+        ? formatDateForFineract(clientSubmittedOnDate)
         : undefined,
     };
 
@@ -1579,7 +1611,13 @@ async function handleCreateLeadForExistingClient(data: any) {
         clientTypeName: clientForLead.clientType?.name,
         clientClassificationId: clientForLead.clientClassification?.id,
         clientClassificationName: clientForLead.clientClassification?.name,
-        submittedOnDate: parseDate(clientForLead.timeline?.submittedOnDate) ?? new Date(),
+        // A new lead must use the current business date. The client timeline
+        // date is the original registration date and can be years old.
+        submittedOnDate: getFineractBusinessToday(),
+        stateMetadata: withClientSubmittedOnDate(
+          undefined,
+          parseDate(clientForLead.timeline?.submittedOnDate) ?? new Date(),
+        ),
         active: clientForLead.active,
         activationDate: parseDate(clientForLead.activationDate),
         fineractClientId: clientForLead.id,
@@ -1791,6 +1829,11 @@ async function handleUpdateClient(data: any, leadId?: string) {
         // UPDATE existing lead
         console.log("==========> Updating existing lead with ID:", leadId);
         result = await prisma.$transaction(async (tx) => {
+          const existingLead = await tx.lead.findUnique({
+            where: { id: leadId },
+            select: { stateMetadata: true },
+          });
+
           // Update the existing lead record
           const updatedLead = await tx.lead.update({
             where: { id: leadId },
@@ -1841,10 +1884,14 @@ async function handleUpdateClient(data: any, leadId?: string) {
               clientClassificationId: data.clientClassificationId,
               clientClassificationName: data.clientClassificationName,
 
-              // Dates
-              submittedOnDate: data.submittedOnDate
-                ? new Date(data.submittedOnDate)
-                : undefined,
+              // The form date belongs to the Fineract client. Keep the
+              // lead's submitted-on date for the loan application.
+              stateMetadata: withClientSubmittedOnDate(
+                existingLead?.stateMetadata,
+                data.submittedOnDate
+                  ? new Date(data.submittedOnDate)
+                  : new Date(),
+              ),
               activationDate: data.activationDate
                 ? new Date(data.activationDate)
                 : undefined,
@@ -1928,10 +1975,15 @@ async function handleUpdateClient(data: any, leadId?: string) {
               clientClassificationId: data.clientClassificationId,
               clientClassificationName: data.clientClassificationName,
 
-              // Dates
-              submittedOnDate: data.submittedOnDate
-                ? new Date(data.submittedOnDate)
-                : new Date(),
+              // A new lead starts a new loan application today. Retain the
+              // Fineract client registration date separately.
+              submittedOnDate: getFineractBusinessToday(),
+              stateMetadata: withClientSubmittedOnDate(
+                undefined,
+                data.submittedOnDate
+                  ? new Date(data.submittedOnDate)
+                  : new Date(),
+              ),
               activationDate: data.activationDate
                 ? new Date(data.activationDate)
                 : new Date(),
