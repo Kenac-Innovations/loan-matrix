@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   formatFineractBusinessDate,
   isFineractBusinessDateAfter,
+  normalizeFineractSubmittedOnDate,
 } from "./fineract-business-date";
 
 test("preserves a Harare loan calendar day when the server runs in UTC", () => {
@@ -39,5 +40,37 @@ test("compares submitted and expected-disbursement calendar days in Harare", () 
       "2026-09-03T00:00:00.000Z",
     ),
     false,
+  );
+});
+
+test("normalizes a stale submitted date to its expected disbursement date", () => {
+  assert.equal(
+    normalizeFineractSubmittedOnDate(
+      "2026-09-03T09:00:00.000Z",
+      "2026-09-01T22:00:00.000Z",
+      "2026-09-01T22:00:00.000Z",
+    ),
+    "2026-09-01T22:00:00.000Z",
+  );
+});
+
+test("caps a future submitted date at the template business date", () => {
+  assert.equal(
+    normalizeFineractSubmittedOnDate(
+      "2026-09-03T09:00:00.000Z",
+      "2026-09-03T22:00:00.000Z",
+      "2026-09-01T22:00:00.000Z",
+    ),
+    "2026-09-01T22:00:00.000Z",
+  );
+});
+
+test("keeps a valid submitted date unchanged", () => {
+  assert.equal(
+    normalizeFineractSubmittedOnDate(
+      "2026-09-01T22:00:00.000Z",
+      "2026-09-03T22:00:00.000Z",
+    ),
+    "2026-09-01T22:00:00.000Z",
   );
 });
