@@ -10,6 +10,8 @@ import {
   getLeadViewerAccessContext,
   getOriginatorDesignatedDisburserData,
 } from "@/lib/lead-policy";
+import { getFineractBusinessToday } from "@/lib/fineract-business-date";
+import { withClientSubmittedOnDate } from "@/lib/lead-client-submitted-date";
 
 // Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
@@ -142,7 +144,7 @@ export async function saveDraft(
     if (leadId) {
       const existingLead = await prisma.lead.findUnique({
         where: { id: leadId },
-        select: { currentStageId: true },
+        select: { currentStageId: true, stateMetadata: true },
       });
 
       // Update existing lead
@@ -178,7 +180,12 @@ export async function saveDraft(
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          // Client Details owns the registration date, not the loan date.
+          // Preserve the lead's loan submitted-on date once it exists.
+          stateMetadata: withClientSubmittedOnDate(
+            existingLead?.stateMetadata,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,
@@ -238,7 +245,13 @@ export async function saveDraft(
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          // A new lead starts a new loan application today. The client
+          // registration date is stored separately in stateMetadata.
+          submittedOnDate: getFineractBusinessToday(),
+          stateMetadata: withClientSubmittedOnDate(
+            undefined,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,
