@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatFineractBusinessDate } from "./fineract-business-date";
+import {
+  formatFineractBusinessDate,
+  isFineractBusinessDateAfter,
+} from "./fineract-business-date";
 
 test("preserves a Harare loan calendar day when the server runs in UTC", () => {
   // 01 Sep 2026 at midnight in Harare is 31 Aug 2026 22:00 UTC.
@@ -20,4 +23,21 @@ test("keeps ordinary Fineract calendar dates unchanged", () => {
 
 test("does not turn an invalid stored date into a different loan date", () => {
   assert.equal(formatFineractBusinessDate("not-a-date"), null);
+});
+
+test("compares submitted and expected-disbursement calendar days in Harare", () => {
+  assert.equal(
+    isFineractBusinessDateAfter(
+      "2026-09-03T00:00:00.000Z",
+      "2026-09-01T22:00:00.000Z",
+    ),
+    true,
+  );
+  assert.equal(
+    isFineractBusinessDateAfter(
+      "2026-09-01T22:00:00.000Z",
+      "2026-09-03T00:00:00.000Z",
+    ),
+    false,
+  );
 });

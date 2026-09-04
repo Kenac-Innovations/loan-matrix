@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
+import { isFineractBusinessDateAfter } from "@/lib/fineract-business-date";
 
 function sanitizeCalculateSchedulePayload(payload: Record<string, unknown>) {
   const sanitized = { ...payload };
@@ -21,6 +22,23 @@ export async function POST(request: Request) {
   try {
     const rawPayload = await request.json();
     const payload = sanitizeCalculateSchedulePayload(rawPayload);
+
+    if (
+      typeof payload.submittedOnDate === "string" &&
+      typeof payload.expectedDisbursementDate === "string" &&
+      isFineractBusinessDateAfter(
+        payload.submittedOnDate,
+        payload.expectedDisbursementDate,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Submitted On cannot be after Expected Disbursement Date. Return to Loan Details, correct the dates, and save before generating the schedule.",
+        },
+        { status: 422 },
+      );
+    }
 
     console.log("=== CALCULATE SCHEDULE REQUEST ===");
     console.log("Payload:", JSON.stringify(payload, null, 2));

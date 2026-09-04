@@ -21,7 +21,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format } from "date-fns";
-import { formatFineractBusinessDate } from "@/lib/fineract-business-date";
+import {
+  formatFineractBusinessDate,
+  isFineractBusinessDateAfter,
+} from "@/lib/fineract-business-date";
 import {
   recomputeTopupAwareDisbursementChargeAmounts,
   type EditableLoanChargeRow,
@@ -306,14 +309,34 @@ export function RepaymentScheduleForm({
     setError(null);
 
     try {
-      // Format dates
-      const submittedDate =
-        formatFineractBusinessDate(loanDetails.submittedOn) ||
-        formatFineractBusinessDate(new Date())!;
+      if (!loanDetails.submittedOn || !loanDetails.disbursementOn) {
+        throw new Error(
+          "Submitted On and Expected Disbursement Date are required. Return to Loan Details and save both dates.",
+        );
+      }
 
-      const disbursementDate =
-        formatFineractBusinessDate(loanDetails.disbursementOn) ||
-        formatFineractBusinessDate(new Date())!;
+      if (
+        isFineractBusinessDateAfter(
+          loanDetails.submittedOn,
+          loanDetails.disbursementOn,
+        )
+      ) {
+        throw new Error(
+          "Submitted On cannot be after Expected Disbursement Date. Return to Loan Details, correct the dates, and save before generating the schedule.",
+        );
+      }
+
+      // Format dates
+      const submittedDate = formatFineractBusinessDate(loanDetails.submittedOn);
+      const disbursementDate = formatFineractBusinessDate(
+        loanDetails.disbursementOn,
+      );
+
+      if (!submittedDate || !disbursementDate) {
+        throw new Error(
+          "Loan dates are invalid. Return to Loan Details, choose valid dates, and save before generating the schedule.",
+        );
+      }
 
       // editableCharges are already rebased on load — no need to recompute again.
       // Fineract's calculateLoanSchedule treats `amount` as a percentage for % charges and
@@ -597,7 +620,32 @@ export function RepaymentScheduleForm({
                 e.developerMessage ||
                 e.message;
               const arg =
-                e.args && e.args.length > 0 ? ` (${e.args.join(", ")})` : "";
+                e.args && e.args.length > 0
+                  ? ` (${e.args
+                      .map((argument: unknown) => {
+                        if (
+                          typeof argument === "string" ||
+                          typeof argument === "number" ||
+                          typeof argument === "boolean"
+                        ) {
+                          return String(argument);
+                        }
+
+                        if (argument && typeof argument === "object") {
+                          const record = argument as Record<string, unknown>;
+                          return String(
+                            record.value ??
+                              record.code ??
+                              record.name ??
+                              "",
+                          );
+                        }
+
+                        return "";
+                      })
+                      .filter(Boolean)
+                      .join(", ")})`
+                  : "";
               return msg ? `${msg}${arg}` : null;
             })
             .filter(Boolean);

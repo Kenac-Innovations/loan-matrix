@@ -2,6 +2,31 @@ const FINERACT_BUSINESS_TIME_ZONE = "Africa/Harare";
 
 type FineractBusinessDateValue = Date | string | number | null | undefined;
 
+function getFineractBusinessDateParts(
+  value: FineractBusinessDateValue,
+  month: "long" | "2-digit",
+) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month,
+    year: "numeric",
+    timeZone: FINERACT_BUSINESS_TIME_ZONE,
+  }).formatToParts(date);
+
+  const day = parts.find((part) => part.type === "day")?.value;
+  const formattedMonth = parts.find((part) => part.type === "month")?.value;
+  const year = parts.find((part) => part.type === "year")?.value;
+
+  return day && formattedMonth && year
+    ? { day, month: formattedMonth, year }
+    : null;
+}
+
 /**
  * Formats a persisted loan calendar date for Fineract without depending on
  * the timezone of the browser or application pod.
@@ -13,21 +38,26 @@ type FineractBusinessDateValue = Date | string | number | null | undefined;
 export function formatFineractBusinessDate(
   value: FineractBusinessDateValue,
 ): string | null {
-  if (value === null || value === undefined || value === "") return null;
+  const parts = getFineractBusinessDateParts(value, "long");
 
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
+  return parts ? `${parts.day} ${parts.month} ${parts.year}` : null;
+}
 
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    timeZone: FINERACT_BUSINESS_TIME_ZONE,
-  }).formatToParts(date);
+/**
+ * Compares loan calendar days in the same timezone that is used when the
+ * value is submitted to Fineract. This intentionally ignores the time of day.
+ */
+export function isFineractBusinessDateAfter(
+  value: FineractBusinessDateValue,
+  reference: FineractBusinessDateValue,
+): boolean {
+  const valueParts = getFineractBusinessDateParts(value, "2-digit");
+  const referenceParts = getFineractBusinessDateParts(reference, "2-digit");
 
-  const day = parts.find((part) => part.type === "day")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const year = parts.find((part) => part.type === "year")?.value;
+  if (!valueParts || !referenceParts) return false;
 
-  return day && month && year ? `${day} ${month} ${year}` : null;
+  const valueKey = `${valueParts.year}-${valueParts.month}-${valueParts.day}`;
+  const referenceKey = `${referenceParts.year}-${referenceParts.month}-${referenceParts.day}`;
+
+  return valueKey > referenceKey;
 }

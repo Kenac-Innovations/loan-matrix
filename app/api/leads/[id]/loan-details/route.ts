@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import {
+  formatFineractBusinessDate,
+  isFineractBusinessDateAfter,
+} from "@/lib/fineract-business-date";
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -19,6 +23,32 @@ export async function POST(
     console.log("loanOfficer:", data.loanOfficer);
     console.log("fund:", data.fund);
     console.log("=== END API DATA ===");
+
+    if (data.submittedOn && data.disbursementOn) {
+      const submittedOnDate = formatFineractBusinessDate(data.submittedOn);
+      const expectedDisbursementDate = formatFineractBusinessDate(
+        data.disbursementOn,
+      );
+
+      if (!submittedOnDate || !expectedDisbursementDate) {
+        return NextResponse.json(
+          { error: "Submitted On and Expected Disbursement Date must be valid dates" },
+          { status: 422 },
+        );
+      }
+
+      if (
+        isFineractBusinessDateAfter(data.submittedOn, data.disbursementOn)
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Submitted On cannot be after Expected Disbursement Date. Correct the dates before saving loan details.",
+          },
+          { status: 422 },
+        );
+      }
+    }
 
     const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
