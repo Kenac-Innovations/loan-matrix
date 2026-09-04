@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   formatFineractBusinessDate,
+  getFineractBusinessToday,
   isFineractBusinessDateAfter,
   normalizeFineractSubmittedOnDate,
 } from "./fineract-business-date";
@@ -19,6 +20,17 @@ test("keeps ordinary Fineract calendar dates unchanged", () => {
   assert.equal(
     formatFineractBusinessDate("2026-09-01T04:57:00.000Z"),
     "01 September 2026",
+  );
+});
+
+test("uses today's Harare calendar date after the UTC-day crossover", () => {
+  const currentBusinessDay = getFineractBusinessToday(
+    new Date("2026-09-03T22:30:00.000Z"),
+  );
+
+  assert.equal(
+    formatFineractBusinessDate(currentBusinessDay),
+    "04 September 2026",
   );
 });
 

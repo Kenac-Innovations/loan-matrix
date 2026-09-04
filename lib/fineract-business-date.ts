@@ -49,6 +49,19 @@ export function formatFineractBusinessDate(
 }
 
 /**
+ * Returns an instant in today's Fineract business-calendar day. Noon Harare
+ * avoids a UTC date rollover when the value is persisted and later rendered
+ * as a calendar date.
+ */
+export function getFineractBusinessToday(now: Date = new Date()): Date {
+  const parts = getFineractBusinessDateParts(now, "2-digit");
+
+  if (!parts) return now;
+
+  return new Date(`${parts.year}-${parts.month}-${parts.day}T12:00:00+02:00`);
+}
+
+/**
  * Compares loan calendar days in the same timezone that is used when the
  * value is submitted to Fineract. This intentionally ignores the time of day.
  */

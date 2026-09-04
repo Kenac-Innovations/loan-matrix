@@ -15,6 +15,7 @@ import {
   assertExistingClientBranchTransferCompleted,
   ensureExistingClientInCreatorOffice,
 } from "@/lib/fineract-client-office-transfer";
+import { getFineractBusinessToday } from "@/lib/fineract-business-date";
 
 // Helper to resolve the current tenant, optionally using the raw request
 // so we can read middleware-set and proxy-set headers directly.
@@ -1091,7 +1092,9 @@ async function handleCreateLeadWithClient(data: any) {
                 clientTypeName: validatedData.clientTypeName,
                 clientClassificationId: validatedData.clientClassificationId || undefined,
                 clientClassificationName: validatedData.clientClassificationName,
-                submittedOnDate: validatedData.submittedOnDate,
+                // This is a new loan application, not the client's original
+                // registration. Do not inherit a historical client date.
+                submittedOnDate: getFineractBusinessToday(),
                 active: validatedData.active,
                 activationDate: validatedData.activationDate || undefined,
                 openSavingsAccount: validatedData.openSavingsAccount,
@@ -1579,7 +1582,9 @@ async function handleCreateLeadForExistingClient(data: any) {
         clientTypeName: clientForLead.clientType?.name,
         clientClassificationId: clientForLead.clientClassification?.id,
         clientClassificationName: clientForLead.clientClassification?.name,
-        submittedOnDate: parseDate(clientForLead.timeline?.submittedOnDate) ?? new Date(),
+        // A new lead must use the current business date. The client timeline
+        // date is the original registration date and can be years old.
+        submittedOnDate: getFineractBusinessToday(),
         active: clientForLead.active,
         activationDate: parseDate(clientForLead.activationDate),
         fineractClientId: clientForLead.id,
