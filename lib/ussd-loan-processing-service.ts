@@ -5,6 +5,7 @@ import { callCDEAndStore } from "@/lib/cde-utils";
 import prisma from "@/lib/prisma";
 import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
 import { dispatchUssdLoanApplicationSms } from "@/lib/ussd-loan-sms-service";
+import { assertUssdLoanAdmission, requiresUssdLoanAdmission } from "@/lib/ussd-loan-admission";
 import {
   classifyUssdAutoProcessingOutcome,
   shouldAutoProgressFromCde,
@@ -209,6 +210,10 @@ export async function processUssdApplicationToDisbursement(input: {
   let coreResponse: Record<string, unknown> | null = null;
   let loanId = reusableLoanId;
 
+  if (requiresUssdLoanAdmission(application.loanMatrixLoanProductId)) {
+    await assertUssdLoanAdmission(application, "reserve");
+  }
+
   if (!loanId) {
     const productTemplate = await fetchFineractAPI(
       `/loanproducts/${application.loanMatrixLoanProductId}?template=true`,
@@ -255,6 +260,10 @@ export async function processUssdApplicationToDisbursement(input: {
     throw new Error(
       "Failed to resolve or create Fineract loan for USSD application"
     );
+  }
+
+  if (requiresUssdLoanAdmission(application.loanMatrixLoanProductId)) {
+    await assertUssdLoanAdmission(application, "attach", loanId);
   }
 
   const existingLead = await prisma.lead.findUnique({

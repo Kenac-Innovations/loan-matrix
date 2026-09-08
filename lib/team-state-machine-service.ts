@@ -43,7 +43,7 @@ import {
 import { getRequiredPaymentServiceCallbackUrl } from "./payment-service-callback-url";
 import { getTenantAutoDisbursementRules } from "./tenant-auto-disbursement-rules";
 import { resolvePaymentTypeForPreferredMethod } from "./payment-method-resolution";
-import { resolveYangoUssdDisbursementDetailsForLead } from "./yango-ussd-disbursement";
+import { assertYangoUssdDisbursementAdmission, resolveYangoUssdDisbursementDetailsForLead } from "./yango-ussd-disbursement";
 import {
   applyArdaInventoryWorkflowOperation,
   validateArdaInventoryWorkflowOperation,
@@ -1754,6 +1754,9 @@ export class TeamAwareStateMachineService {
                 overrides?.paymentTypeId
               )
             : null;
+        if (lead) {
+          await assertYangoUssdDisbursementAdmission(lead, fineractLoanId);
+        }
         const disbursementPaymentTypeId =
           yangoUssdDetails?.paymentTypeId ?? overrides?.paymentTypeId;
         const loanDisbursementAmount = Number(

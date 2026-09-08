@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { fetchFineractAPI } from "@/lib/api";
 import { resolvePaymentTypeForPreferredMethod } from "@/lib/payment-method-resolution";
 import { isYangoUssdPaymentCandidate } from "@/lib/payment-reference-status";
+import { assertUssdLoanAdmission, requiresUssdLoanAdmission } from "@/lib/ussd-loan-admission";
 
 type JsonLike = Prisma.JsonValue | Record<string, unknown> | null | undefined;
 
@@ -22,6 +23,7 @@ export type YangoUssdDisbursementApplication = {
   referenceNumber: string;
   messageId: string;
   userPhoneNumber: string;
+  userNationalId?: string;
   loanMatrixLoanProductId: number;
   loanProductName: string;
   loanProductDisplayName: string;
@@ -113,6 +115,7 @@ export async function findUssdApplicationForLead(
       referenceNumber: true,
       messageId: true,
       userPhoneNumber: true,
+      userNationalId: true,
       loanMatrixLoanProductId: true,
       loanProductName: true,
       loanProductDisplayName: true,
@@ -191,4 +194,16 @@ export async function resolveYangoUssdDisbursementDetailsForLead(
     application,
     paymentTypeId: resolvedPaymentTypeId,
   });
+}
+
+export async function assertYangoUssdDisbursementAdmission(
+  lead: YangoUssdDisbursementLead,
+  fineractLoanId: number
+): Promise<void> {
+  const application = await findUssdApplicationForLead(lead);
+  if (!application) return;
+  if (!requiresUssdLoanAdmission(application.loanMatrixLoanProductId)) return;
+  const details = resolveYangoUssdDisbursementDetails({ lead, application });
+  if (!details) return;
+  await assertUssdLoanAdmission(application, "assert-disbursement", fineractLoanId);
 }
