@@ -42,8 +42,8 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
 
-    // Get addressType - required for the query parameter
-    let addressType = body.addressType;
+    // Accept the legacy browser field, but send Fineract's supported field.
+    let addressType = body.addressTypeId ?? body.addressType;
     if (typeof addressType === "string") {
       addressType = parseInt(addressType);
     }
@@ -54,12 +54,10 @@ export async function POST(
       );
     }
 
-    // Build payload matching the working curl format exactly
-    // Body uses: {"addressType":17,"addressLine1":"...","addressLine2":"...","addressLine3":"...","city":"...","stateProvinceId":100,"countryId":99,"postalCode":"..."}
+    // Build the payload using Fineract's supported address type field.
     const payload: any = {};
 
-    // Add addressType as number
-    payload.addressType = addressType;
+    payload.addressTypeId = addressType;
 
     // Add string fields
     if (body.addressLine1) payload.addressLine1 = body.addressLine1;

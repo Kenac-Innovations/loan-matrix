@@ -16,10 +16,12 @@ export async function PUT(
     const { id, addressId: addressTypeId } = await params;
     const body = await request.json();
 
+    const rawAddressType =
+      body.addressTypeId ?? body.addressType ?? parseInt(addressTypeId);
     const addressType =
-      typeof body.addressType === "string"
-        ? parseInt(body.addressType)
-        : body.addressType ?? parseInt(addressTypeId);
+      typeof rawAddressType === "string"
+        ? parseInt(rawAddressType)
+        : rawAddressType;
 
     if (!addressType || isNaN(addressType)) {
       return NextResponse.json(
@@ -40,6 +42,7 @@ export async function PUT(
         typeof body.addressId === "string"
           ? parseInt(body.addressId)
           : body.addressId,
+      addressTypeId: addressType,
       isActive: body.isActive !== undefined ? Boolean(body.isActive) : false,
     };
 
