@@ -10936,12 +10936,12 @@ export function ClientRegistrationForm({
                                                     // Ensure editedAddress has the correct addressType
                                                     const addressPayload = {
                                                       ...editedAddress,
-                                                      addressTypeId: addressType,
+                                                      addressType: addressType,
                                                       isActive: true,
                                                       dateFormat: "yyyy-MM-dd",
                                                       locale: "en",
                                                     };
-                                                    delete addressPayload.addressType;
+                                                    delete addressPayload.addressTypeId;
 
                                                     const response =
                                                       await fetch(endpoint, {
