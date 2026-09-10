@@ -42,8 +42,9 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
 
-    // Accept the legacy browser field, but send Fineract's supported field.
-    let addressType = body.addressTypeId ?? body.addressType;
+    // Accept the legacy browser field, but Fineract requires `addressType` in
+    // the request body. The `type` query parameter selects the address type.
+    let addressType = body.addressType ?? body.addressTypeId;
     if (typeof addressType === "string") {
       addressType = parseInt(addressType);
     }
@@ -54,10 +55,11 @@ export async function POST(
       );
     }
 
-    // Build the payload using Fineract's supported address type field.
+    // Fineract rejects `addressTypeId` in this payload; it expects
+    // `addressType` alongside the `type` query parameter.
     const payload: any = {};
 
-    payload.addressTypeId = addressType;
+    payload.addressType = addressType;
 
     // Add string fields
     if (body.addressLine1) payload.addressLine1 = body.addressLine1;
