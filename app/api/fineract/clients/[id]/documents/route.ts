@@ -70,44 +70,11 @@ export async function GET(
       uploadRecords.map((record) => [record.documentId, record])
     );
 
-    // Try different possible Fineract endpoints for client documents
-    let data;
-
-    // First try the standard documents endpoint with client filter
-    try {
-      const endpoint = `/documents?entityType=clients&entityId=${clientId}&offset=${offset}&limit=${limit}`;
-      data = await fetchFineractAPI(endpoint, { authMode: "service" });
-    } catch (e) {
-      console.log("First endpoint failed, trying alternative...", e);
-
-      // Try alternative endpoint
-      try {
-        const endpoint = `/clients/${clientId}/documents?offset=${offset}&limit=${limit}`;
-        data = await fetchFineractAPI(endpoint, { authMode: "service" });
-      } catch (e2) {
-        console.log("Second endpoint failed, trying documents endpoint...", e2);
-
-        // Try the general documents endpoint
-        try {
-          const endpoint = `/documents?offset=${offset}&limit=${limit}`;
-          data = await fetchFineractAPI(endpoint, { authMode: "service" });
-
-          // Filter by client ID if we get all documents
-          if (data && Array.isArray(data.pageItems)) {
-            data.pageItems = data.pageItems.filter(
-              (doc: {
-                parentEntityType?: string;
-                parentEntityId?: string | number;
-              }) =>
-                doc.parentEntityType === "clients" &&
-                doc.parentEntityId == clientId
-            );
-          }
-        } catch (e3) {
-          throw e3;
-        }
-      }
-    }
+    // Fineract exposes client attachments at the client-scoped endpoint.
+    // The generic `/documents?entityType=...` route is not available in the
+    // deployed Fineract version and generated a noisy 404 before every load.
+    const endpoint = `/clients/${clientId}/documents?offset=${offset}&limit=${limit}`;
+    let data = await fetchFineractAPI(endpoint, { authMode: "service" });
 
     if (data && Array.isArray(data)) {
       data = enrichDocuments(data as FineractDocumentWithUpload[], uploadRecordMap);
