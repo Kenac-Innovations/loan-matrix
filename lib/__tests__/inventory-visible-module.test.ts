@@ -42,3 +42,14 @@ test("adds an inventory page for item creation and stock receiving", () => {
   assert.doesNotMatch(page, /Disburse Stock/);
   assert.doesNotMatch(page, /Record Repayment/);
 });
+
+test("keeps ARDA finance reporting isolated from other tenants", () => {
+  const financeRoute = readRepoFile("app/api/inventory/finances/route.ts");
+  const financePage = readRepoFile("app/(application)/inventory/finances/page.tsx");
+
+  assert.match(financeRoute, /isArdaTenantSlug/);
+  assert.match(financePage, /Stock Cost Issued/);
+  assert.match(financePage, /Realised Gross Profit/);
+  assert.match(financePage, /Expected Gross Profit/);
+  assert.match(financePage, /Collection Rate/);
+});

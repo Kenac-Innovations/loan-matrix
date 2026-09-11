@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -28,10 +29,32 @@ type FinanceSummary = {
   currencyCode: string;
   receivedStockValue: string;
   issuedStockValue: string;
+  receivedStockQuantity: string;
+  issuedStockQuantity: string;
+  stockCostIssued: string;
+  disbursedStockValue: string;
   currentStockValue: string;
   repaymentsCollected: string;
   outstandingRecoveryValue: string;
+  realisedGrossProfit: string;
+  expectedGrossProfit: string;
+  collectionRate: string;
   reconciliationDifference: string;
+  issues: Array<{
+    id: string;
+    borrowerName: string;
+    loanAccountNo: string;
+    fineractOfficeName: string;
+    currencyCode: string;
+    status: string;
+    stockCost: string;
+    disbursedValue: string;
+    totalPaid: string;
+    outstandingBalance: string;
+    realisedGrossProfit: string;
+    expectedGrossProfit: string;
+    issuedAt: string;
+  }>;
   openIssues: Array<{
     id: string;
     borrowerName: string;
@@ -133,12 +156,17 @@ export default function InventoryFinancesPage() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Button asChild variant="ghost" className="mb-2 px-0 text-muted-foreground">
-            <Link href="/inventory">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Inventory
-            </Link>
-          </Button>
+          <Tabs value="financials" className="mb-3">
+            <TabsList>
+              <TabsTrigger value="stock-control" asChild>
+                <Link href="/inventory">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Stock Control
+                </Link>
+              </TabsTrigger>
+              <TabsTrigger value="financials">Financials</TabsTrigger>
+            </TabsList>
+          </Tabs>
           <h1 className="text-3xl font-bold text-white">Inventory Finances</h1>
           <p className="text-sm text-muted-foreground">
             Track stock received, stock issued, money collected, and outstanding recoveries.
@@ -216,18 +244,33 @@ export default function InventoryFinancesPage() {
             <div className="text-3xl font-bold text-white">
               {formatValue(summary?.receivedStockValue ?? "0", filters.currencyCode)}
             </div>
-            <p className="text-sm text-muted-foreground">Total value stocked</p>
+            <p className="text-sm text-muted-foreground">
+              {numberValue(summary?.receivedStockQuantity ?? "0").toLocaleString()} units received
+            </p>
           </CardContent>
         </Card>
         <Card className="bg-[#1d2838]">
           <CardHeader>
-            <CardTitle className="text-sm text-muted-foreground">Stock Issued</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Stock Cost Issued</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-white">
-              {formatValue(summary?.issuedStockValue ?? "0", filters.currencyCode)}
+              {formatValue(summary?.stockCostIssued ?? "0", filters.currencyCode)}
             </div>
-            <p className="text-sm text-muted-foreground">Recoverable value issued</p>
+            <p className="text-sm text-muted-foreground">
+              {numberValue(summary?.issuedStockQuantity ?? "0").toLocaleString()} units issued
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="bg-[#1d2838]">
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Disbursed Stock Value</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-white">
+              {formatValue(summary?.disbursedStockValue ?? "0", filters.currencyCode)}
+            </div>
+            <p className="text-sm text-muted-foreground">Value due from issued stock</p>
           </CardContent>
         </Card>
         <Card className="bg-[#1d2838]">
@@ -239,6 +282,39 @@ export default function InventoryFinancesPage() {
               {formatValue(summary?.currentStockValue ?? "0", filters.currencyCode)}
             </div>
             <p className="text-sm text-muted-foreground">Value still in inventory</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-[#1d2838]">
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Realised Gross Profit</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-white">
+              {formatValue(summary?.realisedGrossProfit ?? "0", filters.currencyCode)}
+            </div>
+            <p className="text-sm text-muted-foreground">Repayments less stock cost issued</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-[#1d2838]">
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Expected Gross Profit</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-white">
+              {formatValue(summary?.expectedGrossProfit ?? "0", filters.currencyCode)}
+            </div>
+            <p className="text-sm text-muted-foreground">Full recovery less stock cost issued</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-[#1d2838]">
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">Collection Rate</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-white">
+              {formatValue(summary?.collectionRate ?? "0")}%
+            </div>
+            <p className="text-sm text-muted-foreground">Recovered against issued value</p>
           </CardContent>
         </Card>
         <Card className="bg-[#1d2838]">
@@ -286,7 +362,7 @@ export default function InventoryFinancesPage() {
 
       <Card className="bg-[#1d2838]">
         <CardHeader>
-          <CardTitle className="text-white">Outstanding Stock Recoveries</CardTitle>
+          <CardTitle className="text-white">ARDA Stock Finance Register</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -296,27 +372,30 @@ export default function InventoryFinancesPage() {
                   <th className="py-3">Issued</th>
                   <th>Borrower</th>
                   <th>Branch</th>
-                  <th>Value</th>
+                  <th>Stock Cost</th>
+                  <th>Disbursed</th>
                   <th>Paid</th>
                   <th>Outstanding</th>
+                  <th>Realised Profit</th>
+                  <th>Expected Profit</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={10} className="py-8 text-center text-muted-foreground">
                       Loading finance summary...
                     </td>
                   </tr>
-                ) : !summary || summary.openIssues.length === 0 ? (
+                ) : !summary || summary.issues.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-muted-foreground">
-                      No outstanding stock recoveries for the selected filters.
+                    <td colSpan={10} className="py-8 text-center text-muted-foreground">
+                      No issued stock records for the selected filters.
                     </td>
                   </tr>
                 ) : (
-                  summary.openIssues.map((issue) => (
+                  summary.issues.map((issue) => (
                     <tr key={issue.id} className="border-b border-white/5">
                       <td className="py-3">
                         {issue.issuedAt
@@ -330,9 +409,12 @@ export default function InventoryFinancesPage() {
                         </div>
                       </td>
                       <td>{issue.fineractOfficeName || "-"}</td>
-                      <td>{formatValue(issue.totalValue, issue.currencyCode)}</td>
+                      <td>{formatValue(issue.stockCost, issue.currencyCode)}</td>
+                      <td>{formatValue(issue.disbursedValue, issue.currencyCode)}</td>
                       <td>{formatValue(issue.totalPaid, issue.currencyCode)}</td>
                       <td>{formatValue(issue.outstandingBalance, issue.currencyCode)}</td>
+                      <td>{formatValue(issue.realisedGrossProfit, issue.currencyCode)}</td>
+                      <td>{formatValue(issue.expectedGrossProfit, issue.currencyCode)}</td>
                       <td>{issue.status}</td>
                     </tr>
                   ))

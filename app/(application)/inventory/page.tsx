@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Option = {
   value: string;
@@ -115,6 +116,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [savingItem, setSavingItem] = useState(false);
   const [receivingStock, setReceivingStock] = useState(false);
+  const [isArdaTenant, setIsArdaTenant] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -160,35 +162,39 @@ export default function InventoryPage() {
     setError(null);
 
     try {
-      const [configResponse, itemsResponse, balancesResponse, movementsResponse] =
+      const [configResponse, itemsResponse, balancesResponse, movementsResponse, tenantResponse] =
         await Promise.all([
         fetch("/api/inventory/config"),
         fetch("/api/inventory/items"),
         fetch("/api/inventory/balances"),
         fetch("/api/inventory/movements"),
+        fetch("/api/tenant"),
       ]);
 
       if (
         !configResponse.ok ||
         !itemsResponse.ok ||
         !balancesResponse.ok ||
-        !movementsResponse.ok
+        !movementsResponse.ok ||
+        !tenantResponse.ok
       ) {
         throw new Error("Inventory information could not be loaded.");
       }
 
-      const [configData, itemsData, balancesData, movementsData] =
+      const [configData, itemsData, balancesData, movementsData, tenantData] =
         await Promise.all([
           configResponse.json(),
           itemsResponse.json(),
           balancesResponse.json(),
           movementsResponse.json(),
+          tenantResponse.json(),
         ]);
 
       setConfig(configData);
       setItems(itemsData);
       setBalances(balancesData);
       setMovements(movementsData);
+      setIsArdaTenant(tenantData?.slug === "arda");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Inventory load failed.");
     } finally {
@@ -321,12 +327,19 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href="/inventory/finances">
-              <Banknote className="mr-2 h-4 w-4" />
-              Inventory Finances
-            </Link>
-          </Button>
+          {isArdaTenant && (
+            <Tabs value="stock-control">
+              <TabsList>
+                <TabsTrigger value="stock-control">Stock Control</TabsTrigger>
+                <TabsTrigger value="financials" asChild>
+                  <Link href="/inventory/finances">
+                    <Banknote className="mr-2 h-4 w-4" />
+                    Financials
+                  </Link>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
           <Button onClick={loadInventory} variant="outline" disabled={loading}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh

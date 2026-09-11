@@ -31,6 +31,10 @@ function money(value: Prisma.Decimal) {
   return value.toFixed(2);
 }
 
+function quantity(value: Prisma.Decimal) {
+  return value.toFixed(3);
+}
+
 function sumDecimals(records: Record<string, unknown>[], key: string) {
   return records.reduce((total, record) => {
     return total.plus(decimalString(record[key]));
@@ -113,23 +117,59 @@ export async function getInventoryFinanceSummary(
     movements.filter((movement) => String(movement.type) === "ISSUE"),
     "valueDelta"
   ).abs();
+  const receivedStockQuantity = sumDecimals(
+    movements.filter((movement) =>
+      ["RECEIPT", "ADJUSTMENT_IN", "TRANSFER_IN"].includes(String(movement.type))
+    ),
+    "quantityDelta"
+  );
+  const issuedStockQuantity = sumDecimals(
+    movements.filter((movement) => String(movement.type) === "ISSUE"),
+    "quantityDelta"
+  ).abs();
   const currentStockValue = sumDecimals(balances, "stockValue");
+
+  const issuedCostByIssueId = new Map<string, Prisma.Decimal>();
+  for (const movement of allMovements) {
+    if (String(movement.type) !== "ISSUE" || !movement.stockLoanIssueId) continue;
+
+    const issueId = String(movement.stockLoanIssueId);
+    const existingCost = issuedCostByIssueId.get(issueId) ?? new Prisma.Decimal(0);
+    issuedCostByIssueId.set(
+      issueId,
+      existingCost.plus(decimalString(movement.valueDelta)).abs()
+    );
+  }
 
   // Repayments are financial activity, so report them by payment date rather
   // than by the date the original stock issue was created.
   const repaymentsCollected = sumDecimals(repayments, "amount");
   const totalIssuedForRecovery = sumDecimals(issues, "totalValue");
-  const outstandingRecoveryValue = totalIssuedForRecovery.minus(repaymentsCollected);
+  const stockCostIssued = issuedStockValue;
+  const outstandingRecoveryValue = issues.reduce((total, issue) => {
+    const disbursedValue = new Prisma.Decimal(decimalString(issue.totalValue));
+    return total.plus(disbursedValue.minus(repaymentTotal(issue)));
+  }, new Prisma.Decimal(0));
+  const realisedGrossProfit = repaymentsCollected.minus(stockCostIssued);
+  const expectedGrossProfit = totalIssuedForRecovery.minus(stockCostIssued);
+  const totalRecoveredForIssues = issues.reduce(
+    (total, issue) => total.plus(repaymentTotal(issue)),
+    new Prisma.Decimal(0)
+  );
+  const collectionRate = totalIssuedForRecovery.eq(0)
+    ? new Prisma.Decimal(0)
+    : totalRecoveredForIssues.div(totalIssuedForRecovery).mul(100);
   // Current stock is a live position. Reconcile it against all historical
   // movements, not only the date-filtered activity shown on the other cards.
   const expectedStockValue = sumDecimals(allMovements, "valueDelta");
   const reconciliationDifference = currentStockValue.minus(expectedStockValue);
 
-  const openIssues = issues
+  const issueRows = issues
     .map((issue) => {
       const totalValue = new Prisma.Decimal(decimalString(issue.totalValue));
       const totalPaid = repaymentTotal(issue);
       const outstandingBalance = totalValue.minus(totalPaid);
+      const stockCost = issuedCostByIssueId.get(String(issue.id)) ?? totalValue;
 
       return {
         id: String(issue.id),
@@ -139,21 +179,36 @@ export async function getInventoryFinanceSummary(
         currencyCode: String(issue.currencyCode ?? currencyCode),
         status: String(issue.status ?? "ISSUED"),
         totalValue: money(totalValue),
+        stockCost: money(stockCost),
+        disbursedValue: money(totalValue),
         totalPaid: money(totalPaid),
         outstandingBalance: money(outstandingBalance),
+        realisedGrossProfit: money(totalPaid.minus(stockCost)),
+        expectedGrossProfit: money(totalValue.minus(stockCost)),
         issuedAt: issue.issuedAt instanceof Date ? issue.issuedAt.toISOString() : issue.issuedAt,
       };
-    })
-    .filter((issue) => new Prisma.Decimal(issue.outstandingBalance).gt(0));
+    });
+
+  const openIssues = issueRows.filter((issue) =>
+    new Prisma.Decimal(issue.outstandingBalance).gt(0)
+  );
 
   return {
     currencyCode,
     receivedStockValue: money(receivedStockValue),
     issuedStockValue: money(issuedStockValue),
+    receivedStockQuantity: quantity(receivedStockQuantity),
+    issuedStockQuantity: quantity(issuedStockQuantity),
+    stockCostIssued: money(stockCostIssued),
+    disbursedStockValue: money(totalIssuedForRecovery),
     currentStockValue: money(currentStockValue),
     repaymentsCollected: money(repaymentsCollected),
     outstandingRecoveryValue: money(outstandingRecoveryValue),
+    realisedGrossProfit: money(realisedGrossProfit),
+    expectedGrossProfit: money(expectedGrossProfit),
+    collectionRate: money(collectionRate),
     reconciliationDifference: money(reconciliationDifference),
+    issues: issueRows,
     openIssues,
   };
 }
