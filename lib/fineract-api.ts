@@ -1730,10 +1730,12 @@ async function resolveAuthToken(): Promise<string> {
   return SERVICE_TOKEN;
 }
 
-export async function getFineractServiceWithSession(): Promise<FineractAPIService> {
+export async function getFineractServiceWithSession(
+  tenantId?: string
+): Promise<FineractAPIService> {
   try {
     const { getFineractTenantId } = await import("./fineract-tenant-service");
-    const fineractTenantId = await getFineractTenantId();
+    const fineractTenantId = tenantId || (await getFineractTenantId());
     const authToken = await resolveAuthToken();
     return getFineractService(authToken, fineractTenantId);
   } catch (error) {
