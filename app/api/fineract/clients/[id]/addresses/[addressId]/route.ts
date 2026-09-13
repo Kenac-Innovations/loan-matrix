@@ -17,7 +17,7 @@ export async function PUT(
     const body = await request.json();
 
     const rawAddressType =
-      body.addressTypeId ?? body.addressType ?? parseInt(addressTypeId);
+      body.addressType ?? body.addressTypeId ?? parseInt(addressTypeId);
     const addressType =
       typeof rawAddressType === "string"
         ? parseInt(rawAddressType)
@@ -42,7 +42,6 @@ export async function PUT(
         typeof body.addressId === "string"
           ? parseInt(body.addressId)
           : body.addressId,
-      addressTypeId: addressType,
       isActive: body.isActive !== undefined ? Boolean(body.isActive) : false,
     };
 

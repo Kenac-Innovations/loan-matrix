@@ -5,7 +5,7 @@ import test from "node:test";
 
 const repoRoot = path.resolve(process.cwd());
 
-test("the client address form sends addressTypeId for new and edited addresses", () => {
+test("the client address form sends Fineract's supported addressType field", () => {
   const source = readFileSync(
     path.join(
       repoRoot,
@@ -14,11 +14,11 @@ test("the client address form sends addressTypeId for new and edited addresses",
     "utf8"
   );
 
-  assert.match(source, /addressTypeId:\s*addressType/);
-  assert.match(source, /delete addressPayload\.addressType/);
+  assert.match(source, /addressType:\s*addressType/);
+  assert.match(source, /delete addressPayload\.addressTypeId/);
 });
 
-test("client address creation uses Fineract's supported addressTypeId field", () => {
+test("client address creation sends addressType, not addressTypeId, to Fineract", () => {
   const source = readFileSync(
     path.join(
       repoRoot,
@@ -27,11 +27,11 @@ test("client address creation uses Fineract's supported addressTypeId field", ()
     "utf8"
   );
 
-  assert.match(source, /payload\.addressTypeId\s*=\s*addressType/);
-  assert.doesNotMatch(source, /payload\.addressType\s*=\s*addressType/);
+  assert.match(source, /payload\.addressType\s*=\s*addressType/);
+  assert.doesNotMatch(source, /payload\.addressTypeId\s*=\s*addressType/);
 });
 
-test("client address updates preserve the supported address type field", () => {
+test("client address updates keep the address type in Fineract's query parameter", () => {
   const source = readFileSync(
     path.join(
       repoRoot,
@@ -40,5 +40,6 @@ test("client address updates preserve the supported address type field", () => {
     "utf8"
   );
 
-  assert.match(source, /addressTypeId:\s*addressType/);
+  assert.match(source, /\/client\/\$\{id\}\/addresses\?type=\$\{addressType\}/);
+  assert.doesNotMatch(source, /addressTypeId:\s*addressType/);
 });

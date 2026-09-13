@@ -141,6 +141,38 @@ import {
   getFieldError,
 } from "@/lib/form-styling-utils";
 
+async function getUploadErrorMessage(
+  response: Response,
+  fallbackMessage: string
+): Promise<string> {
+  const responseText = await response.text();
+
+  if (!responseText.trim()) {
+    return fallbackMessage;
+  }
+
+  try {
+    const errorData = JSON.parse(responseText) as {
+      error?: unknown;
+      defaultUserMessage?: unknown;
+      details?: { defaultUserMessage?: unknown };
+    };
+
+    const message =
+      errorData.error ??
+      errorData.defaultUserMessage ??
+      errorData.details?.defaultUserMessage;
+
+    return typeof message === "string" && message.trim()
+      ? message
+      : fallbackMessage;
+  } catch {
+    // Gateways can return an HTML or plain-text timeout page. Never surface a
+    // JSON parser exception to the user in place of the actual upload failure.
+    return fallbackMessage;
+  }
+}
+
 // Form validation schema
 const clientFormSchema = z
   .object({
@@ -4574,8 +4606,12 @@ export function ClientRegistrationForm({
       );
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to upload selfie");
+        throw new Error(
+          await getUploadErrorMessage(
+            response,
+            "Unable to upload the selfie right now. Please try again."
+          )
+        );
       }
 
       success({
@@ -4656,11 +4692,11 @@ export function ClientRegistrationForm({
         );
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
           throw new Error(
-            errorData.error ||
-              errorData.defaultUserMessage ||
-              `Failed to upload ${file.name}`
+            await getUploadErrorMessage(
+              response,
+              `Unable to upload ${file.name} right now. Please try again.`
+            )
           );
         }
 
@@ -10936,12 +10972,12 @@ export function ClientRegistrationForm({
                                                     // Ensure editedAddress has the correct addressType
                                                     const addressPayload = {
                                                       ...editedAddress,
-                                                      addressTypeId: addressType,
+                                                      addressType: addressType,
                                                       isActive: true,
                                                       dateFormat: "yyyy-MM-dd",
                                                       locale: "en",
                                                     };
-                                                    delete addressPayload.addressType;
+                                                    delete addressPayload.addressTypeId;
 
                                                     const response =
                                                       await fetch(endpoint, {
