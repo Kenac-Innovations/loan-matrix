@@ -1,4 +1,9 @@
 import { resolveFineractTenantId } from "./fineract-tenant-service";
+import { prisma } from "./prisma";
+import {
+  getRequestedTenantSlugFromHeaders,
+  getTenantBySlug,
+} from "./tenant-service";
 
 export interface LeadTenantContext {
   tenantId: string;
@@ -50,5 +55,47 @@ export function createLeadTenantContext(input: {
       requestedSlug: input.requestTenant.slug,
       resolvedTenantSlug: input.sessionTenant.slug,
     }),
+  });
+}
+
+/**
+ * Resolves the tenant context for a Server Action that writes a lead.
+ *
+ * Server Actions do not receive a Request object, so this reads only the
+ * browser-origin tenant headers. It intentionally has no environment or
+ * default-tenant fallback: an authenticated user must write within the same
+ * active tenant recorded in their session.
+ */
+export async function resolveLeadServerActionTenantContext(input: {
+  sessionTenantId?: string | null;
+}): Promise<LeadTenantContext> {
+  const requestedTenantSlug = await getRequestedTenantSlugFromHeaders();
+
+  if (!requestedTenantSlug) {
+    throw new LeadTenantContextError(
+      "Unable to determine your tenant workspace. Please return to your tenant workspace and try again."
+    );
+  }
+
+  const [requestTenant, sessionTenant] = await Promise.all([
+    getTenantBySlug(requestedTenantSlug),
+    input.sessionTenantId
+      ? prisma.tenant.findFirst({
+          where: { id: input.sessionTenantId, isActive: true },
+          select: { id: true, slug: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (!requestTenant) {
+    throw new LeadTenantContextError(
+      "The requested tenant workspace is unavailable. Please sign in again."
+    );
+  }
+
+  return createLeadTenantContext({
+    sessionTenantId: input.sessionTenantId,
+    requestTenant,
+    sessionTenant,
   });
 }
