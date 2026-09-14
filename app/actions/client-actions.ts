@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
-import { getTenantFromHeaders, getOrCreateDefaultTenant } from "@/lib/tenant-service";
+import { resolveLeadServerActionTenantContext } from "@/lib/lead-tenant-context";
+import { getOrCreateDefaultTenant, getTenantFromHeaders } from "@/lib/tenant-service";
 import { fetchFineractAPI } from "@/lib/api";
 import {
   getLeadViewerAccessContext,
@@ -136,16 +137,22 @@ export async function saveDraft(
     console.log("==========> User ID from session:", userId);
     console.log("==========> Created by user name:", createdByUserName);
 
-    const tenant = await getTenantFromHeaders() || await getOrCreateDefaultTenant();
-    const tenantId = tenant.id;
+    const tenantContext = await resolveLeadServerActionTenantContext({
+      sessionTenantId: session.user.tenantId,
+    });
+    const tenantId = tenantContext.tenantId;
     console.log("==========> Tenant ID:", tenantId);
     const initialStageId = await getInitialStageId(tenantId);
 
     if (leadId) {
-      const existingLead = await prisma.lead.findUnique({
-        where: { id: leadId },
+      const existingLead = await prisma.lead.findFirst({
+        where: { id: leadId, tenantId },
         select: { currentStageId: true, stateMetadata: true },
       });
+
+      if (!existingLead) {
+        throw new Error("Lead not found in your tenant workspace.");
+      }
 
       // Update existing lead
       await prisma.lead.update({

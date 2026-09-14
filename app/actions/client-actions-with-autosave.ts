@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
-import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { resolveLeadServerActionTenantContext } from "@/lib/lead-tenant-context";
 import { formatMobileForFineract } from "@/lib/phone-utils";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import {
@@ -108,21 +108,10 @@ export async function autoSaveField(
     }
     const userId = session.user.id;
 
-    let tenantId: string;
-    const tenant = await getTenantFromHeaders();
-    if (tenant) {
-      tenantId = tenant.id;
-    } else {
-      // Fallback: look up tenant from env or default
-      const fallbackSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
-      const fallbackTenant = await prisma.tenant.findFirst({
-        where: { slug: fallbackSlug, isActive: true },
-      });
-      if (!fallbackTenant) {
-        throw new Error(`Tenant '${fallbackSlug}' not found.`);
-      }
-      tenantId = fallbackTenant.id;
-    }
+    const tenantContext = await resolveLeadServerActionTenantContext({
+      sessionTenantId: session.user.tenantId,
+    });
+    const tenantId = tenantContext.tenantId;
     const initialStageId = await getInitialStageId(tenantId);
 
     // Current timestamp for tracking
@@ -132,7 +121,9 @@ export async function autoSaveField(
     > | null = null;
 
     if (validatedData.fineractClientId !== undefined) {
-      const fineractService = await getFineractServiceWithSession();
+      const fineractService = await getFineractServiceWithSession(
+        tenantContext.fineractTenantId
+      );
       existingClientOfficeTransfer = await ensureExistingClientInCreatorOffice({
         client: await fineractService.getClient(validatedData.fineractClientId),
         creatorOfficeId: session.user.officeId,
@@ -151,10 +142,14 @@ export async function autoSaveField(
 
     if (leadId) {
       console.log("Updating existing lead:", leadId);
-      const existingLead = await prisma.lead.findUnique({
-        where: { id: leadId },
+      const existingLead = await prisma.lead.findFirst({
+        where: { id: leadId, tenantId },
         select: { currentStageId: true, stateMetadata: true },
       });
+
+      if (!existingLead) {
+        throw new Error("Lead not found in your tenant workspace.");
+      }
 
       // Update existing lead
       const updatedLead = await prisma.lead.update({
