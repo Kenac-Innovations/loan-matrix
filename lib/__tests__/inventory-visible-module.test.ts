@@ -47,9 +47,18 @@ test("keeps ARDA finance reporting isolated from other tenants", () => {
   const financeRoute = readRepoFile("app/api/inventory/finances/route.ts");
   const financePage = readRepoFile("app/(application)/inventory/finances/page.tsx");
 
-  assert.match(financeRoute, /isArdaTenantSlug/);
+  assert.match(financeRoute, /hasInventoryFinance/);
   assert.match(financePage, /Stock Cost Issued/);
   assert.match(financePage, /Realised Gross Profit/);
   assert.match(financePage, /Expected Gross Profit/);
   assert.match(financePage, /Collection Rate/);
+});
+
+test("enables inventory finance only for the ARDA tenant through a database migration", () => {
+  const migration = readRepoFile(
+    "prisma/migrations/20260915130000_enable_arda_inventory_finance_feature/migration.sql"
+  );
+
+  assert.match(migration, /WHERE\s+"slug"\s*=\s*'arda'/);
+  assert.match(migration, /hasInventoryFinance/);
 });

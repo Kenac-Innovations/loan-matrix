@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
-import { isArdaTenantSlug } from "@/lib/arda-tenant";
+import { getTenantFeatures } from "@/shared/types/tenant";
 import { getInventoryFinanceSummary } from "@/lib/inventory/inventory-finance-service";
 import { parseInventoryFinanceDate } from "@/lib/inventory/inventory-finance-date-range";
 
@@ -15,9 +15,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    if (!isArdaTenantSlug(tenant.slug)) {
+    if (!getTenantFeatures(tenant).hasInventoryFinance) {
       return NextResponse.json(
-        { error: "Inventory finances are available for the ARDA tenant only" },
+        { error: "Inventory finances are not enabled for this tenant" },
         { status: 404 }
       );
     }

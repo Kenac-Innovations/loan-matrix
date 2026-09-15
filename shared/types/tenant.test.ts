@@ -39,6 +39,20 @@ function run() {
     false,
     "autoResolveRepaymentCashier defaults to false"
   );
+
+  assert.equal(
+    getTenantFeatures(null).hasInventoryFinance,
+    false,
+    "inventory finance defaults to disabled for every tenant"
+  );
+
+  assert.equal(
+    getTenantFeatures({
+      settings: { features: { hasInventoryFinance: true } },
+    }).hasInventoryFinance,
+    true,
+    "surfaces the database-backed inventory finance setting when enabled"
+  );
 }
 
 run();

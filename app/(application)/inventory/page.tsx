@@ -116,7 +116,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [savingItem, setSavingItem] = useState(false);
   const [receivingStock, setReceivingStock] = useState(false);
-  const [isArdaTenant, setIsArdaTenant] = useState(false);
+  const [hasInventoryFinance, setHasInventoryFinance] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -194,7 +194,7 @@ export default function InventoryPage() {
       setItems(itemsData);
       setBalances(balancesData);
       setMovements(movementsData);
-      setIsArdaTenant(tenantData?.slug === "arda");
+      setHasInventoryFinance(tenantData?.settings?.features?.hasInventoryFinance === true);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Inventory load failed.");
     } finally {
@@ -327,7 +327,7 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {isArdaTenant && (
+          {hasInventoryFinance && (
             <Tabs value="stock-control">
               <TabsList>
                 <TabsTrigger value="stock-control">Stock Control</TabsTrigger>
