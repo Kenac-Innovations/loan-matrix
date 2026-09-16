@@ -178,16 +178,16 @@ export function ClientHeader({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button asChild size="sm" variant="outline">
-                <Link
-                  href={`/api/fineract/clients/${clientId}/statement?format=html`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+              <Link
+                href={`/api/fineract/clients/${clientId}/statement?format=html`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button size="sm" variant="outline">
                   <FileText className="h-4 w-4 mr-2" />
                   Consolidated Statement
-                </Link>
-              </Button>
+                </Button>
+              </Link>
               {client.active && client.externalId && (
                 <Link
                   href={`/leads/new/loan?clientId=${clientId}&externalId=${encodeURIComponent(
