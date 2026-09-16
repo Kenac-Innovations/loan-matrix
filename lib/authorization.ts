@@ -15,6 +15,10 @@ export function mapApiPermissionsToSpecific(
     READ_CLIENT: SpecificPermission.READ_CLIENT,
     UPDATE_CLIENT: SpecificPermission.UPDATE_CLIENT,
     DELETE_CLIENT: SpecificPermission.DELETE_CLIENT,
+    UPDATE_CLIENT_SERVICING_STATUS:
+      SpecificPermission.UPDATE_CLIENT_SERVICING_STATUS,
+    UPDATE_CLIENT_SERVICING_STATUS_POLICY:
+      SpecificPermission.UPDATE_CLIENT_SERVICING_STATUS_POLICY,
 
     // Loan permissions
     CREATE_LOAN: SpecificPermission.CREATE_LOAN,
