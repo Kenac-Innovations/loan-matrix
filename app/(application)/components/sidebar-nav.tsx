@@ -225,6 +225,10 @@ export function SidebarNav({
             { label: "Reminders", href: "/system/reminders" },
             { label: "Audit Trails", href: "/system/audit-trails" },
             {
+              label: "Client Servicing Statuses",
+              href: "/system/client-servicing-statuses",
+            },
+            {
               label: "Configure Maker Checker Tasks",
               href: "/system/configure-mc-tasks",
             },

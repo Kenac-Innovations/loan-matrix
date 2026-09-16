@@ -31,6 +31,8 @@ interface ClientHeaderProps {
   client: FineractClient | null;
   clientImage: string | null;
   canEditClient: boolean;
+  canOriginateNewLoan: boolean;
+  servicingStatusName?: string;
 }
 
 export function ClientHeader({
@@ -38,6 +40,8 @@ export function ClientHeader({
   client,
   clientImage,
   canEditClient,
+  canOriginateNewLoan,
+  servicingStatusName,
 }: ClientHeaderProps) {
   const getStatusBadgeColor = (status: string | null, active: boolean) => {
     if (active) return "bg-green-500";
@@ -142,6 +146,9 @@ export function ClientHeader({
                       ? "Active"
                       : client.status?.value || "Unknown"}
                   </Badge>
+                  {servicingStatusName && (
+                    <Badge variant="outline">Servicing: {servicingStatusName}</Badge>
+                  )}
                 </div>
                 <p className="text-muted-foreground">
                   <span className="mr-3">
@@ -188,7 +195,7 @@ export function ClientHeader({
                   Consolidated Statement
                 </Button>
               </Link>
-              {client.active && client.externalId && (
+              {client.active && client.externalId && canOriginateNewLoan && (
                 <Link
                   href={`/leads/new/loan?clientId=${clientId}&externalId=${encodeURIComponent(
                     client.externalId
