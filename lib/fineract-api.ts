@@ -102,6 +102,44 @@ export interface FineractClient {
   };
 }
 
+export type ClientServicingPolicies = Record<string, boolean>;
+
+export interface ClientServicingStatusDefinition {
+  code: string;
+  name: string;
+  displayOrder: number;
+  active: boolean;
+  policies: ClientServicingPolicies;
+}
+
+export interface ClientServicingStatusHistoryEntry {
+  previousStatus: { code: string; name: string } | null;
+  newStatus: { code: string; name: string };
+  reason: string;
+  changedBy: string;
+  changedOn: string;
+  source: string;
+}
+
+export interface ClientServicingStatusResponse {
+  clientId: number;
+  assigned: boolean;
+  status: {
+    code: string;
+    name: string;
+    version: number;
+    changedOn: string;
+    changedBy: string;
+  } | null;
+  policies: ClientServicingPolicies;
+  history: ClientServicingStatusHistoryEntry[];
+}
+
+export interface ClientServicingStatusDefinitionsResponse {
+  actions: Array<{ code: string; label: string }>;
+  statuses: ClientServicingStatusDefinition[];
+}
+
 export interface FineractLoan {
   id: number;
   accountNo: string;
@@ -538,6 +576,44 @@ export class FineractAPIService {
     const response: AxiosResponse<FineractClient> = await this.client.put(
       `/clients/${clientId}`,
       clientData
+    );
+    return response.data;
+  }
+
+  async getClientServicingStatusDefinitions(): Promise<ClientServicingStatusDefinitionsResponse> {
+    const response = await this.client.get<ClientServicingStatusDefinitionsResponse>(
+      "/client-servicing-statuses"
+    );
+    return response.data;
+  }
+
+  async getClientServicingStatus(
+    clientId: number
+  ): Promise<ClientServicingStatusResponse> {
+    const response = await this.client.get<ClientServicingStatusResponse>(
+      `/client-servicing-statuses/clients/${clientId}`
+    );
+    return response.data;
+  }
+
+  async updateClientServicingStatus(
+    clientId: number,
+    payload: { statusCode: string; reason: string }
+  ): Promise<ClientServicingStatusResponse> {
+    const response = await this.client.put<ClientServicingStatusResponse>(
+      `/client-servicing-statuses/clients/${clientId}`,
+      payload
+    );
+    return response.data;
+  }
+
+  async updateClientServicingStatusPolicies(
+    statusCode: string,
+    payload: { policies: ClientServicingPolicies; reason: string }
+  ): Promise<ClientServicingStatusDefinitionsResponse> {
+    const response = await this.client.put<ClientServicingStatusDefinitionsResponse>(
+      `/client-servicing-statuses/${encodeURIComponent(statusCode)}/policies`,
+      payload
     );
     return response.data;
   }
