@@ -23,6 +23,7 @@ import { ClientHeader } from "./components/client-header";
 import { ClientEntityKyc } from "./components/client-entity-kyc";
 import { ClientSavings } from "./components/client-savings";
 import { ClientFacility } from "./components/client-facility";
+import { ClientServicingStatusCard } from "./components/client-servicing-status-card";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,12 @@ type PagedResponse<T> = {
   documents?: T[];
 };
 
+type ClientServicingStatusSummary = {
+  assigned: boolean;
+  status: { code: string; name: string } | null;
+  policies: Record<string, boolean>;
+};
+
 /**
  * Fetch client data from Fineract
  */
@@ -130,6 +137,29 @@ async function getClientData(clientId: number): Promise<FineractClient | null> {
     return (await response.json()) as FineractClient;
   } catch (error) {
     console.error("Error fetching client data:", error);
+    return null;
+  }
+}
+
+async function getClientServicingStatus(
+  clientId: number
+): Promise<ClientServicingStatusSummary | null> {
+  try {
+    const fineractTenantId = await getFineractTenantId();
+    const response = await fetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/client-servicing-statuses/clients/${clientId}`,
+      {
+        method: "GET",
+        headers: getClientDetailsPageFineractHeaders(fineractTenantId),
+        cache: "no-store",
+      }
+    );
+
+    return response.ok
+      ? ((await response.json()) as ClientServicingStatusSummary)
+      : null;
+  } catch (error) {
+    console.error("Error fetching client servicing status:", error);
     return null;
   }
 }
@@ -370,13 +400,27 @@ export default async function ClientDetailPage({ params }: PageProps) {
   }
 
   // Fetch all data server-side in parallel
-  const [client, clientImage, datatables, canEditClient] =
+  const [
+    client,
+    clientImage,
+    datatables,
+    canEditClient,
+    canChangeServicingStatus,
+    servicingStatus,
+  ] =
     await Promise.all([
       getClientData(clientId),
       getClientImage(clientId),
       getDatatables(),
       hasPermissionServer(SpecificPermission.UPDATE_CLIENT),
+      hasPermissionServer(SpecificPermission.UPDATE_CLIENT_SERVICING_STATUS),
+      getClientServicingStatus(clientId),
     ]);
+
+  const canEditClientDetails =
+    canEditClient && servicingStatus?.policies.EDIT_CLIENT_DETAILS !== false;
+  const canOriginateNewLoan =
+    servicingStatus?.policies.ORIGINATE_NEW_LOAN !== false;
 
   // Fetch datatable data after we have the datatables list
   const datatableData = await getDatatableData(clientId, datatables || []);
@@ -412,11 +456,18 @@ export default async function ClientDetailPage({ params }: PageProps) {
         clientId={clientId}
         client={client}
         clientImage={clientImage}
-        canEditClient={canEditClient}
+        canEditClient={canEditClientDetails}
+        canOriginateNewLoan={canOriginateNewLoan}
+        servicingStatusName={servicingStatus?.status?.name}
       />
 
       {/* Client Overview Cards */}
       <ClientDetails client={client} clientImage={clientImage} />
+
+      <ClientServicingStatusCard
+        clientId={clientId}
+        canChangeStatus={canChangeServicingStatus}
+      />
 
       <Tabs defaultValue="loans" className="space-y-4">
           <TabsList className="w-full sm:w-auto overflow-x-auto">
