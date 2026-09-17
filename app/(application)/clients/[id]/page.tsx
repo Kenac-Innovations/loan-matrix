@@ -23,7 +23,6 @@ import { ClientHeader } from "./components/client-header";
 import { ClientEntityKyc } from "./components/client-entity-kyc";
 import { ClientSavings } from "./components/client-savings";
 import { ClientFacility } from "./components/client-facility";
-import { ClientServicingStatusCard } from "./components/client-servicing-status-card";
 
 export const dynamic = "force-dynamic";
 
@@ -458,16 +457,12 @@ export default async function ClientDetailPage({ params }: PageProps) {
         clientImage={clientImage}
         canEditClient={canEditClientDetails}
         canOriginateNewLoan={canOriginateNewLoan}
+        canChangeServicingStatus={canChangeServicingStatus}
         servicingStatusName={servicingStatus?.status?.name}
       />
 
       {/* Client Overview Cards */}
       <ClientDetails client={client} clientImage={clientImage} />
-
-      <ClientServicingStatusCard
-        clientId={clientId}
-        canChangeStatus={canChangeServicingStatus}
-      />
 
       <Tabs defaultValue="loans" className="space-y-4">
           <TabsList className="w-full sm:w-auto overflow-x-auto">
