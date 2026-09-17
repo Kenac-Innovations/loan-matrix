@@ -341,11 +341,17 @@ function getStatementToolbarScript(defaultFilename: string): string {
       syncInputsFromUrl();
       updateRangeConstraints();
 
-      if (pdfBtn && window.html2pdf) {
+      if (pdfBtn) {
         var filename = pdfBtn.getAttribute('data-filename') || '${defaultFilename}';
         var defaultLabel = pdfBtn.innerHTML;
 
         pdfBtn.addEventListener('click', function() {
+          if (typeof window.html2pdf !== 'function') {
+            showError('PDF generation is unavailable. Use Print and select "Save to PDF".');
+            return;
+          }
+
+          showError('');
           pdfBtn.disabled = true;
           pdfBtn.textContent = 'Generating...';
 
