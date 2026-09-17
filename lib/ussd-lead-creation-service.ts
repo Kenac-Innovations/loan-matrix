@@ -1,4 +1,9 @@
 import prisma from "@/lib/prisma";
+import { fetchFineractAPI } from "@/lib/api";
+import {
+  assertClientCanCreateLoanLead,
+  type ClientServicingStatusForLead,
+} from "@/lib/client-servicing-lead-guard";
 import {
   buildLeadClientBackfillData,
   buildLeadDataFromUssdApplication,
@@ -98,6 +103,16 @@ export async function createOrReuseLeadFromUssdApplication(
   }
 
   const fineractClient = await resolveUssdApplicationFineractClient(application);
+  const fineractClientId = fineractClient?.id ?? application.loanMatrixClientId;
+  if (typeof fineractClientId === "number" && fineractClientId > 0) {
+    await assertClientCanCreateLoanLead(
+      fineractClientId,
+      async (clientId) =>
+        (await fetchFineractAPI(`/client-servicing-statuses/clients/${clientId}`, {
+          authMode: "service",
+        })) as ClientServicingStatusForLead
+    );
+  }
   const lead = await prisma.lead.create({
     data: {
       ...buildLeadDataFromUssdApplication(

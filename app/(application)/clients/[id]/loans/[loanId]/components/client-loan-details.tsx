@@ -1037,7 +1037,17 @@ export function ClientLoanDetails({ clientId, loanId }: ClientLoanDetailsProps) 
                         `/leads/new?id=${result.leadId}&tab=loan&refinanceLoanId=${loanId}&fineractClientId=${clientId}`
                       );
                     } else {
-                      toast({ title: 'Error', description: result.error || 'Could not create lead', variant: 'destructive' });
+                      const isServicingStatusRestriction =
+                        result.error?.includes(
+                          'servicing status does not allow new loan origination'
+                        );
+                      toast({
+                        title: isServicingStatusRestriction
+                          ? 'Loan origination blocked'
+                          : 'Error',
+                        description: result.error || 'Could not create lead',
+                        variant: 'destructive',
+                      });
                     }
                   })
                   .catch(() => {
