@@ -7,6 +7,8 @@ import { getSession } from "@/lib/auth";
 import { resolveLeadServerActionTenantContext } from "@/lib/lead-tenant-context";
 import { getOrCreateDefaultTenant, getTenantFromHeaders } from "@/lib/tenant-service";
 import { fetchFineractAPI } from "@/lib/api";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { assertClientCanCreateLoanLead } from "@/lib/client-servicing-lead-guard";
 import {
   getLeadViewerAccessContext,
   getOriginatorDesignatedDisburserData,
@@ -143,6 +145,16 @@ export async function saveDraft(
     const tenantId = tenantContext.tenantId;
     console.log("==========> Tenant ID:", tenantId);
     const initialStageId = await getInitialStageId(tenantId);
+
+    if (!leadId && validatedData.fineractClientId !== undefined) {
+      const fineractService = await getFineractServiceWithSession(
+        tenantContext.fineractTenantId
+      );
+      await assertClientCanCreateLoanLead(
+        validatedData.fineractClientId,
+        (clientId) => fineractService.getClientServicingStatus(clientId)
+      );
+    }
 
     if (leadId) {
       const existingLead = await prisma.lead.findFirst({

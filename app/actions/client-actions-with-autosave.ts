@@ -11,6 +11,7 @@ import {
   assertExistingClientBranchTransferCompleted,
   ensureExistingClientInCreatorOffice,
 } from "@/lib/fineract-client-office-transfer";
+import { assertClientCanCreateLoanLead } from "@/lib/client-servicing-lead-guard";
 import { getFineractBusinessToday } from "@/lib/fineract-business-date";
 import { withClientSubmittedOnDate } from "@/lib/lead-client-submitted-date";
 
@@ -124,6 +125,12 @@ export async function autoSaveField(
       const fineractService = await getFineractServiceWithSession(
         tenantContext.fineractTenantId
       );
+      if (!leadId) {
+        await assertClientCanCreateLoanLead(
+          validatedData.fineractClientId,
+          (clientId) => fineractService.getClientServicingStatus(clientId)
+        );
+      }
       existingClientOfficeTransfer = await ensureExistingClientInCreatorOffice({
         client: await fineractService.getClient(validatedData.fineractClientId),
         creatorOfficeId: session.user.officeId,
