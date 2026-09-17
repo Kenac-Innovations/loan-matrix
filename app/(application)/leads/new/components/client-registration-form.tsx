@@ -8161,8 +8161,14 @@ export function ClientRegistrationForm({
                                         "Error creating client in Fineract:",
                                         createError
                                       );
+                                      const isServicingStatusRestriction =
+                                        createError?.message?.includes(
+                                          "servicing status does not allow new loan origination"
+                                        );
                                       error({
-                                        title: "Fineract Error",
+                                        title: isServicingStatusRestriction
+                                          ? "Loan origination blocked"
+                                          : "Fineract Error",
                                         description:
                                           createError.message ||
                                           "Failed to create client in Fineract. Please try again.",
