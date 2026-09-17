@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Loader2, Save, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import type {
@@ -11,13 +11,7 @@ import type {
 } from "@/lib/fineract-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -28,6 +22,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 
 function policyKeys(status: ClientServicingStatusDefinition) {
@@ -44,15 +46,15 @@ async function responseMessage(response: Response, fallback: string) {
 }
 
 async function fetchServicingStatusDefinitions(
-  url: string
+  url: string,
 ): Promise<ClientServicingStatusDefinitionsResponse> {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(
       await responseMessage(
         response,
-        "Unable to load client servicing status policies"
-      )
+        "Unable to load client servicing status policies",
+      ),
     );
   }
   return response.json() as Promise<ClientServicingStatusDefinitionsResponse>;
@@ -65,7 +67,7 @@ export function ClientServicingStatusesClient() {
     mutate: mutateDefinitions,
   } = useSWR<ClientServicingStatusDefinitionsResponse>(
     "/api/fineract/client-servicing-statuses",
-    fetchServicingStatusDefinitions
+    fetchServicingStatusDefinitions,
   );
   const [draftPolicies, setDraftPolicies] = useState<
     Record<string, ClientServicingPolicies>
@@ -75,18 +77,11 @@ export function ClientServicingStatusesClient() {
   const [reason, setReason] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const actionLabels = useMemo(
-    () =>
-      new Map(
-        (definitions?.actions ?? []).map((action) => [
-          action.code,
-          action.label,
-        ])
-      ),
-    [definitions]
-  );
-
-  function updatePolicy(statusCode: string, actionCode: string, allowed: boolean) {
+  function updatePolicy(
+    statusCode: string,
+    actionCode: string,
+    allowed: boolean,
+  ) {
     setDraftPolicies((current) => ({
       ...current,
       [statusCode]: {
@@ -102,7 +97,7 @@ export function ClientServicingStatusesClient() {
       ...draftPolicies[status.code],
     };
     return policyKeys(status).some(
-      (actionCode) => current[actionCode] !== status.policies[actionCode]
+      (actionCode) => current[actionCode] !== status.policies[actionCode],
     );
   }
 
@@ -122,7 +117,7 @@ export function ClientServicingStatusesClient() {
     try {
       const response = await fetch(
         `/api/fineract/client-servicing-statuses/${encodeURIComponent(
-          pendingStatus.code
+          pendingStatus.code,
         )}/policies`,
         {
           method: "PUT",
@@ -134,14 +129,14 @@ export function ClientServicingStatusesClient() {
             },
             reason,
           }),
-        }
+        },
       );
       if (!response.ok) {
         throw new Error(
           await responseMessage(
             response,
-            "Unable to update client servicing status policy"
-          )
+            "Unable to update client servicing status policy",
+          ),
         );
       }
 
@@ -159,7 +154,7 @@ export function ClientServicingStatusesClient() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Unable to update client servicing status policy"
+          : "Unable to update client servicing status policy",
       );
     } finally {
       setIsSaving(false);
@@ -214,72 +209,83 @@ export function ClientServicingStatusesClient() {
         <Badge variant="secondary">{statuses.length} statuses</Badge>
       </div>
 
-      <Card className="border-primary/20 bg-primary/[0.03]">
-        <CardContent className="flex gap-3 pt-6 text-sm text-muted-foreground">
-          <ShieldCheck className="h-5 w-5 shrink-0 text-primary" />
-          <p>
-            This configuration deliberately controls only client-detail editing
-            and new-loan origination. Repayments, recoveries, reversals, and
-            Fineract’s accrual processing remain governed by their existing
-            permissions and accounting rules.
-          </p>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        {statuses.map((status) => {
-          const current = {
-            ...status.policies,
-            ...draftPolicies[status.code],
-          };
-          const dirty = isDirty(status);
-
-          return (
-            <Card key={status.code} className="rounded-lg">
-              <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <CardTitle>{status.name}</CardTitle>
-                  <CardDescription className="mt-1 font-mono text-xs">
-                    {status.code}
-                  </CardDescription>
-                </div>
-                {dirty && <Badge>Unsaved changes</Badge>}
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {policyKeys(status).map((actionCode) => (
-                  <label
-                    key={actionCode}
-                    className="flex items-start gap-3 rounded-md border p-3 text-sm"
-                  >
-                    <Checkbox
-                      checked={current[actionCode] === true}
-                      onCheckedChange={(checked) =>
-                        updatePolicy(status.code, actionCode, checked === true)
-                      }
-                    />
-                    <span>
-                      <span className="block font-medium">
-                        {actionLabels.get(actionCode) ?? actionCode}
-                      </span>
-                      <span className="mt-1 block text-muted-foreground">
-                        {current[actionCode] === true ? "Allowed" : "Blocked"}
-                      </span>
-                    </span>
-                  </label>
+      {statuses.length > 0 && (
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="min-w-48">Status</TableHead>
+                {definitions.actions.map((action) => (
+                  <TableHead key={action.code} className="min-w-44">
+                    {action.label}
+                  </TableHead>
                 ))}
-                <Button
-                  className="w-full"
-                  disabled={!dirty}
-                  onClick={() => openSaveDialog(status)}
-                >
-                  <Save className="mr-2 h-4 w-4" />
-                  Save {status.name} policy
-                </Button>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                <TableHead className="min-w-40 text-right">Changes</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {statuses.map((status) => {
+                const current = {
+                  ...status.policies,
+                  ...draftPolicies[status.code],
+                };
+                const dirty = isDirty(status);
+
+                return (
+                  <TableRow key={status.code}>
+                    <TableCell className="whitespace-normal">
+                      <div className="font-medium">{status.name}</div>
+                      <div className="mt-1 font-mono text-xs text-muted-foreground">
+                        {status.code}
+                      </div>
+                    </TableCell>
+                    {definitions.actions.map((action) => {
+                      const allowed = current[action.code] === true;
+
+                      return (
+                        <TableCell
+                          key={action.code}
+                          className="whitespace-normal"
+                        >
+                          <label className="flex cursor-pointer items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={allowed}
+                              aria-label={`${action.label} for ${status.name}`}
+                              onCheckedChange={(checked) =>
+                                updatePolicy(
+                                  status.code,
+                                  action.code,
+                                  checked === true,
+                                )
+                              }
+                            />
+                            <span className="text-muted-foreground">
+                              {allowed ? "Allowed" : "Blocked"}
+                            </span>
+                          </label>
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {dirty && <Badge>Unsaved</Badge>}
+                        <Button
+                          size="sm"
+                          disabled={!dirty}
+                          onClick={() => openSaveDialog(status)}
+                        >
+                          <Save className="mr-2 h-4 w-4" />
+                          Save
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
 
       {statuses.length === 0 && (
         <Card>
@@ -312,7 +318,10 @@ export function ClientServicingStatusesClient() {
             />
           </div>
           <DialogFooter>
-            <Button onClick={savePolicies} disabled={isSaving || !reason.trim()}>
+            <Button
+              onClick={savePolicies}
+              disabled={isSaving || !reason.trim()}
+            >
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save policy
             </Button>
