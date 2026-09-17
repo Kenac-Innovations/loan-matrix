@@ -23,6 +23,10 @@ import {
   getClientSubmittedOnDate,
   withClientSubmittedOnDate,
 } from "@/lib/lead-client-submitted-date";
+import {
+  assertClientCanCreateLoanLead,
+  ClientServicingLeadRestrictionError,
+} from "@/lib/client-servicing-lead-guard";
 
 // Resolve the hostname tenant from this request only. It must never be stored
 // in module state because overlapping requests can otherwise share tenants.
@@ -442,7 +446,10 @@ export async function POST(request: Request) {
 
     console.error("==========> Returning error response:", errorResponse);
 
-    return NextResponse.json(errorResponse, { status: 500 });
+    return NextResponse.json(errorResponse, {
+      status:
+        error instanceof ClientServicingLeadRestrictionError ? 409 : 500,
+    });
   }
 }
 
@@ -979,6 +986,7 @@ async function handleCreateLeadWithClient(
 ) {
   let leadId: string | null = null;
   let fineractClientId: number | null = null;
+  let createdFineractClient = false;
 
   try {
     // Step 1: Convert and validate data
@@ -1071,6 +1079,9 @@ async function handleCreateLeadWithClient(
             originatorUserName: createdByUserName,
             assignedByFineractUserId: session.user.userId ?? userId,
           });
+        await assertClientCanCreateLoanLead(existingClient.id, (clientId) =>
+          fineractService.getClientServicingStatus(clientId)
+        );
         const clientOfficeTransfer = await ensureExistingClientInCreatorOffice({
           client: await fineractService.getClient(existingClient.id),
           creatorOfficeId: session.user.officeId,
@@ -1217,6 +1228,7 @@ async function handleCreateLeadWithClient(
     const createdFineractClientId =
       fineractClient.clientId ?? fineractClient.resourceId ?? fineractClient.id;
     fineractClientId = createdFineractClientId;
+    createdFineractClient = true;
 
     console.log("==========> Fineract client created successfully:");
     console.log("==========> Fineract response:", fineractClient);
@@ -1356,8 +1368,12 @@ async function handleCreateLeadWithClient(
   } catch (error: any) {
     console.error("Error in transactional lead creation:", error);
 
+    if (error instanceof ClientServicingLeadRestrictionError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+
     // If we have a Fineract client but lead creation failed, delete the Fineract client
-    if (fineractClientId && !leadId) {
+    if (createdFineractClient && fineractClientId && !leadId) {
       try {
         console.log(
           `Cleaning up Fineract client ${fineractClientId} after lead creation failure`
@@ -1568,6 +1584,9 @@ async function handleCreateLeadForExistingClient(
     const fineractService = await getFineractServiceWithSession(
       tenantContext.fineractTenantId
     );
+    await assertClientCanCreateLoanLead(Number(fineractClientId), (clientId) =>
+      fineractService.getClientServicingStatus(clientId)
+    );
     const client = await fineractService.getClient(Number(fineractClientId));
 
     const session = await getSession();
@@ -1651,7 +1670,10 @@ async function handleCreateLeadForExistingClient(
     console.error("Error creating lead for existing client:", error);
     return NextResponse.json(
       { error: error.message || "Failed to create lead" },
-      { status: 500 }
+      {
+        status:
+          error instanceof ClientServicingLeadRestrictionError ? 409 : 500,
+      }
     );
   }
 }
@@ -1715,6 +1737,13 @@ async function handleUpdateClient(
       tenantContext.fineractTenantId
     );
     console.log("==========> Fineract service obtained successfully");
+
+    if (!leadId) {
+      await assertClientCanCreateLoanLead(
+        Number(data.fineractClientId),
+        (clientId) => fineractService.getClientServicingStatus(clientId)
+      );
+    }
 
     const session = await getSession();
     if (!session?.user?.id) {
@@ -2056,6 +2085,10 @@ async function handleUpdateClient(
     });
   } catch (error: any) {
     console.error("Error in transactional client update:", error);
+
+    if (error instanceof ClientServicingLeadRestrictionError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
 
     // Parse Fineract-specific errors
     if (error.response?.data) {
