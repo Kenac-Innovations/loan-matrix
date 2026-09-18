@@ -637,6 +637,8 @@ export function ClientRegistrationForm({
   const [hasMoreClients, setHasMoreClients] = useState(true);
   const [clientsInitiallyLoaded, setClientsInitiallyLoaded] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [isCheckingClientServicingStatus, setIsCheckingClientServicingStatus] =
+    useState(false);
   const [isFormDisabled, setIsFormDisabled] = useState(false);
   const [existingClientOfficeId, setExistingClientOfficeId] = useState<
     string | null
@@ -3296,19 +3298,72 @@ export function ClientRegistrationForm({
     }
   };
 
-  // Handle selecting a client from the picker
-  const handleSelectClientFromPicker = (client: any) => {
-    if (client.externalId) {
-      setSelectedClientId(client.id);
-      setNationalIdLookup(client.externalId);
-      // Trigger the search
-      pendingAutoSearch.current = client.externalId;
-    } else {
+  // Check the loan-origination policy before an existing client enters the
+  // lead-creation flow. Fineract repeats this enforcement server-side when a
+  // lead is created, but the picker provides immediate, actionable feedback.
+  const handleSelectClientFromPicker = async (client: {
+    id: unknown;
+    externalId?: string | null;
+  }) => {
+    if (!client.externalId) {
       error({
         title: "Missing External ID",
         description:
           "This client does not have an External ID. Please search manually.",
       });
+      return;
+    }
+
+    const clientId = Number(client.id);
+    if (!Number.isSafeInteger(clientId) || clientId <= 0) {
+      error({
+        title: "Unable to Verify Client",
+        description:
+          "This client cannot be selected for a new loan lead because its client ID is invalid.",
+      });
+      return;
+    }
+
+    setIsCheckingClientServicingStatus(true);
+    try {
+      const response = await fetch(
+        `/api/fineract/clients/${clientId}/servicing-status`,
+      );
+
+      if (!response.ok) {
+        throw new Error(`Servicing status lookup failed (${response.status})`);
+      }
+
+      const servicingStatus = (await response.json()) as {
+        status?: { name?: string } | null;
+        policies?: Record<string, boolean> | null;
+      };
+
+      if (servicingStatus.policies?.ORIGINATE_NEW_LOAN === false) {
+        const statusName = servicingStatus.status?.name || "current";
+        error({
+          title: "New Loan Not Allowed",
+          description: `This client cannot be selected because their ${statusName} servicing status does not allow new loan origination.`,
+        });
+        return;
+      }
+
+      setSelectedClientId(clientId);
+      setNationalIdLookup(client.externalId);
+      // Trigger the search only after the servicing policy allows origination.
+      pendingAutoSearch.current = client.externalId;
+    } catch (servicingStatusError) {
+      console.error(
+        "Unable to verify client servicing status before lead creation:",
+        servicingStatusError,
+      );
+      error({
+        title: "Unable to Verify Client Status",
+        description:
+          "This client was not selected for a new loan lead because their servicing status could not be verified. Please try again.",
+      });
+    } finally {
+      setIsCheckingClientServicingStatus(false);
     }
   };
 
@@ -6052,26 +6107,41 @@ export function ClientRegistrationForm({
                                   return (
                                     <tr
                                       key={client.id}
-                                      onClick={() =>
-                                        !selectedClientId &&
-                                        handleSelectClientFromPicker(client)
-                                      }
+                                      onClick={() => {
+                                        if (
+                                          !selectedClientId &&
+                                          !isCheckingClientServicingStatus
+                                        ) {
+                                          void handleSelectClientFromPicker(
+                                            client,
+                                          );
+                                        }
+                                      }}
                                       onKeyDown={(e) => {
                                         if (
                                           (e.key === "Enter" ||
                                             e.key === " ") &&
-                                          !selectedClientId
+                                          !selectedClientId &&
+                                          !isCheckingClientServicingStatus
                                         ) {
                                           e.preventDefault();
-                                          handleSelectClientFromPicker(client);
+                                          void handleSelectClientFromPicker(
+                                            client,
+                                          );
                                         }
                                       }}
-                                      tabIndex={selectedClientId ? -1 : 0}
+                                      tabIndex={
+                                        selectedClientId ||
+                                        isCheckingClientServicingStatus
+                                          ? -1
+                                          : 0
+                                      }
                                       role="button"
                                       className={`border-b transition-colors ${
                                         isSelected
                                           ? "bg-primary/10"
-                                          : selectedClientId
+                                          : selectedClientId ||
+                                            isCheckingClientServicingStatus
                                           ? "opacity-50 cursor-not-allowed"
                                           : "hover:bg-muted/50 cursor-pointer"
                                       }`}
