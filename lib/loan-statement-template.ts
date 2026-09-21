@@ -38,7 +38,11 @@ export interface LoanStatementData {
   openingBalance: number;
   totalDebits: number;
   totalCredits: number;
+  /** Balance derived only from effective transaction debit/credit movements. */
+  ledgerClosingBalance: number;
   closingBalance: number;
+  /** Identifies whether closingBalance is the Fineract summary or ledger-derived value. */
+  closingBalanceSource: "summary" | "transaction-ledger";
 
   // Prepared by
   preparedBy?: string;
@@ -51,6 +55,11 @@ export interface LoanTransaction {
   trxnId: string;
   debit: number;
   credit: number;
+  /** Raw non-negative Fineract allocation portions shown for this row. */
+  principal?: number;
+  interest?: number;
+  fees?: number;
+  penalties?: number;
   cumulativeBalance: number;
   isHighlighted?: boolean; // For disbursements and certain transactions
   isReversed?: boolean;
@@ -71,6 +80,7 @@ type StatementLoanLike = {
     interestCharged?: number;
     principalDisbursed?: number;
     totalPrincipalDisbursed?: number;
+    totalOutstanding?: number | null;
   };
   transactions?: TransactionLike[];
   accountNo?: string;
@@ -88,6 +98,15 @@ type StatementClientLike = {
   displayName?: string;
 };
 
+export type LoanStatementBalanceSource = "summary" | "transaction-ledger";
+
+export interface LoanStatementTransformOptions {
+  /** Explicitly use the transaction ledger, useful for date-filtered statements. */
+  balanceSource?: LoanStatementBalanceSource;
+  /** Backwards-compatible boolean form for callers that only need to opt into ledger balance. */
+  useTransactionLedgerBalance?: boolean;
+}
+
 const formatCurrency = (amount: number, symbol: string = ""): string => {
   const formatted = Math.abs(amount).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -95,6 +114,17 @@ const formatCurrency = (amount: number, symbol: string = ""): string => {
   });
   return `${symbol}${formatted}`;
 };
+
+const formatSignedCurrency = (amount: number, symbol: string = ""): string =>
+  `${amount < 0 ? "-" : ""}${formatCurrency(amount, symbol)}`;
+
+function getNonNegativeTransactionPortion(
+  value: number | null | undefined
+): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : 0;
+}
 
 function getStatementToolbarStyles(): string {
   return `
@@ -249,7 +279,10 @@ function getStatementToolbarHTML(filename: string): string {
   </div>`;
 }
 
-function getStatementToolbarScript(defaultFilename: string): string {
+function getStatementToolbarScript(
+  defaultFilename: string,
+  pdfOrientation: "portrait" | "landscape" = "portrait"
+): string {
   return `
     (function() {
       var fromInput = document.getElementById('statement-from-date');
@@ -360,7 +393,7 @@ function getStatementToolbarScript(defaultFilename: string): string {
             filename: filename,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: '${pdfOrientation}' },
             pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
           };
 
@@ -381,6 +414,15 @@ function getStatementToolbarScript(defaultFilename: string): string {
 
 
 export function generateLoanStatementHTML(data: LoanStatementData): string {
+  const ledgerClosingBalance =
+    typeof data.ledgerClosingBalance === "number"
+      ? data.ledgerClosingBalance
+      : data.openingBalance + data.totalDebits - data.totalCredits;
+  const hasAuthoritativeSummary = data.closingBalanceSource === "summary";
+  const closingBalanceLabel = hasAuthoritativeSummary
+    ? "Closing Outstanding Balance"
+    : "Closing Balance";
+
   // Generate transaction rows
   const transactionRows = data.transactions
     .map(
@@ -391,7 +433,11 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
         <td class="trxn-id-cell">${tx.trxnId}</td>
         <td class="amount-cell">${formatCurrency(tx.debit, "")}</td>
         <td class="amount-cell">${formatCurrency(tx.credit, "")}</td>
-        <td class="amount-cell balance-cell">${formatCurrency(tx.cumulativeBalance, "")}</td>
+        <td class="amount-cell component-cell">${formatCurrency(tx.principal ?? 0, "")}</td>
+        <td class="amount-cell component-cell">${formatCurrency(tx.interest ?? 0, "")}</td>
+        <td class="amount-cell component-cell">${formatCurrency(tx.fees ?? 0, "")}</td>
+        <td class="amount-cell component-cell">${formatCurrency(tx.penalties ?? 0, "")}</td>
+        <td class="amount-cell balance-cell">${formatSignedCurrency(tx.cumulativeBalance, "")}</td>
       </tr>
     `
     )
@@ -406,7 +452,7 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
   <style>
     @page {
       margin: 0.4in;
-      size: A4;
+      size: A4 landscape;
     }
     
     * {
@@ -520,20 +566,23 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
     .transactions-section {
       margin-top: 20px;
       margin-bottom: 20px;
+      overflow-x: auto;
     }
     
     .transactions-table {
       width: 100%;
+      min-width: 980px;
       border-collapse: collapse;
+      table-layout: fixed;
     }
     
     .transactions-table th {
       background: #f5f5f5;
-      padding: 10px 8px;
+      padding: 7px 5px;
       text-align: left;
       font-weight: bold;
       border-bottom: 2px solid #000;
-      font-size: 11px;
+      font-size: 10px;
     }
     
     .transactions-table th.amount-header {
@@ -541,9 +590,9 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
     }
     
     .transactions-table td {
-      padding: 8px;
+      padding: 6px 5px;
       border-bottom: 1px solid #ddd;
-      font-size: 11px;
+      font-size: 10px;
     }
     
     .transactions-table .date-cell {
@@ -563,6 +612,10 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
       width: 100px;
       text-align: right;
       font-family: 'Courier New', monospace;
+    }
+
+    .transactions-table .component-cell {
+      width: 82px;
     }
     
     .transactions-table .balance-cell {
@@ -667,6 +720,20 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
       .statement-toolbar {
         display: none !important;
       }
+
+      .transactions-section {
+        overflow: visible;
+      }
+
+      .transactions-table {
+        min-width: 0;
+      }
+
+      .transactions-table th,
+      .transactions-table td {
+        font-size: 9px;
+        padding: 4px 3px;
+      }
     }
     
     ${getStatementToolbarStyles()}
@@ -724,16 +791,20 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
       <table class="transactions-table">
         <thead>
           <tr>
-            <th>Transaction Date</th>
-            <th>Trxn Type</th>
-            <th class="amount-header">Trxn ID</th>
+            <th>Date</th>
+            <th>Type</th>
+            <th class="amount-header">ID</th>
             <th class="amount-header">Debit</th>
             <th class="amount-header">Credit</th>
-            <th class="amount-header">Cumulative Balance</th>
+            <th class="amount-header">Principal</th>
+            <th class="amount-header">Interest</th>
+            <th class="amount-header">Fees</th>
+            <th class="amount-header">Penalties</th>
+            <th class="amount-header">Running Ledger Balance</th>
           </tr>
         </thead>
         <tbody>
-          ${transactionRows || '<tr><td colspan="6" style="text-align: center; padding: 20px;">No transactions found</td></tr>'}
+          ${transactionRows || '<tr><td colspan="10" style="text-align: center; padding: 20px;">No transactions found</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -771,9 +842,14 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
               <td>Total Credits</td>
               <td>${data.currencySymbol}${formatCurrency(data.totalCredits, "")}</td>
             </tr>
+            ${hasAuthoritativeSummary ? `
+            <tr>
+              <td>Transaction Ledger Balance</td>
+              <td>${formatSignedCurrency(ledgerClosingBalance, data.currencySymbol)}</td>
+            </tr>` : ""}
             <tr class="closing-row">
-              <td>Closing Balance</td>
-              <td>${data.currencySymbol}${formatCurrency(data.closingBalance, "")}</td>
+              <td>${closingBalanceLabel}</td>
+              <td>${formatSignedCurrency(data.closingBalance, data.currencySymbol)}</td>
             </tr>
           </tbody>
         </table>
@@ -782,7 +858,7 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
   </div>
   <script src="/html2pdf.bundle.min.js"></script>
   <script>
-    ${getStatementToolbarScript("loan-statement.pdf")}
+    ${getStatementToolbarScript("loan-statement.pdf", "landscape")}
   </script>
 </body>
 </html>`;
@@ -854,6 +930,16 @@ export function getStatementTransactionAmounts(tx: TransactionLike) {
     tx.type?.code?.includes("writeOff") ||
     tx.type?.value?.toLowerCase().includes("write-off");
   const isReversed = isTransactionReversed(tx);
+  const rawPrincipal = getNonNegativeTransactionPortion(tx.principalPortion);
+  // Fineract disbursement transactions carry the principal in `amount` and
+  // commonly leave `principalPortion` at zero.
+  const principal =
+    isDisbursement && rawPrincipal === 0
+      ? getNonNegativeTransactionPortion(tx.amount)
+      : rawPrincipal;
+  const interest = getNonNegativeTransactionPortion(tx.interestPortion);
+  const fees = getNonNegativeTransactionPortion(tx.feeChargesPortion);
+  const penalties = getNonNegativeTransactionPortion(tx.penaltyChargesPortion);
 
   let debit = 0;
   let credit = 0;
@@ -874,6 +960,10 @@ export function getStatementTransactionAmounts(tx: TransactionLike) {
   return {
     debit,
     credit,
+    principal,
+    interest,
+    fees,
+    penalties,
     isHighlighted,
     isReversed,
     effectiveDebit: isReversed ? 0 : debit,
@@ -1084,7 +1174,8 @@ export function transformFineractLoanToStatement(
   periodTo?: string,
   defaultCurrency?: string,
   preparedBy?: string,
-  interestRateDisplayMode: InterestRateDisplayMode = "annual"
+  interestRateDisplayMode: InterestRateDisplayMode = "annual",
+  options: LoanStatementTransformOptions = {}
 ): LoanStatementData {
   const currency = loan.currency || {};
   const summary = loan.summary || {};
@@ -1108,6 +1199,10 @@ export function transformFineractLoanToStatement(
     trxnId: "",
     debit: 0,
     credit: 0,
+    principal: 0,
+    interest: 0,
+    fees: 0,
+    penalties: 0,
     cumulativeBalance: 0,
     isHighlighted: false,
   });
@@ -1131,6 +1226,10 @@ export function transformFineractLoanToStatement(
     const {
       debit,
       credit,
+      principal,
+      interest,
+      fees,
+      penalties,
       isHighlighted,
       isReversed,
       effectiveDebit,
@@ -1141,10 +1240,10 @@ export function transformFineractLoanToStatement(
     totalCredits += effectiveCredit;
     runningBalance += effectiveDebit - effectiveCredit;
 
-    const cumulativeBalance =
-      typeof tx.outstandingLoanBalance === "number"
-        ? tx.outstandingLoanBalance
-        : Math.max(0, runningBalance);
+    // Fineract's outstandingLoanBalance is not reliable for all transaction
+    // types (notably accrual rows). Keep the running balance derived from the
+    // effective movement so reversed rows do not alter the ledger either.
+    const cumulativeBalance = runningBalance;
 
     processedTransactions.push({
       id: tx.id ?? 0,
@@ -1153,6 +1252,10 @@ export function transformFineractLoanToStatement(
       trxnId: tx.id?.toString() || "",
       debit,
       credit,
+      principal,
+      interest,
+      fees,
+      penalties,
       cumulativeBalance,
       isHighlighted,
       isReversed,
@@ -1180,7 +1283,21 @@ export function transformFineractLoanToStatement(
     parseFineractDate(timeline.actualDisbursementDate || timeline.submittedOnDate);
   const actualPeriodTo = periodTo || format(now, "dd MMMM yyyy");
   const printDate = format(now, "M/d/yyyy h:mm:ss a");
-  const closingBalance = openingBalance + totalDebits - totalCredits;
+  const ledgerClosingBalance = openingBalance + totalDebits - totalCredits;
+  const hasSummaryOutstanding =
+    typeof summary.totalOutstanding === "number" &&
+    Number.isFinite(summary.totalOutstanding);
+  const useTransactionLedgerBalance =
+    options.balanceSource === "transaction-ledger" ||
+    options.useTransactionLedgerBalance === true;
+  const closingBalanceSource: LoanStatementBalanceSource =
+    hasSummaryOutstanding && !useTransactionLedgerBalance
+      ? "summary"
+      : "transaction-ledger";
+  const closingBalance =
+    closingBalanceSource === "summary"
+      ? (summary.totalOutstanding as number)
+      : ledgerClosingBalance;
 
   // Create account name from client info
   const clientName = client?.displayName || loan.clientName || "N/A";
@@ -1214,7 +1331,9 @@ export function transformFineractLoanToStatement(
     openingBalance,
     totalDebits,
     totalCredits,
+    ledgerClosingBalance,
     closingBalance,
+    closingBalanceSource,
 
     preparedBy,
   };

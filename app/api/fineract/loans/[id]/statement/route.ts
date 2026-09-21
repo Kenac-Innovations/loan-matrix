@@ -28,6 +28,7 @@ export async function GET(
     const format = searchParams.get("format") || "html";
     const fromDate = searchParams.get("from");
     const toDate = searchParams.get("to");
+    const hasTransactionDateFilter = Boolean(fromDate || toDate);
 
     console.log("=== GENERATING LOAN STATEMENT ===");
     console.log("Loan ID:", loanId);
@@ -119,7 +120,7 @@ export async function GET(
 
     // Filter transactions by date if provided
     let transactions = loanData.transactions || [];
-    if (fromDate || toDate) {
+    if (hasTransactionDateFilter) {
       transactions = transactions.filter((tx: any) => {
         const txDate = Array.isArray(tx.date)
           ? new Date(tx.date[0], tx.date[1] - 1, tx.date[2])
@@ -157,7 +158,12 @@ export async function GET(
       formattedToDate,
       undefined,
       preparedBy,
-      interestRateDisplayMode
+      interestRateDisplayMode,
+      {
+        // The Fineract summary is the current full-loan balance, not an
+        // as-of balance for a filtered transaction period.
+        balanceSource: hasTransactionDateFilter ? "transaction-ledger" : "summary",
+      }
     );
 
     // Return based on requested format
