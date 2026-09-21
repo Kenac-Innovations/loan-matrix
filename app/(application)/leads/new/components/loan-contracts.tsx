@@ -71,6 +71,46 @@ function parseFineractErrorResponse(responseText: string): string {
   return responseText || "Fineract request failed";
 }
 
+const successfulLeadLoanOutcomes = new Set([
+  "created",
+  "created_and_linked",
+  "created_linked",
+  "loan_created",
+  "loan_created_and_linked",
+  "already_linked",
+  "linked",
+  "loan_linked",
+  "reconciled",
+  "reconcile_succeeded",
+  "success",
+  "succeeded",
+]);
+
+function isSuccessfulLeadLoanOutcome(outcome: unknown): boolean {
+  if (typeof outcome !== "string") return false;
+
+  const normalizedOutcome = outcome
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  return successfulLeadLoanOutcomes.has(normalizedOutcome);
+}
+
+function getLeadLoanCommandError(
+  payload: { message?: unknown; error?: unknown } | null | undefined,
+  fallback: string,
+): string {
+  const message = payload?.message || payload?.error;
+  return typeof message === "string" && message.trim()
+    ? message.trim()
+    : fallback;
+}
+
+function normalizeCreatedLoanId(value: unknown): number | null {
+  const loanId = Number(value);
+  return Number.isInteger(loanId) && loanId > 0 ? loanId : null;
+}
+
 function normalizeDatatableColumnName(name: string | undefined | null): string {
   if (!name) return "";
   return name
@@ -2287,11 +2327,11 @@ export function LoanContracts({
       return;
     }
 
-    if (!clientId || !contractData || !loanDetails || !loanTerms) {
+    if (!leadId || !clientId || !contractData || !loanDetails || !loanTerms) {
       toast({
         title: "Missing data",
         description:
-          "Required loan data is missing. Please complete all previous steps.",
+          "Required lead or loan data is missing. Please complete all previous steps.",
         variant: "destructive",
       });
       return;
@@ -2450,22 +2490,53 @@ export function LoanContracts({
       console.log("Creating loan with payload:", loanPayload);
       console.log("Loan charges being sent:", loanPayload.charges);
       console.log("Raw loanTerms.charges:", loanTerms.charges);
-      const loanResponse = await fineractFetch("/api/fineract/loans", {
+      const loanResponse = await fetch(`/api/leads/${leadId}/create-loan`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(loanPayload),
+        body: JSON.stringify({ fineractPayload: loanPayload }),
       });
 
-      if (!loanResponse.ok) {
-        const errorData = await loanResponse.json();
-        throw new Error(errorData.error || "Failed to create loan");
+      const loanResponseText = await loanResponse.text();
+      let loanResult: Record<string, unknown> = {};
+      try {
+        loanResult = loanResponseText ? JSON.parse(loanResponseText) : {};
+      } catch {
+        loanResult = { error: loanResponseText };
       }
 
-      const loanResult = await loanResponse.json();
-      const createdLoanId =
-        loanResult.data.loanId || loanResult.data.resourceId;
+      if (!loanResponse.ok) {
+        throw new Error(
+          getLeadLoanCommandError(
+            loanResult,
+            "The server could not create and link the loan to this lead. Please retry or contact support.",
+          ),
+        );
+      }
+
+      if (
+        loanResult?.success !== true ||
+        !isSuccessfulLeadLoanOutcome(loanResult?.outcome)
+      ) {
+        const outcome =
+          typeof loanResult?.outcome === "string"
+            ? ` (outcome: ${loanResult.outcome})`
+            : "";
+        throw new Error(
+          getLeadLoanCommandError(
+            loanResult,
+            `The loan was not durably linked to this lead${outcome}. No contract documents were uploaded. Please retry or contact support.`,
+          ),
+        );
+      }
+
+      const createdLoanId = normalizeCreatedLoanId(loanResult?.loanId);
+      if (!createdLoanId) {
+        throw new Error(
+          "The loan command completed without a linked Fineract loan ID. No contract documents were uploaded. Please retry or contact support.",
+        );
+      }
 
       console.log("Loan created successfully:", createdLoanId);
 
@@ -2517,48 +2588,28 @@ export function LoanContracts({
         }
       }
 
-      // Save the Fineract loan ID and submission status to the lead
-      if (leadId && createdLoanId) {
+      // Attach credit facility only after the lead-scoped command confirms a
+      // successful outcome and durable local loan link.
+      if (facilityIntent) {
         try {
-          await fetch(`/api/leads/${leadId}`, {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              fineractLoanId: createdLoanId,
-              loanSubmittedToFineract: true,
-              loanSubmissionDate: new Date().toISOString(),
-            }),
-          });
-          console.log("Loan ID and submission status saved to lead");
-        } catch (err) {
-          console.error("Error saving loan ID to lead:", err);
-          // Don't block the flow
-        }
-
-        // Attach credit facility if officer chose to link one
-        if (facilityIntent && leadId) {
-          try {
-            if (facilityIntent.mode === "create") {
-              const facilityResult = await createCreditFacilityForLead(
-                leadId,
-                facilityIntent.facility
-              );
-              if (!facilityResult.success) {
-                console.error("Credit facility creation failed:", facilityResult.error);
-                toast({ title: "Warning", description: `Loan created, but facility setup failed: ${facilityResult.error}`, variant: "destructive" });
-              }
-            } else if (facilityIntent.mode === "link") {
-              const linkResult = await linkLoanToExistingFacility(leadId, loanPayload.principal);
-              if (!linkResult.success) {
-                console.error("Facility link failed:", linkResult.error);
-                toast({ title: "Warning", description: `Loan created, but facility link failed: ${linkResult.error}`, variant: "destructive" });
-              }
+          if (facilityIntent.mode === "create") {
+            const facilityResult = await createCreditFacilityForLead(
+              leadId,
+              facilityIntent.facility,
+            );
+            if (!facilityResult.success) {
+              console.error("Credit facility creation failed:", facilityResult.error);
+              toast({ title: "Warning", description: `Loan created, but facility setup failed: ${facilityResult.error}`, variant: "destructive" });
             }
-          } catch (facilityErr) {
-            console.error("Facility operation error:", facilityErr);
+          } else if (facilityIntent.mode === "link") {
+            const linkResult = await linkLoanToExistingFacility(leadId, loanPayload.principal);
+            if (!linkResult.success) {
+              console.error("Facility link failed:", linkResult.error);
+              toast({ title: "Warning", description: `Loan created, but facility link failed: ${linkResult.error}`, variant: "destructive" });
+            }
           }
+        } catch (facilityErr) {
+          console.error("Facility operation error:", facilityErr);
         }
       }
 

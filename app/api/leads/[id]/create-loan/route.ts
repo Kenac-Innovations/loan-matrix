@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { fetchFineractAPI } from "@/lib/api";
-import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { format } from "date-fns";
+
+import prisma from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { callCDEAndStore } from "@/lib/cde-utils";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { sendLoanStatusSms } from "@/lib/notification-service";
+import {
+  createLeadTenantContext,
+  LeadTenantContextError,
+} from "@/lib/lead-tenant-context";
+import {
+  extractTenantSlugFromRequest,
+  getTenantBySlug,
+} from "@/lib/tenant-service";
+import {
+  LeadLoanLinkingError,
+  reconcileLeadLoan,
+} from "@/lib/lead-loan-linking";
 
 function isOverdueChargeLike(charge?: any) {
   const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
@@ -23,7 +34,6 @@ function isOverdueChargeLike(charge?: any) {
 
   return !timeType && Boolean(charge?.originalCharge?.penalty ?? charge?.penalty);
 }
-
 function isSpecifiedDueDateCharge(charge?: any) {
   const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
   const code = String(timeType?.code || "").toLowerCase();
@@ -37,39 +47,206 @@ function isSpecifiedDueDateCharge(charge?: any) {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function toPositiveInt(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
+async function resolveLeadTenant(request: Request) {
+  const session = await getSession();
+  if (!session?.user?.id) {
+    throw new LeadLoanLinkingError("Unauthorized", {
+      status: 401,
+      code: "UNAUTHORIZED",
+    });
+  }
+
+  const requestedSlug = extractTenantSlugFromRequest(request);
+  const [requestTenant, sessionTenant] = await Promise.all([
+    getTenantBySlug(requestedSlug),
+    session.user.tenantId
+      ? prisma.tenant.findFirst({
+          where: { id: session.user.tenantId, isActive: true },
+          select: { id: true, slug: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  if (!requestTenant) {
+    throw new LeadLoanLinkingError("Tenant not found", {
+      status: 404,
+      code: "TENANT_NOT_FOUND",
+    });
+  }
+
+  try {
+    return {
+      session,
+      context: createLeadTenantContext({
+        sessionTenantId: session.user.tenantId,
+        requestTenant,
+        sessionTenant,
+      }),
+    };
+  } catch (error) {
+    if (error instanceof LeadTenantContextError) {
+      throw new LeadLoanLinkingError(error.message, {
+        status: 409,
+        code: "TENANT_CONTEXT_CONFLICT",
+      });
+    }
+    throw error;
+  }
+}
+
+function buildLegacyFineractPayload(
+  leadId: string,
+  loanData: Record<string, any>
+): Record<string, unknown> {
+  const submittedDate = loanData.submittedOn
+    ? new Date(loanData.submittedOn)
+    : new Date();
+  const disbursementDate = loanData.disbursementOn
+    ? new Date(loanData.disbursementOn)
+    : new Date();
+  const firstRepaymentDate = loanData.firstRepaymentOn
+    ? new Date(loanData.firstRepaymentOn)
+    : null;
+
+  const dateStr = format(submittedDate, "yyyy-MM-dd");
+  const disbursementDateStr = format(disbursementDate, "yyyy-MM-dd");
+  const requestedCharges = Array.isArray(loanData.charges)
+    ? loanData.charges.filter((charge: any) => !isOverdueChargeLike(charge))
+    : [];
+
+  const payload: Record<string, any> = {
+    clientId: loanData.clientId,
+    productId: loanData.productId,
+    principal: loanData.principal,
+    loanTermFrequency: loanData.loanTermFrequency || 12,
+    loanTermFrequencyType: 2,
+    numberOfRepayments: loanData.numberOfRepayments || 12,
+    repaymentEvery: loanData.repaymentEvery || 1,
+    repaymentFrequencyType: 2,
+    interestRatePerPeriod: loanData.interestRatePerPeriod || 7,
+    interestRateFrequencyType: 2,
+    interestType: 0,
+    amortizationType: 1,
+    interestCalculationPeriodType: 1,
+    transactionProcessingStrategyCode: "creocore-strategy",
+    submittedOnDate: dateStr,
+    expectedDisbursementDate: disbursementDateStr,
+    ...(firstRepaymentDate && {
+      repaymentsStartingFromDate: format(firstRepaymentDate, "yyyy-MM-dd"),
+    }),
+    ...(loanData.loanScheduleType
+      ? { loanScheduleType: loanData.loanScheduleType }
+      : {}),
+    balloonPaymentAmount: loanData.balloonRepaymentAmount ?? 0,
+    allowPartialPeriodInterestCalculation:
+      loanData.calculateInterestForExactDays ?? false,
+    allowPartialPeriodInterestCalcualtion:
+      loanData.calculateInterestForExactDays ?? false,
+    inArrearsTolerance: loanData.arrearsTolerance ?? 0,
+    graceOnInterestCharged: loanData.interestFreePeriod ?? 0,
+    graceOnPrincipalPayment: loanData.graceOnPrincipalPayment ?? 0,
+    graceOnInterestPayment: loanData.graceOnInterestPayment ?? 0,
+    graceOnArrearsAgeing: loanData.onArrearsAgeing ?? 0,
+    locale: "en",
+    dateFormat: "yyyy-MM-dd",
+    // The linking service overwrites this again immediately before POST.
+    externalId: leadId,
+    isEqualAmortization: false,
+    charges: requestedCharges.map((charge: any) => {
+      const calcCode: string =
+        charge.originalCharge?.chargeCalculationType?.code ?? "";
+      const isPercentage =
+        calcCode.toLowerCase().includes("percent") &&
+        typeof charge.originalCharge?.percentage === "number" &&
+        Number.isFinite(charge.originalCharge.percentage);
+
+      const chargePayload: Record<string, unknown> = {
+        chargeId: charge.chargeId,
+        amount: isPercentage
+          ? charge.originalCharge.percentage
+          : charge.amount,
+      };
+
+      if (charge.dueDate && isSpecifiedDueDateCharge(charge)) {
+        chargePayload.dueDate = charge.dueDate;
+      }
+
+      return chargePayload;
+    }),
+    collateral: [],
+    loanType: "individual",
+    ...(loanData.isTopup && loanData.loanIdToClose
+      ? { isTopup: true, loanIdToClose: parseInt(loanData.loanIdToClose, 10) }
+      : {}),
+  };
+
+  if (loanData.loanPurpose) payload.loanPurposeId = loanData.loanPurpose;
+  if (loanData.loanOfficer) payload.loanOfficerId = loanData.loanOfficer;
+  if (loanData.fund) payload.fundId = loanData.fund;
+
+  return payload;
+}
+
+function errorResponse(error: unknown) {
+  if (error instanceof LeadLoanLinkingError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message,
+        code: error.code,
+        details: error.details,
+      },
+      { status: error.status }
+    );
+  }
+
+  return buildFineractErrorResponse(error, {
+    action: "create",
+    resource: "loan",
+  });
+}
+
 /**
  * POST /api/leads/[id]/create-loan
- * Creates a Fineract loan from a manual lead and returns the core response.
+ *
+ * The route owns the tenant-scoped request and payload compatibility.  The
+ * linking service owns the remote idempotency check and durable local write.
  */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const leadId = id;
+    const { id: leadId } = await params;
+    const { context } = await resolveLeadTenant(request);
+    const loanData = (await request.json()) as Record<string, any>;
+    const nestedPayload = isRecord(loanData.fineractPayload)
+      ? { ...loanData.fineractPayload }
+      : null;
+    const source = nestedPayload || loanData;
+    const clientId = toPositiveInt(source.clientId);
+    const productId = toPositiveInt(source.productId);
+    const principal = Number(source.principal);
 
-    // Get the current session
-    const session = await getSession();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Load lead by ID
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
-    });
-
-    if (!lead) {
-      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-    }
-
-    // Get loan details from request body
-    const loanData = await request.json();
-
-    if (!loanData.clientId || !loanData.productId || !loanData.principal) {
+    if (!clientId || !productId || !Number.isFinite(principal) || principal <= 0) {
       return NextResponse.json(
         {
+          success: false,
           error:
             "Missing required loan data: clientId, productId, and principal are required",
         },
@@ -77,184 +254,63 @@ export async function POST(
       );
     }
 
-    // Determine submitted, expected disbursement, and first repayment dates
-    const submittedDate = loanData.submittedOn
-      ? new Date(loanData.submittedOn)
-      : new Date();
-    const disbursementDate = loanData.disbursementOn
-      ? new Date(loanData.disbursementOn)
-      : new Date();
-    const firstRepaymentDate = loanData.firstRepaymentOn
-      ? new Date(loanData.firstRepaymentOn)
-      : null;
-
-    const dateStr = format(submittedDate, "yyyy-MM-dd");
-    const disbursementDateStr = format(disbursementDate, "yyyy-MM-dd");
-
-    const requestedCharges = Array.isArray(loanData.charges)
-      ? loanData.charges.filter((charge: any) => !isOverdueChargeLike(charge))
-      : [];
-
-    // Build loan payload
-    const payload: any = {
-      clientId: loanData.clientId,
-      productId: loanData.productId,
-      principal: loanData.principal,
-      loanTermFrequency: loanData.loanTermFrequency || 12,
-      loanTermFrequencyType: 2, // Months
-      numberOfRepayments: loanData.numberOfRepayments || 12,
-      repaymentEvery: loanData.repaymentEvery || 1,
-      repaymentFrequencyType: 2, // Months
-      interestRatePerPeriod: loanData.interestRatePerPeriod || 7,
-      interestRateFrequencyType: 2, // Per month
-      interestType: 0, // Flat
-      amortizationType: 1, // Equal installments
-      interestCalculationPeriodType: 1, // Same as repayment period
-      transactionProcessingStrategyCode: "creocore-strategy",
-      submittedOnDate: dateStr,
-      expectedDisbursementDate: disbursementDateStr,
-      ...(firstRepaymentDate && {
-        repaymentsStartingFromDate: format(firstRepaymentDate, "yyyy-MM-dd"),
-      }),
-      ...(loanData.loanScheduleType
-        ? { loanScheduleType: loanData.loanScheduleType }
-        : {}),
-      balloonPaymentAmount: loanData.balloonRepaymentAmount ?? 0,
-      allowPartialPeriodInterestCalculation:
-        loanData.calculateInterestForExactDays ?? false,
-      allowPartialPeriodInterestCalcualtion:
-        loanData.calculateInterestForExactDays ?? false,
-      inArrearsTolerance: loanData.arrearsTolerance ?? 0,
-      graceOnInterestCharged: loanData.interestFreePeriod ?? 0,
-      graceOnPrincipalPayment: loanData.graceOnPrincipalPayment ?? 0,
-      graceOnInterestPayment: loanData.graceOnInterestPayment ?? 0,
-      graceOnArrearsAgeing: loanData.onArrearsAgeing ?? 0,
-      locale: "en",
-      dateFormat: "yyyy-MM-dd",
-      // Keep the lead ID as Fineract external ID for cross-system correlation.
-      externalId: leadId,
-      isEqualAmortization: false,
-      charges: requestedCharges.map((charge: any) => {
-            const calcCode: string =
-              charge.originalCharge?.chargeCalculationType?.code ?? "";
-            const isPercentage =
-              calcCode.toLowerCase().includes("percent") &&
-              typeof charge.originalCharge?.percentage === "number" &&
-              Number.isFinite(charge.originalCharge.percentage);
-
-            const chargePayload: any = { chargeId: charge.chargeId };
-
-            if (isPercentage) {
-              chargePayload.amount = charge.originalCharge.percentage;
-            } else {
-              chargePayload.amount = charge.amount;
-            }
-
-            if (charge.dueDate && isSpecifiedDueDateCharge(charge)) {
-              chargePayload.dueDate = charge.dueDate;
-            }
-
-            return chargePayload;
-          }),
-      collateral: [],
-      loanType: "individual",
-      ...(loanData.isTopup && loanData.loanIdToClose
-        ? { isTopup: true, loanIdToClose: parseInt(loanData.loanIdToClose) }
-        : {}),
-    };
-
-    // Add optional fields if provided
-    if (loanData.loanPurpose) {
-      payload.loanPurposeId = loanData.loanPurpose;
-    }
-
-    if (loanData.loanOfficer) {
-      payload.loanOfficerId = loanData.loanOfficer;
-    }
-
-    if (loanData.fund) {
-      payload.fundId = loanData.fund;
-    }
-
-    // POST to Fineract /loans
-    const result = await fetchFineractAPI("/loans", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    const fineractPayload = nestedPayload
+      ? nestedPayload
+      : buildLegacyFineractPayload(leadId, loanData);
+    const result = await reconcileLeadLoan({
+      tenantId: context.tenantId,
+      leadId,
+      expectedClientId: clientId,
+      fineractPayload,
+      allowCreate: true,
     });
 
-    if (result && result.resourceId) {
-      const loanId = result.resourceId;
-      const loanLinkedAt = new Date();
-
-      // Persist the local link as soon as Fineract creates the loan. This must
-      // not depend on any secondary Fineract update, otherwise successful loan
-      // creations can be left unlinked in Loan Matrix.
-      await prisma.lead.update({
-        where: { id: leadId },
-        data: {
-          fineractLoanId: loanId,
-          loanSubmittedToFineract: true,
-          loanSubmissionDate: loanLinkedAt,
-          fineractClientId: loanData.clientId,
-          clientCreatedInFineract: true,
-          clientCreationDate: lead.clientCreationDate || loanLinkedAt,
-          stateMetadata: {
-            ...((lead.stateMetadata as any) || {}),
-            loanId: loanId,
-            loanExternalId: leadId,
-            loanCreatedAt: loanLinkedAt.toISOString(),
-          },
+    if (!result.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          terminal: result.terminal,
+          outcome: result.action,
+          coreResponse: result.fineractResponse,
+          loanId: result.loanId,
+          error:
+            "The matching Fineract loan is already rejected or withdrawn. The local link was saved, but the submission is not complete.",
         },
-      });
+        { status: 409 }
+      );
     }
 
-    // Send SMS: loan submitted, pending approval (best-effort)
-    if (result?.resourceId && lead?.mobileNo) {
-      void (async () => {
-        const tenant = await prisma.tenant.findUnique({
-          where: { id: lead.tenantId },
-          select: { slug: true },
-        });
-        const clientName = [lead.firstname, lead.middlename, lead.lastname]
-          .filter(Boolean)
-          .join(" ");
-        await sendLoanStatusSms({
-          type: "pending_approval",
-          clientName: clientName || "Customer",
-          phone: lead.mobileNo,
-          countryCode: lead.countryCode,
-          amount: Number(loanData.principal) || 0,
-          tenantId: tenant?.slug,
-        });
-      })().catch((smsError) => {
+    // SMS is intentionally best effort and only sent when this request
+    // created/adopted a remote loan.  A local retry must not send duplicates.
+    if (
+      (result.action === "created" || result.action === "linked") &&
+      result.lead.mobileNo
+    ) {
+      void sendLoanStatusSms({
+        type: "pending_approval",
+        clientName:
+          [result.lead.firstname, result.lead.middlename, result.lead.lastname]
+            .filter(Boolean)
+            .join(" ") || "Customer",
+        phone: String(result.lead.mobileNo),
+        countryCode: result.lead.countryCode as string | undefined,
+        amount: principal || 0,
+        tenantId: context.tenantSlug,
+      }).catch((smsError) => {
         console.error("Failed to send pending-approval SMS:", smsError);
       });
     }
 
-    // Call CDE to evaluate the loan application after loan creation
-    try {
-      console.log("=== CALLING CDE AFTER LOAN CREATION ===");
-      // For server-side calls, we can use a relative URL or construct from headers
-      const cdeResult = await callCDEAndStore(leadId);
-      if (cdeResult) {
-        console.log("CDE evaluation completed:", cdeResult.decision);
-      }
-    } catch (cdeError) {
-      console.error("Error calling CDE after loan creation:", cdeError);
-      // Don't fail the request if CDE call fails
-    }
-
+    // PDFs and CDE remain client-side follow-up work after this response.
     return NextResponse.json({
       success: true,
-      coreResponse: result,
-      loanId: result?.resourceId,
+      outcome: result.action,
+      coreResponse: result.fineractResponse,
+      loanId: result.loanId,
+      reconciled: result.action !== "created",
     });
-  } catch (error: any) {
-    console.error("Error creating loan from lead:", error);
-    return buildFineractErrorResponse(error, {
-      action: "create",
-      resource: "loan",
-    });
+  } catch (error) {
+    console.error("Error creating/reconciling loan from lead:", error);
+    return errorResponse(error);
   }
 }
