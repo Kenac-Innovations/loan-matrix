@@ -3,6 +3,20 @@ import { headers } from "next/headers";
 import { TenantInfo } from "@/shared/types/tenant";
 
 /**
+ * Thrown when a request's host resolves to a specific tenant slug that has
+ * no matching active tenant. Callers must surface this as an error rather
+ * than catch it and substitute a different (real) tenant's data.
+ */
+export class UnresolvedTenantError extends Error {
+  constructor(public readonly requestedSlug: string) {
+    super(
+      `No active organization is registered for '${requestedSlug}'. Refusing to fall back to a different tenant.`
+    );
+    this.name = "UnresolvedTenantError";
+  }
+}
+
+/**
  * Extract tenant slug from subdomain
  * Examples:
  * - acme.localhost:3000 -> acme
@@ -106,12 +120,12 @@ export async function getTenantFromHeaders(): Promise<TenantInfo | null> {
     if (t) return t;
   }
 
-  const envTenant = process.env.FINERACT_TENANT_ID;
-  if (envTenant) {
-    const t = await getTenantBySlug(envTenant);
-    if (t) return t;
-  }
-
+  // Deliberately no FINERACT_TENANT_ID / "goodfellow" fallback here: every
+  // header source above carried a real, resolvable host. If none of them
+  // matched an active tenant, the caller must treat this as "unresolved"
+  // (null), not silently receive a different, real tenant's data. Only
+  // getOrCreateDefaultTenant()'s no-host-context path is allowed to use the
+  // environment default, and only when there was no host to resolve at all.
   return null;
 }
 
@@ -136,7 +150,13 @@ export function extractTenantSlugFromRequest(req: Request): string {
   if (host) {
     return extractTenantSlug(host);
   }
-  return process.env.FINERACT_TENANT_ID || "goodfellow";
+  // No usable host information on this request at all (real HTTP requests
+  // always carry a Host header, so this is effectively unreachable in
+  // production traffic). Return an empty slug rather than a real tenant's
+  // default: callers pass this to getTenantBySlug, which will correctly
+  // find nothing, and any getOrCreateDefaultTenant() fallback then applies
+  // its own no-host-context check consistently.
+  return "";
 }
 
 /**
@@ -173,11 +193,31 @@ export async function getTenantBySlug(
 }
 
 /**
- * Get or create default tenant
+ * Get or create the default tenant.
+ *
+ * This is only safe to use when there is no host context to resolve a
+ * tenant from (background jobs, seed scripts). Callers that already tried
+ * to resolve a tenant from the current request's host and got nothing back
+ * must NOT reach this as a fallback: if a specific organization was
+ * requested (e.g. a real but unregistered subdomain) and it doesn't
+ * exist, that is an error, not license to substitute a different tenant's
+ * data. See getRequestedTenantSlugFromHeaders.
  */
 export async function getOrCreateDefaultTenant(): Promise<TenantInfo> {
+  let requestedSlug = "";
+  try {
+    requestedSlug = await getRequestedTenantSlugFromHeaders();
+  } catch {
+    // headers() throws outside a request scope (background jobs, scripts).
+    // That's the one legitimate case for falling back to a real default.
+  }
+
+  if (requestedSlug) {
+    throw new UnresolvedTenantError(requestedSlug);
+  }
+
   // Try to find goodfellow tenant first
-  let tenant = await getTenantBySlug("goodfellow");
+  let tenant = await getTenantBySlug(process.env.FINERACT_TENANT_ID || "goodfellow");
 
   if (!tenant) {
     // Fallback to default tenant
