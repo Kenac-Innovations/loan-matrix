@@ -3,31 +3,14 @@ import prisma from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { refreshBulkRepaymentUploadStats } from "@/lib/bulk-repayment-upload-stats";
-import { getBulkRepaymentReversalQueueService } from "@/lib/bulk-repayment-reversal-queue-service";
-
-function getQueueErrorMessage(error: unknown): string {
-  if (error && typeof error === "object") {
-    const apiError = error as {
-      message?: string;
-      errorData?: {
-        defaultUserMessage?: string;
-        errors?: Array<{ defaultUserMessage?: string }>;
-      };
-    };
-
-    return (
-      apiError.message ||
-      "Failed to queue batch undo"
-    );
-  }
-
-  return "Failed to queue batch undo";
-}
 
 /**
  * POST — Queue many bulk repayments for reversal in LIFO order.
  *
  * Body: { itemIds?: string[] } — if omitted, all eligible SUCCESS items are queued (LIFO).
+ *
+ * loan-matrix-be's bulk repayment reversal worker polls for reversalStatus
+ * QUEUED items and posts the undo to Fineract.
  */
 export async function POST(
   request: NextRequest,
@@ -84,7 +67,6 @@ export async function POST(
       });
     }
 
-    const queueService = getBulkRepaymentReversalQueueService();
     const queued: string[] = [];
     const failed: { itemId: string; loanId: number; error: string }[] = [];
 
@@ -92,39 +74,19 @@ export async function POST(
       const tid = item.fineractTxnId?.trim();
       if (!tid) continue;
 
-      const txnDate =
-        item.transactionDate ?? item.processedAt ?? new Date();
-
       try {
         await prisma.bulkRepaymentItem.update({
           where: { id: item.id },
           data: {
             reversalStatus: "QUEUED",
             reversalErrorMessage: null,
+            reversedBy: session.user.id,
           },
-        });
-
-        await queueService.publishReversal({
-          itemId: item.id,
-          uploadId,
-          tenantSlug: tenant.slug,
-          loanId: item.loanId,
-          fineractTransactionId: tid,
-          transactionDate: txnDate.toISOString(),
-          amount: Number(item.amount),
-          reversedBy: session.user.id,
         });
 
         queued.push(item.id);
       } catch (err: unknown) {
-        const msg = getQueueErrorMessage(err);
-        await prisma.bulkRepaymentItem.update({
-          where: { id: item.id },
-          data: {
-            reversalStatus: "FAILED",
-            reversalErrorMessage: msg,
-          },
-        });
+        const msg = err instanceof Error ? err.message : "Failed to queue undo";
         console.error(
           `[BulkRepayment] Batch reverse item ${item.id} failed to queue:`,
           err
