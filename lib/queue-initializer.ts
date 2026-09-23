@@ -1,42 +1,50 @@
-// Queue consumer initialization
-// This module initializes the queue consumers when imported
+// Background job initialization — this module starts on server boot (see
+// instrumentation.ts).
 //
-// Bulk repayment processing (repayments + reversals) no longer runs here.
-// loan-matrix-be now polls BulkRepaymentItem directly for QUEUED rows and
-// posts to Fineract itself — see zw.co.kenac.loanmatrixbe.bulkrepayments.
-// This module only remains responsible for the USSD loan application queue.
+// There is no RabbitMQ (or any other message broker) used by this app
+// anymore. Both background flows that used to run through AMQP consumers
+// now work by polling Postgres:
+//
+// - Bulk repayments (Collections): loan-matrix-be polls BulkRepaymentItem
+//   directly for QUEUED rows and posts to Fineract itself — see
+//   zw.co.kenac.loanmatrixbe.bulkrepayments. Nothing to start here.
+// - USSD loan applications: loan-matrix-be still consumes
+//   ussdloanapplications.queue (see
+//   zw.co.kenac.loanmatrixbe.ussdloans.service.UssdLoanApplicationListener)
+//   and inserts rows here, but the auto-lead-creation /
+//   CDE-decisioning / auto-disbursement pipeline is Next.js-only business
+//   logic that stayed here — see lib/ussd-auto-processing-poller.ts. This
+//   module just runs that poller on an interval.
 
-import { getUssdQueueConsumer } from './ussd-queue-consumer';
+import { pollUssdAutoProcessing } from "./ussd-auto-processing-poller";
 
-// Prevent multiple initializations using global variable
 declare global {
-  var __queueConsumerInitialized: boolean | undefined;
+  var __ussdAutoProcessingPollerStarted: boolean | undefined;
 }
 
-const queueConsumersDisabled =
+const POLL_INTERVAL_MS = 5000;
+
+const pollersDisabled =
   process.env.DISABLE_QUEUE_CONSUMERS === "true" ||
   process.env.DISABLE_QUEUE_CONSUMERS === "1";
 
-if (queueConsumersDisabled) {
-  console.log("Queue consumers disabled via DISABLE_QUEUE_CONSUMERS");
+if (pollersDisabled) {
+  console.log("Background pollers disabled via DISABLE_QUEUE_CONSUMERS");
 }
 
-// Initialize the queue consumers only once
 if (
-  !queueConsumersDisabled &&
+  !pollersDisabled &&
   process.env.NODE_ENV !== "test" &&
-  !global.__queueConsumerInitialized
+  !global.__ussdAutoProcessingPollerStarted
 ) {
-  global.__queueConsumerInitialized = true;
+  global.__ussdAutoProcessingPollerStarted = true;
 
-  // USSD Loan Application consumer
-  try {
-    const consumer = getUssdQueueConsumer();
-    console.log('USSD queue consumer initialized');
-    consumer.start().catch((error) => {
-      console.error('Failed to start USSD queue consumer:', error);
+  console.log(
+    `USSD auto-processing poller started (every ${POLL_INTERVAL_MS}ms)`
+  );
+  setInterval(() => {
+    pollUssdAutoProcessing().catch((error) => {
+      console.error("USSD auto-processing poll tick failed:", error);
     });
-  } catch (error) {
-    console.error('Failed to initialize USSD queue consumer:', error);
-  }
+  }, POLL_INTERVAL_MS);
 }
