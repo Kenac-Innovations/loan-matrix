@@ -9,10 +9,14 @@ function readRepoFile(relativePath: string): string {
   return readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
-test("AMQP USSD consumer reuses tenant product rules to auto-create leads", () => {
-  const source = readRepoFile("lib/amqp-queue-service.ts");
+test("USSD auto-processing poller reuses tenant product rules to auto-create leads", () => {
+  const pollerSource = readRepoFile("lib/ussd-auto-processing-poller.ts");
+  assert.match(pollerSource, /getTenantUssdAutoLeadRules/);
+  assert.match(pollerSource, /findMatchingUssdAutoLeadRule/);
+  assert.match(pollerSource, /processUssdApplicationToDisbursement/);
 
-  assert.match(source, /getTenantUssdAutoLeadRules/);
-  assert.match(source, /findMatchingUssdAutoLeadRule/);
-  assert.match(source, /createOrReuseLeadFromUssdApplication/);
+  // The lead-creation call itself lives in the shared processing service the
+  // poller calls into, not the poller module.
+  const processingSource = readRepoFile("lib/ussd-loan-processing-service.ts");
+  assert.match(processingSource, /createOrReuseLeadFromUssdApplication/);
 });
