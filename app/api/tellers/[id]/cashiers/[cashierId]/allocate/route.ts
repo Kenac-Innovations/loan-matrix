@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { upsertRepaymentCashLink } from "@/lib/repayment-cash-link";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
-import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getOrgCurrencyForWrite } from "@/lib/currency-utils";
 import { getGlAccountBalance } from "@/lib/gl-balance";
 
 /**
@@ -187,9 +187,34 @@ export async function POST(
     // Note: No session required for allocating cash to cashier
     // Cash allocation happens BEFORE starting a session - the allocated cash becomes the opening float
 
+    const organizationCurrency = await getOrgCurrencyForWrite().catch((error) => {
+      console.error("[Allocate] Failed to resolve organization currency:", error);
+      return null;
+    });
+    if (!organizationCurrency) {
+      return NextResponse.json(
+        { error: "Organization currency could not be resolved" },
+        { status: 503 }
+      );
+    }
+
+    const requestedCurrency =
+      typeof currency === "string" ? currency.trim().toUpperCase() : "";
+    const requestedDisplayCurrency = requestedCurrency === "ZMK" ? "ZMW" : requestedCurrency;
+    if (requestedDisplayCurrency !== organizationCurrency.displayCode) {
+      return NextResponse.json(
+        {
+          error: "Currency does not match the organization's currency",
+          details: `Expected ${organizationCurrency.displayCode}, received ${requestedCurrency || "an invalid currency"}.`,
+        },
+        { status: 400 }
+      );
+    }
+
     // Calculate available balance - must DECREASE when loans are disbursed, and handle deposits
     // allocatedToCashiers = cash currently in cashier tills. Use netCash (current balance), NOT sumCashAllocation (cumulative).
-    const validationCurrency = await getOrgRawCurrencyCode();
+    const validationCurrency = organizationCurrency.rawCode;
+    const displayCurrency = organizationCurrency.displayCode;
     const tellerVaultAllocations = await prisma.cashAllocation.findMany({
       where: {
         tellerId: teller.id,
@@ -309,8 +334,8 @@ export async function POST(
 
     // Always use the raw Fineract currency code (e.g. "ZMK") so allocations are stored
     // under the same code that cashier summary queries use. validationCurrency is already
-    // the raw code from getOrgRawCurrencyCode() fetched above.
-    const allocateCurrency = validationCurrency || currency?.toUpperCase() || "ZMW";
+    // the selected organization currency fetched above.
+    const allocateCurrency = validationCurrency;
 
     // Allocate cash in Fineract – require resourceId as proof the request hit Fineract
     let fineractAllocationId: number | null = null;
@@ -387,7 +412,7 @@ export async function POST(
           loanId,
           transactionType,
           amount: parseFloat(amount),
-          currency: allocateCurrency,
+          currency: displayCurrency,
           tellerId: teller.id,
           cashierId: cashier.id,
           fineractAllocationId,
@@ -469,7 +494,7 @@ export async function POST(
           cashierId: cashier.id, // Must be set for cashier allocations
           fineractAllocationId: fineractAllocationId || null, // Use null if undefined/0 or duplicate
           amount: parseFloat(amount),
-          currency: currency,
+          currency: displayCurrency,
           allocatedBy: session.user.id,
           notes,
           status: "ACTIVE",
@@ -491,7 +516,7 @@ export async function POST(
             cashierId: cashier.id,
             fineractAllocationId: null, // Set to null to avoid constraint
             amount: parseFloat(amount),
-            currency: currency,
+            currency: displayCurrency,
             allocatedBy: session.user.id,
             notes: `${
               notes || ""
