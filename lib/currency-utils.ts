@@ -10,6 +10,11 @@
  */
 
 import { fetchFineractAPI } from "./api";
+import { parseOrgCurrencyForWrite } from "./currency-contract";
+import type { OrgCurrencyForWrite } from "./currency-contract";
+
+export { parseOrgCurrencyForWrite } from "./currency-contract";
+export type { OrgCurrencyForWrite } from "./currency-contract";
 
 let cachedCurrencyCode: string | null = null;
 let cachedRawCurrencyCode: string | null = null;
@@ -23,6 +28,27 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 function normalizeCode(code: string): string {
   if (code.toUpperCase() === "ZMK") return "ZMW";
   return code;
+}
+
+/**
+ * Resolve the selected organization currency for a write operation.
+ *
+ * Unlike the read/display helpers below, this deliberately does not use the
+ * permissive USD fallback or a stale cache. A write must stop if Fineract
+ * cannot identify the tenant's selected currency.
+ */
+export async function getOrgCurrencyForWrite(): Promise<OrgCurrencyForWrite> {
+  let data: unknown;
+
+  try {
+    data = await fetchFineractAPI("/currencies");
+  } catch (error) {
+    throw new Error("Unable to resolve the selected organization currency", {
+      cause: error,
+    });
+  }
+
+  return parseOrgCurrencyForWrite(data);
 }
 
 /**
