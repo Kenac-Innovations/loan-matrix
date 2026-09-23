@@ -59,6 +59,16 @@ function buildProcessingNotes(result: UssdLoanProcessingResult): string {
 // tenant config, so if nothing matched within this window nothing ever
 // will. Bounding the poll window keeps the query cheap instead of
 // re-scanning every unmatched application that's ever been queued.
+//
+// Bound on createdAt, not queuedAt: every historical row (100% of ~117k)
+// has queuedAt stuck at Unix epoch — the USSD gateway appears to send an
+// uninitialized timestamp for that field. The old inline consumer never
+// depended on queuedAt for anything functional, so this was invisible;
+// filtering on it here would mean this poller never matches anything,
+// ever, and auto-lead-creation/auto-disbursement silently stops working
+// for every future application. createdAt is DB/app-generated and
+// reliable — both Prisma's default and loan-matrix-be's
+// PrismaTimestamps.nowUtc() set it accurately on ingest.
 const CANDIDATE_WINDOW_MS = 60 * 60 * 1000;
 const BATCH_SIZE = 25;
 
@@ -85,9 +95,9 @@ export async function pollUssdAutoProcessing(): Promise<void> {
     const candidates = await prisma.ussdLoanApplication.findMany({
       where: {
         status: "CREATED",
-        queuedAt: { gte: new Date(Date.now() - CANDIDATE_WINDOW_MS) },
+        createdAt: { gte: new Date(Date.now() - CANDIDATE_WINDOW_MS) },
       },
-      orderBy: { queuedAt: "asc" },
+      orderBy: { createdAt: "asc" },
       take: BATCH_SIZE,
     });
 
