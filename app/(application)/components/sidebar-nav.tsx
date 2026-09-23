@@ -76,6 +76,11 @@ export function SidebarNav({
 
   const organizationSubMenuItems: SubMenuItem[] = [];
 
+  organizationSubMenuItems.push(
+    { label: "Manage Offices", href: "/organization/offices" },
+    { label: "Manage Holidays", href: "/organization/holidays" },
+  );
+
   if (canReadUsers) {
     organizationSubMenuItems.push({ label: "Users", href: "/organization/users" });
   }
@@ -206,7 +211,7 @@ export function SidebarNav({
       <MenuItemWithSubmenu
         icon={<Building2 />}
         label="Organization"
-        href={organizationSubMenuItems[0]?.href || "/organization/payment-types"}
+        href="/organization/offices"
         subMenuItems={organizationSubMenuItems}
       />
 
