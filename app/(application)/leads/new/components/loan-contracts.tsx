@@ -371,6 +371,11 @@ export function LoanContracts({
   const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null);
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string | null>(null);
+  const [backendMode, setBackendMode] = useState(false);
+  const [renderedContractHtml, setRenderedContractHtml] = useState<string | null>(null);
+  const [renderedMandateHtml, setRenderedMandateHtml] = useState<string | null>(null);
+  const [isRenderingPreview, setIsRenderingPreview] = useState(false);
+  const [renderPreviewError, setRenderPreviewError] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
   const isInvoiceDiscountingLoan =
@@ -542,6 +547,29 @@ export function LoanContracts({
     };
   }, []);
 
+  // Fetch backend mode status on mount
+  useEffect(() => {
+    if (!leadId) return;
+
+    let cancelled = false;
+    fetch(`/api/leads/${leadId}/contracts/mode`)
+      .then((res) => (res.ok ? res.json() : { backend: false }))
+      .then((data) => {
+        if (!cancelled) {
+          setBackendMode(!!data.backend);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBackendMode(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
+
   // Transform contract data to Key Facts Statement format
   const getKeyFactsData = (): KeyFactsData | null => {
     if (!contractData) return null;
@@ -588,9 +616,34 @@ export function LoanContracts({
     };
   };
 
+  // Convert signature value to backend format
+  const toBackendSignature = (
+    value: string | null
+  ): { dataUrl?: string; fineractClientId?: number; documentId?: number } | null => {
+    if (!value) return null;
+
+    // data: URL format (local preview)
+    if (value.startsWith("data:")) {
+      return { dataUrl: value };
+    }
+
+    // Fineract document URL format: /api/fineract/clients/{clientId}/documents/{documentId}/attachment
+    const fineractMatch = value.match(/\/api\/fineract\/clients\/(\d+)\/documents\/(\d+)\/attachment/);
+    if (fineractMatch) {
+      return {
+        fineractClientId: parseInt(fineractMatch[1], 10),
+        documentId: parseInt(fineractMatch[2], 10),
+      };
+    }
+
+    return null;
+  };
+
   // Refs for contract sections (for PDF generation)
   const keyFactsRef = useRef<HTMLDivElement>(null);
   const salaryAdvanceRef = useRef<HTMLDivElement>(null);
+  // Sequence counter for preview rendering to avoid race conditions
+  const previewSequenceRef = useRef<number>(0);
 
   useEffect(() => {
     // The server is the source of truth for tenant- and product-specific
@@ -685,6 +738,123 @@ export function LoanContracts({
 
     loadSignatures();
   }, [clientId]);
+
+  // Backend preview rendering: render contract and mandate HTML when in backend mode
+  useEffect(() => {
+    if (!backendMode || !leadId || !contractData) {
+      setRenderedContractHtml(null);
+      setRenderedMandateHtml(null);
+      return;
+    }
+
+    // Increment sequence for this render run
+    const currentSequence = ++previewSequenceRef.current;
+    const abortController = new AbortController();
+
+    // Debounce rendering to avoid too many requests
+    const renderTimeout = setTimeout(async () => {
+      try {
+        setIsRenderingPreview(true);
+        setRenderPreviewError(null);
+
+        const signatures = {
+          borrower: toBackendSignature(borrowerSignature),
+          guarantor: toBackendSignature(guarantorSignature),
+          loanOfficer: toBackendSignature(loanOfficerSignature),
+        };
+
+        // Render both contract and mandate in parallel
+        const [contractRes, mandateRes] = await Promise.all([
+          fetch(`/api/leads/${leadId}/contracts/render`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              documentType: "CONTRACT",
+              format: "HTML",
+              contractData: ardaDocumentData || contractData,
+              signatures,
+            }),
+            signal: abortController.signal,
+          }),
+          fetch(`/api/leads/${leadId}/contracts/render`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              documentType: "MANDATE",
+              format: "HTML",
+              contractData: contractData,
+              signatures,
+            }),
+            signal: abortController.signal,
+          }),
+        ]);
+
+        // Only update state if this is still the latest request
+        if (currentSequence !== previewSequenceRef.current) {
+          console.log("Preview rendering is stale, discarding results");
+          return;
+        }
+
+        if (contractRes.ok) {
+          const html = await contractRes.text();
+          // Inject base tag for relative URLs
+          let processedHtml = html;
+          if (typeof window !== "undefined") {
+            const baseTag = `<base href="${window.location.origin}/">`;
+            if (processedHtml.includes("<head>")) {
+              processedHtml = processedHtml.replace("<head>", `<head>${baseTag}`);
+            } else if (processedHtml.includes("<head ")) {
+              processedHtml = processedHtml.replace(/<head\s[^>]*>/, (m) => `${m}${baseTag}`);
+            } else {
+              processedHtml = baseTag + processedHtml;
+            }
+          }
+          setRenderedContractHtml(processedHtml);
+        } else {
+          setRenderedContractHtml(null);
+          setRenderPreviewError("Failed to render contract preview");
+        }
+
+        if (mandateRes.ok) {
+          const html = await mandateRes.text();
+          let processedHtml = html;
+          if (typeof window !== "undefined") {
+            const baseTag = `<base href="${window.location.origin}/">`;
+            if (processedHtml.includes("<head>")) {
+              processedHtml = processedHtml.replace("<head>", `<head>${baseTag}`);
+            } else if (processedHtml.includes("<head ")) {
+              processedHtml = processedHtml.replace(/<head\s[^>]*>/, (m) => `${m}${baseTag}`);
+            } else {
+              processedHtml = baseTag + processedHtml;
+            }
+          }
+          setRenderedMandateHtml(processedHtml);
+        }
+      } catch (err) {
+        // Only log and update state if not an abort error
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.error("Error rendering preview:", err);
+          setRenderPreviewError("Failed to render preview");
+        }
+      } finally {
+        setIsRenderingPreview(false);
+      }
+    }, 400);
+
+    return () => {
+      clearTimeout(renderTimeout);
+      abortController.abort();
+    };
+  }, [
+    backendMode,
+    leadId,
+    contractData,
+    ardaDocumentData,
+    isArdaStockLoanContract,
+    borrowerSignature,
+    guarantorSignature,
+    loanOfficerSignature,
+  ]);
 
   const buildContractDataFromSchedule = async () => {
     try {
@@ -1607,6 +1777,16 @@ export function LoanContracts({
     try {
       setUploading(true);
 
+      // Convert file to base64 for local preview (works for both modes)
+      const reader = new FileReader();
+      const dataUrlPromise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          resolve(reader.result as string);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
       // Document names for different signature types
       const documentNames: {
         [key: string]: { name: string; description: string };
@@ -1621,34 +1801,36 @@ export function LoanContracts({
         },
       };
 
-      // Upload to Fineract
+      // Upload to backend or Fineract depending on mode
+      const uploadEndpoint = backendMode && leadId
+        ? `/api/leads/${leadId}/contracts/signatures`
+        : `/api/fineract/clients/${clientId}/documents`;
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append("name", documentNames[signatureType].name);
       formData.append("description", documentNames[signatureType].description);
 
-      const response = await fetch(
-        `/api/fineract/clients/${clientId}/documents`,
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
+      if (backendMode && leadId) {
+        formData.append("role", signatureType);
+        formData.append("clientId", String(clientId));
+      }
+
+      const response = await fetch(uploadEndpoint, {
+        method: "POST",
+        body: formData,
+      });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to upload signature");
       }
 
-      const result = await response.json();
-      console.log("Signature uploaded to Fineract:", result);
+      console.log("Signature uploaded:", response.status);
 
-      // Convert file to base64 for local preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSignature(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      // Update local preview with base64
+      const dataUrl = await dataUrlPromise;
+      setSignature(dataUrl);
 
       toast({
         title: "Signature uploaded",
@@ -1678,9 +1860,151 @@ export function LoanContracts({
     });
   };
 
-  const handlePrint = (
+  const handlePrint = async (
     printType: "kfs" | "contract" | "mandate" | "both" = "both"
   ) => {
+    // Backend mode: fetch PDFs from backend
+    if (backendMode && leadId && contractData) {
+      try {
+        const signatures = {
+          borrower: toBackendSignature(borrowerSignature),
+          guarantor: toBackendSignature(guarantorSignature),
+          loanOfficer: toBackendSignature(loanOfficerSignature),
+        };
+
+        const openPdfWindow = (blob: Blob, w: Window | null) => {
+          if (!w) return;
+          const url = URL.createObjectURL(blob);
+          w.location.href = url;
+          // Clean up after a delay
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+        };
+
+        const handlePdfFetchError = (w: Window | null) => {
+          if (w && !w.closed) {
+            w.close();
+          }
+          toast({
+            title: "Error",
+            description: "Failed to generate PDF",
+            variant: "destructive",
+          });
+        };
+
+        if (printType === "kfs") {
+          const w = window.open("", "_blank");
+          const res = await fetch(`/api/leads/${leadId}/contracts/render`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              documentType: "KFS",
+              format: "PDF",
+              contractData,
+              signatures,
+            }),
+          });
+          if (res.ok) {
+            openPdfWindow(await res.blob(), w);
+          } else {
+            handlePdfFetchError(w);
+          }
+        } else if (printType === "contract") {
+          const w = window.open("", "_blank");
+          const res = await fetch(`/api/leads/${leadId}/contracts/render`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              documentType: "CONTRACT",
+              format: "PDF",
+              contractData: ardaDocumentData || contractData,
+              signatures,
+            }),
+          });
+          if (res.ok) {
+            openPdfWindow(await res.blob(), w);
+          } else {
+            handlePdfFetchError(w);
+          }
+        } else if (printType === "mandate") {
+          const w = window.open("", "_blank");
+          const res = await fetch(`/api/leads/${leadId}/contracts/render`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              documentType: "MANDATE",
+              format: "PDF",
+              contractData,
+              signatures,
+            }),
+          });
+          if (res.ok) {
+            openPdfWindow(await res.blob(), w);
+          } else {
+            handlePdfFetchError(w);
+          }
+        } else {
+          // Print all three - open windows synchronously before fetching
+          const windows = [
+            window.open("", "_blank"),
+            window.open("", "_blank"),
+            window.open("", "_blank"),
+          ];
+
+          const results = await Promise.all([
+            fetch(`/api/leads/${leadId}/contracts/render`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                documentType: "KFS",
+                format: "PDF",
+                contractData,
+                signatures,
+              }),
+            }),
+            fetch(`/api/leads/${leadId}/contracts/render`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                documentType: "CONTRACT",
+                format: "PDF",
+                contractData: ardaDocumentData || contractData,
+                signatures,
+              }),
+            }),
+            fetch(`/api/leads/${leadId}/contracts/render`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                documentType: "MANDATE",
+                format: "PDF",
+                contractData,
+                signatures,
+              }),
+            }),
+          ]);
+
+          for (let i = 0; i < results.length; i++) {
+            const res = results[i];
+            const w = windows[i];
+            if (res.ok) {
+              openPdfWindow(await res.blob(), w);
+            } else {
+              handlePdfFetchError(w);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching PDF:", err);
+        toast({
+          title: "Error",
+          description: "Failed to generate PDF",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    // Original browser-based PDF generation
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
@@ -2363,14 +2687,19 @@ export function LoanContracts({
         }
       }
 
-      // Step 2: Generate PDFs from contract data
-      toast({
-        title: "Generating contracts...",
-        description: "Creating PDF documents",
-      });
+      // Step 2: Generate PDFs from contract data (skipped in backend mode)
+      let keyFactsPDF: Blob | null = null;
+      let salaryAdvancePDF: Blob | null = null;
 
-      const keyFactsPDF = tenantContractHtml ? null : await generateKeyFactsPDF();
-      const salaryAdvancePDF = await generateSalaryAdvanceContractPDF();
+      if (!backendMode) {
+        toast({
+          title: "Generating contracts...",
+          description: "Creating PDF documents",
+        });
+
+        keyFactsPDF = tenantContractHtml ? null : await generateKeyFactsPDF();
+        salaryAdvancePDF = await generateSalaryAdvanceContractPDF();
+      }
 
       // Step 3: Create loan in Fineract
       toast({
@@ -2613,39 +2942,90 @@ export function LoanContracts({
         }
       }
 
-      // Step 4: Upload PDF contracts to the loan
-      toast({
-        title: "Uploading contracts...",
-        description: "Attaching contract documents to loan",
-      });
+      // Step 4: Upload contracts (backend or traditional method)
+      if (backendMode) {
+        // Backend mode: Call backend to generate and upload contracts
+        toast({
+          title: "Uploading contracts...",
+          description: "Generating and attaching contract documents to loan",
+        });
 
-      const uploadDocument = async (pdf: Blob, documentName: string) => {
-        const formData = new FormData();
-        formData.append("file", pdf, `${documentName}.pdf`);
-        formData.append("name", documentName);
-        formData.append("description", `Loan contract: ${documentName}`);
+        const signatures = {
+          borrower: toBackendSignature(borrowerSignature),
+          guarantor: toBackendSignature(guarantorSignature),
+          loanOfficer: toBackendSignature(loanOfficerSignature),
+        };
 
-        const uploadResponse = await fetch(
-          `/api/fineract/loans/${createdLoanId}/documents`,
-          {
-            method: "POST",
-            body: formData,
-          },
-        );
+        const uploadResponse = await fetch(`/api/leads/${leadId}/contracts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            loanId: createdLoanId,
+            contractData,
+            signatures,
+          }),
+        });
 
+        const uploadResult = await uploadResponse.json().catch(() => ({}));
+
+        // Check for failures (200 ok, 207 partial failure)
+        // Treat SKIPPED and ALREADY_PRESENT as success; only FAILED is a problem
         if (!uploadResponse.ok) {
-          throw new Error(`Failed to upload ${documentName}`);
+          const failedDocs = uploadResult.documents?.filter((d: any) => d.status === "FAILED") || [];
+          const failedNames = failedDocs.map((d: any) => `${d.name}${d.error ? `: ${d.error}` : ""}`).join(", ");
+
+          // Show warning but continue to CDE and redirect
+          toast({
+            title: "Warning",
+            description: `Loan created, but contract documents failed to upload: ${failedNames || "unknown error"}. Use Generate contracts to retry.`,
+            variant: "destructive",
+          });
+        } else if (uploadResult.documents?.some((d: any) => d.status === "FAILED")) {
+          const failedDocs = uploadResult.documents?.filter((d: any) => d.status === "FAILED") || [];
+          const failedNames = failedDocs.map((d: any) => `${d.name}${d.error ? `: ${d.error}` : ""}`).join(", ");
+
+          // Show warning but continue to CDE and redirect
+          toast({
+            title: "Warning",
+            description: `Loan created, but some contract documents failed to upload: ${failedNames || "unknown error"}. Use Generate contracts to retry.`,
+            variant: "destructive",
+          });
         }
+      } else {
+        // Traditional mode: Upload generated PDFs
+        toast({
+          title: "Uploading contracts...",
+          description: "Attaching contract documents to loan",
+        });
 
-        return uploadResponse.json();
-      };
+        const uploadDocument = async (pdf: Blob, documentName: string) => {
+          const formData = new FormData();
+          formData.append("file", pdf, `${documentName}.pdf`);
+          formData.append("name", documentName);
+          formData.append("description", `Loan contract: ${documentName}`);
 
-      // Upload both contract PDFs
-      if (keyFactsPDF) {
-        await uploadDocument(keyFactsPDF, "Key_Facts_Statement");
-      }
-      if (salaryAdvancePDF) {
-        await uploadDocument(salaryAdvancePDF, "Salary_Advance_Contract");
+          const uploadResponse = await fetch(
+            `/api/fineract/loans/${createdLoanId}/documents`,
+            {
+              method: "POST",
+              body: formData,
+            },
+          );
+
+          if (!uploadResponse.ok) {
+            throw new Error(`Failed to upload ${documentName}`);
+          }
+
+          return uploadResponse.json();
+        };
+
+        // Upload both contract PDFs
+        if (keyFactsPDF) {
+          await uploadDocument(keyFactsPDF, "Key_Facts_Statement");
+        }
+        if (salaryAdvancePDF) {
+          await uploadDocument(salaryAdvancePDF, "Salary_Advance_Contract");
+        }
       }
 
       // Call CDE to evaluate the loan application
@@ -3078,6 +3458,20 @@ export function LoanContracts({
             </div>
           </CardHeader>
           <CardContent className="p-4">
+            {renderPreviewError && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{renderPreviewError}</AlertDescription>
+              </Alert>
+            )}
+            {isRenderingPreview && activeDoc !== "kfs" && (
+              <div className="flex items-center justify-center p-8">
+                <div className="text-center">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">Loading preview…</p>
+                </div>
+              </div>
+            )}
             {activeDoc === "kfs" ? (
               <iframe
                 srcDoc={
@@ -3095,7 +3489,11 @@ export function LoanContracts({
               />
             ) : activeDoc === "mandate" ? (
               <iframe
-                srcDoc={generatedMandateHtml || "<p>Loading...</p>"}
+                srcDoc={
+                  backendMode
+                    ? renderedMandateHtml || (isRenderingPreview ? "<p>Loading preview…</p>" : "<p>Loading...</p>")
+                    : generatedMandateHtml || "<p>Loading...</p>"
+                }
                 className="w-full border rounded bg-white"
                 style={{ height: "700px", minHeight: "500px" }}
                 title={
@@ -3107,7 +3505,9 @@ export function LoanContracts({
             ) : (
               <iframe
                 srcDoc={
-                  generatedContractHtml || "<p>Loading...</p>"
+                  backendMode
+                    ? renderedContractHtml || (isRenderingPreview ? "<p>Loading preview…</p>" : "<p>Loading...</p>")
+                    : generatedContractHtml || "<p>Loading...</p>"
                 }
                 className="w-full border rounded bg-white"
                 style={{ height: "700px", minHeight: "500px" }}

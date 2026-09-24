@@ -1,0 +1,106 @@
+{
+  "template": "default-contract",
+  "leadId": "clead001full",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "documentVariant": "DEFAULT",
+    "clientName": "John Banda",
+    "nrc": "123456/89/1",
+    "dateOfBirth": "1985-06-15",
+    "gender": "Male",
+    "employeeNo": "EMP0012345",
+    "employer": "Zambeef Products PLC",
+    "gflNo": "GFL-2026-001234",
+    "loanId": "LOAN-2026-001234",
+    "loanAmount": 50000,
+    "disbursedAmount": 50000,
+    "tenure": "12 months",
+    "numberOfPayments": 12,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-04-15",
+    "interest": 7500,
+    "fees": 2500,
+    "totalCostOfCredit": 10000,
+    "totalRepayment": 60000,
+    "paymentPerPeriod": 5000,
+    "monthlyPercentageRate": 2.5,
+    "currency": "ZMW",
+    "branch": "Lusaka Main",
+    "loanOfficer": "Mary Chileshe",
+    "loanPurpose": "Business working capital",
+    "executionPlace": "Lusaka",
+    "executionDate": "2026-03-15",
+    "firstname": "John",
+    "lastname": "Banda",
+    "mobileNo": "+260761234567",
+    "countryCode": "ZA",
+    "accountNumber": "ACC123456789",
+    "branchName": "Lusaka Main Branch",
+    "sortCode": "GFLZM",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-15",
+        "paymentAmount": 5000,
+        "principal": 4166.67,
+        "interestAndFees": 833.33,
+        "remainingBalance": 45833.33
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-15",
+        "paymentAmount": 5000,
+        "principal": 4166.67,
+        "interestAndFees": 833.33,
+        "remainingBalance": 41666.66
+      },
+      {
+        "paymentNumber": 3,
+        "dueDate": "2026-06-15",
+        "paymentAmount": 5000,
+        "principal": 4166.67,
+        "interestAndFees": 833.33,
+        "remainingBalance": 37499.99
+      },
+      {
+        "paymentNumber": 4,
+        "dueDate": "2026-07-15",
+        "paymentAmount": 5000,
+        "principal": 4166.67,
+        "interestAndFees": 833.33,
+        "remainingBalance": 33333.32
+      },
+      {
+        "paymentNumber": 5,
+        "dueDate": "2026-08-15",
+        "paymentAmount": 5000,
+        "principal": 4166.67,
+        "interestAndFees": 833.33,
+        "remainingBalance": 29166.65
+      },
+      {
+        "paymentNumber": 6,
+        "dueDate": "2026-09-15",
+        "paymentAmount": 5000,
+        "principal": 4166.67,
+        "interestAndFees": 833.33,
+        "remainingBalance": 24999.98
+      }
+    ],
+    "charges": [
+      {
+        "name": "Application Fee",
+        "amount": 500
+      },
+      {
+        "name": "Monthly Insurance Fee",
+        "amount": 2000
+      }
+    ]
+  },
+  "signatures": {
+    "borrower": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "guarantor": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "loanOfficer": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  }
+}
