@@ -6,7 +6,6 @@ import {
   getLeadViewerAccessContext,
 } from "@/lib/lead-policy";
 import { getTenantAndFineractInfo } from "@/lib/fineract-tenant-service";
-import { isLeadContractsBackendEnabled } from "@/lib/lead-contracts-backend-flag";
 import { getLoanMatrixBackendContext, loanMatrixBackendFetch } from "@/lib/loan-matrix-backend";
 
 /**
@@ -28,12 +27,8 @@ export async function POST(
     const body = await request.json();
     const ctx = await getLoanMatrixBackendContext();
 
-    // Get tenant info for flag check
+    // Get tenant info
     const tenantInfo = await getTenantAndFineractInfo();
-    const backendEnabled = isLeadContractsBackendEnabled(tenantInfo.tenant?.slug ?? null);
-    if (!backendEnabled) {
-      return NextResponse.json({ error: "Backend mode is not enabled" }, { status: 404 });
-    }
 
     // Load lead with tenant info
     const leadRecord = await prisma.lead.findUnique({
