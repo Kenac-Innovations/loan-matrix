@@ -17,6 +17,7 @@ import {
   LeadLoanLinkingError,
   reconcileLeadLoan,
 } from "@/lib/lead-loan-linking";
+import { sanitizeFineractLoanCreatePayload } from "@/lib/fineract-loan-payload";
 
 function isOverdueChargeLike(charge?: any) {
   const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
@@ -254,9 +255,9 @@ export async function POST(
       );
     }
 
-    const fineractPayload = nestedPayload
-      ? nestedPayload
-      : buildLegacyFineractPayload(leadId, loanData);
+    const fineractPayload = sanitizeFineractLoanCreatePayload(
+      nestedPayload || buildLegacyFineractPayload(leadId, loanData)
+    );
     const result = await reconcileLeadLoan({
       tenantId: context.tenantId,
       leadId,
