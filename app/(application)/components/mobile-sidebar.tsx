@@ -544,7 +544,7 @@ export function MobileSidebar({
 
             <div className="space-y-1">
               <Link
-                href={canReadUsers ? "/organization/users" : "/organization/payment-types"}
+                href="/organization/offices"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
                   pathname.startsWith("/organization")
                     ? `${activeBgColor} ${textColor}`
@@ -563,6 +563,26 @@ export function MobileSidebar({
 
               {pathname.startsWith("/organization") && (
                 <div className="pl-10 space-y-1">
+                  <Link
+                    href="/organization/offices"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/organization/offices")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Manage Offices
+                  </Link>
+                  <Link
+                    href="/organization/holidays"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/organization/holidays")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Manage Holidays
+                  </Link>
                   {canReadUsers && (
                     <Link
                       href="/organization/users"
