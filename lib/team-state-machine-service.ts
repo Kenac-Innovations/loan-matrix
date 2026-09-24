@@ -48,6 +48,11 @@ import {
   applyArdaInventoryWorkflowOperation,
   validateArdaInventoryWorkflowOperation,
 } from "./inventory/arda-stock-workflow-service";
+import {
+  getLeadFineractGuardActions,
+  validateLeadFineractTransition,
+} from "./lead-transition-guard";
+import type { LeadTransitionGuardLoan } from "./lead-transition-guard";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -834,15 +839,72 @@ export class TeamAwareStateMachineService {
       // Update request to use the resolved target
       request.targetStageId = resolvedTargetStageId;
 
-      // 1d. Execute Fineract actions from skipped stages in pipeline order
+      // Resolve the effective stage before doing anything that can mutate
+      // assignment state. Fineract lifecycle guards below must run before
+      // assignment, inventory, external actions, or the local commit.
+      const targetStage = await prisma.pipelineStage.findUnique({
+        where: { id: request.targetStageId },
+      });
+      const currentFineractAction = lead.currentStage?.fineractAction;
+      const isBackward = targetStage && lead.currentStage
+        && (targetStage.order ?? 999) < (lead.currentStage.order ?? 0);
+      const combinedPayoutWithDisbursement =
+        targetStage?.fineractAction === "disburse" &&
+        !isBackward &&
+        Boolean(request.fineractOverrides?.payoutMethod);
+
+      // Load skipped stages even when the local loan link is absent so an
+      // action on a skipped stage cannot silently become a local-only move.
       const skippedActionResults: string[] = [];
       let skippedStageRecords: any[] = [];
-      if (skippedStages.length > 0 && lead.fineractLoanId) {
+      if (skippedStages.length > 0) {
         skippedStageRecords = await prisma.pipelineStage.findMany({
           where: { id: { in: skippedStages } },
           orderBy: { order: "asc" },
         });
+      }
 
+      const effectiveStageActions = !isBackward
+        ? [
+            ...skippedStageRecords.map((stage) => stage.fineractAction),
+            targetStage?.fineractAction,
+            ...(combinedPayoutWithDisbursement ? ["payout"] : []),
+          ]
+        : [];
+      const guardedActions = getLeadFineractGuardActions(
+        lead,
+        effectiveStageActions
+      );
+
+      if (guardedActions.length > 0) {
+        let remoteLoan: unknown = null;
+        if (lead.fineractLoanId != null) {
+          try {
+            const fineract = await getFineractServiceWithSession();
+            remoteLoan = await fineract.getLoan(lead.fineractLoanId);
+          } catch (guardError) {
+            console.warn(
+              `[StateTransition] Could not verify Fineract loan lifecycle for lead ${lead.id}:`,
+              guardError
+            );
+          }
+        }
+
+        const transitionGuard = validateLeadFineractTransition({
+          lead,
+          actions: guardedActions,
+          remoteLoan: remoteLoan as LeadTransitionGuardLoan | null,
+        });
+        if (!transitionGuard.allowed) {
+          return {
+            success: false,
+            message: transitionGuard.message || "Fineract transition blocked",
+          };
+        }
+      }
+
+      // 1d. Execute Fineract actions from skipped stages in pipeline order
+      if (skippedStages.length > 0 && lead.fineractLoanId && !isBackward) {
         for (const skipped of skippedStageRecords) {
           if (skipped.fineractAction && skipped.fineractAction !== "payout") {
             console.log(
@@ -896,12 +958,6 @@ export class TeamAwareStateMachineService {
       // 3. Determine if moving backward from a stage that had a Fineract action.
       //    If the CURRENT stage executed an action (approve/disburse/payout),
       //    undo it before proceeding.
-      const targetStage = await prisma.pipelineStage.findUnique({
-        where: { id: request.targetStageId },
-      });
-      const currentFineractAction = lead.currentStage?.fineractAction;
-      const isBackward = targetStage && lead.currentStage
-        && (targetStage.order ?? 999) < (lead.currentStage.order ?? 0);
       const disbursementBlockReason =
         !isBackward && isDisbursementActionStage(targetStage)
           ? getDisbursementBlockReason({
@@ -921,11 +977,6 @@ export class TeamAwareStateMachineService {
           message: disbursementBlockReason,
         };
       }
-
-      const combinedPayoutWithDisbursement =
-        targetStage?.fineractAction === "disburse" &&
-        !isBackward &&
-        Boolean(request.fineractOverrides?.payoutMethod);
 
       // ARDA stock must be available before Fineract is asked to approve or
       // disburse the loan. The matching ledger operation is recorded only
