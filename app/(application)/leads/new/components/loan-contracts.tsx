@@ -1,7 +1,7 @@
 "use client";
 
 import { useCurrency } from "@/contexts/currency-context";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -32,17 +32,7 @@ import {
   ArrowUpCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import jsPDF from "jspdf";
-import { generateContractHTML } from "./contract-template";
 import { ContractData } from "./contract-types";
-import { fillOmamaContractTemplate } from "./omama-contract-template";
-import { generateArdaStockLoanContractHTML } from "./arda-stock-loan-contract";
-import { generateArdaStockLoanMandateHTML } from "./arda-stock-loan-mandate";
-import {
-  generateKeyFactsStatementHTML,
-  KeyFactsData,
-} from "./key-facts-statement-template";
-import { generateMandateFormHTML } from "./mandate-form-template";
 import { getMySignature } from "@/app/actions/user-signature-actions";
 import type { FacilityIntent } from "@/components/credit-facility/facility-toggle";
 import {
@@ -251,20 +241,6 @@ function extractClientBankDetailsFromRow(
   };
 }
 
-function normalizeTenantAssetUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-
-  try {
-    if (typeof window === "undefined") {
-      return url;
-    }
-
-    return new URL(url, window.location.origin).toString();
-  } catch {
-    return url;
-  }
-}
-
 function isOverdueChargeLike(charge?: any): boolean {
   const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
   const code = String(timeType?.code || "").toLowerCase();
@@ -326,6 +302,28 @@ function resolveLoanScheduleTypeCode(
   return loanScheduleType;
 }
 
+type PreviewDoc = "contract" | "mandate" | "kfs";
+
+const PREVIEW_DOCUMENT_TYPES: Record<PreviewDoc, "CONTRACT" | "MANDATE" | "KFS"> = {
+  contract: "CONTRACT",
+  mandate: "MANDATE",
+  kfs: "KFS",
+};
+
+const PREVIEW_PLACEHOLDER = "<p>Loading preview…</p>";
+
+/**
+ * srcDoc iframes have origin about:srcdoc — inject <base> so relative URLs
+ * (e.g. /gfl-logo.png, /api/documents/…) resolve against the app origin.
+ */
+function withBaseTag(html: string): string {
+  if (typeof window === "undefined") return html;
+  const baseTag = `<base href="${window.location.origin}/">`;
+  if (html.includes("<head>")) return html.replace("<head>", `<head>${baseTag}`);
+  if (/<head\s[^>]*>/.test(html)) return html.replace(/<head\s[^>]*>/, (m) => `${m}${baseTag}`);
+  return baseTag + html;
+}
+
 export function LoanContracts({
   leadId,
   clientId,
@@ -368,9 +366,14 @@ export function LoanContracts({
   >([]);
   const [isLoadingSignatures, setIsLoadingSignatures] = useState(false);
   const [activeDoc, setActiveDoc] = useState<"kfs" | "contract" | "mandate">("contract");
-  const [tenantContractHtml, setTenantContractHtml] = useState<string | null>(null);
-  const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
-  const [tenantName, setTenantName] = useState<string | null>(null);
+  const [hasTenantContractTemplate, setHasTenantContractTemplate] = useState(false);
+  // Bumped to re-render previews when the tenant template may have changed.
+  const [previewNonce, setPreviewNonce] = useState(0);
+  const [renderedPreviews, setRenderedPreviews] = useState<
+    Partial<Record<PreviewDoc, string | null>>
+  >({});
+  const [isRenderingPreview, setIsRenderingPreview] = useState(false);
+  const [renderPreviewError, setRenderPreviewError] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
   const isInvoiceDiscountingLoan =
@@ -382,133 +385,20 @@ export function LoanContracts({
     const parsed = Number(candidate);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   };
-  const filledTenantContractHtml = useMemo(() => {
-    if (!tenantContractHtml) return null;
-    let html: string;
-    if (!contractData) {
-      html = tenantContractHtml.replace(
-        /\{\{\s*[A-Z_0-9]+\s*\}\}/g,
-        " ____________________ "
-      );
-    } else {
-      html = fillOmamaContractTemplate(tenantContractHtml, contractData, tenantLogoUrl, {
-        borrower: borrowerSignature,
-        guarantor: guarantorSignature,
-        loanOfficer: loanOfficerSignature,
-      });
-    }
-    // srcDoc iframes have origin about:srcdoc — inject <base> so relative
-    // URLs (e.g. /api/documents/…) resolve against the real app origin.
-    if (typeof window !== "undefined") {
-      const baseTag = `<base href="${window.location.origin}/">`;
-      if (html.includes("<head>")) {
-        html = html.replace("<head>", `<head>${baseTag}`);
-      } else if (html.includes("<head ")) {
-        html = html.replace(/<head\s[^>]*>/, (m) => `${m}${baseTag}`);
-      } else {
-        html = baseTag + html;
-      }
-    }
-    return html;
-  }, [tenantContractHtml, contractData, tenantLogoUrl, borrowerSignature, guarantorSignature, loanOfficerSignature]);
-
   // The server selects this only for Omama ARDA stock loans. It avoids relying
   // on a separate client-side tenant lookup to choose the correct document.
   const isArdaStockLoanContract =
     contractData?.documentVariant === "ARDA_STOCK_INPUT";
 
-  const ardaDocumentData = useMemo<ContractData | null>(() => {
-    if (!contractData || !isArdaStockLoanContract) return null;
-
-    // An old ARDA lead may predate stock-selection persistence. Keep it in
-    // the ARDA document flow and make the missing record explicit rather
-    // than ever falling back to Omama's cash-loan documents.
-    if (contractData.stockLoanSelection) return contractData;
-
-    return {
-      ...contractData,
-      stockLoanSelection: {
-        inventoryItemName: "Stock item not recorded",
-        quantity: "Not recorded",
-        unitOfMeasure: "Not recorded",
-        unitValue: "0.00",
-        totalValue: String(contractData.loanAmount || 0),
-        currencyCode: contractData.currency || "USD",
-        fineractOfficeName: contractData.branch,
-      },
-    };
-  }, [contractData, isArdaStockLoanContract]);
-
-  const generatedContractHtml = useMemo(() => {
-    if (!contractData) return null;
-
-    // An in-kind ARDA issue must use its own agreement, not the tenant's
-    // cash-loan contract. Other loans retain the existing template behaviour.
-    if (ardaDocumentData) {
-      return generateArdaStockLoanContractHTML(ardaDocumentData, {
-        borrower: borrowerSignature,
-        loanOfficer: loanOfficerSignature,
-      });
-    }
-
-    return (
-      filledTenantContractHtml ||
-      generateContractHTML(contractData, {
-        borrower: borrowerSignature,
-        guarantor: guarantorSignature,
-        loanOfficer: loanOfficerSignature,
-      })
-    );
-  }, [
-    borrowerSignature,
-    ardaDocumentData,
-    contractData,
-    filledTenantContractHtml,
-    guarantorSignature,
-    isArdaStockLoanContract,
-    loanOfficerSignature,
-  ]);
-
-  const generatedMandateHtml = useMemo(() => {
-    if (!contractData) return null;
-
-    if (ardaDocumentData) {
-      return generateArdaStockLoanMandateHTML(ardaDocumentData, {
-        borrower: borrowerSignature,
-      });
-    }
-
-    return generateMandateFormHTML(contractData, {
-      borrower: borrowerSignature,
-      organization: {
-        name: tenantName,
-        logoUrl: tenantLogoUrl,
-      },
-    });
-  }, [ardaDocumentData, borrowerSignature, contractData, tenantLogoUrl, tenantName]);
-
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      fetch("/api/tenant/contract-template?slug=full-loan")
-        .then((res) => (res.ok ? res.json() : null))
-        .catch(() => null),
-      fetch("/api/tenant")
-        .then((res) => (res.ok ? res.json() : null))
-        .catch(() => null),
-    ]).then(([templateData, tenantData]) => {
-      if (cancelled) return;
-
-      if (templateData?.html) {
-        setTenantContractHtml(templateData.html);
-      }
-
-      setTenantLogoUrl(
-        normalizeTenantAssetUrl(templateData?.logoUrl) ||
-          normalizeTenantAssetUrl(tenantData?.logoFileUrl),
-      );
-      setTenantName(tenantData?.name ?? null);
-    });
+    fetch("/api/tenant/contract-template?slug=full-loan")
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null)
+      .then((templateData) => {
+        if (cancelled) return;
+        setHasTenantContractTemplate(Boolean(templateData?.html));
+      });
 
     return () => {
       cancelled = true;
@@ -542,55 +432,31 @@ export function LoanContracts({
     };
   }, []);
 
-  // Transform contract data to Key Facts Statement format
-  const getKeyFactsData = (): KeyFactsData | null => {
-    if (!contractData) return null;
+  // Convert signature value to backend format
+  const toBackendSignature = (
+    value: string | null
+  ): { dataUrl?: string; fineractClientId?: number; documentId?: number } | null => {
+    if (!value) return null;
 
-    return {
-      clientName: contractData.clientName,
-      clientId: contractData.gflNo,
-      nrc: contractData.nrc,
-      applicationNo: contractData.loanId || leadId,
-      loanId: contractData.loanId,
-      loanAmount: contractData.loanAmount,
-      disbursedAmount: contractData.disbursedAmount,
-      interest: contractData.interest,
-      fees: contractData.fees,
-      totalCostOfCredit: contractData.totalCostOfCredit,
-      totalRepayment: contractData.totalRepayment,
-      paymentPerPeriod: contractData.paymentPerPeriod,
-      tenure: contractData.tenure,
-      numberOfPayments: contractData.numberOfPayments,
-      paymentFrequency: contractData.paymentFrequency,
-      firstPaymentDate: contractData.firstPaymentDate,
-      monthlyPercentageRate: contractData.monthlyPercentageRate,
-      charges: contractData.charges.map((charge) => ({
-        name: charge.name,
-        amount: charge.amount,
-        isRecurring:
-          charge.name.toLowerCase().includes("monthly") ||
-          charge.name.toLowerCase().includes("recurring"),
-        frequency: charge.name.toLowerCase().includes("monthly")
-          ? "month"
-          : undefined,
-      })),
-      lateFeeAmount: undefined, // TODO: Get from loan product template
-      lateFeeDays: 10, // Default
-      defaultInterestRate: 25, // Default
-      defaultInterestDays: 10, // Default
-      collateral: undefined, // TODO: Get from loan terms
-      mandatorySavings: undefined,
-      variableInterestApplies: false,
-      repaymentSchedule: contractData.repaymentSchedule,
-      currency: contractData.currency,
-      preparedDate: format(new Date(), "EEEE, dd MMMM yyyy"),
-      validFor: "30 days",
-    };
+    // data: URL format (local preview)
+    if (value.startsWith("data:")) {
+      return { dataUrl: value };
+    }
+
+    // Fineract document URL format: /api/fineract/clients/{clientId}/documents/{documentId}/attachment
+    const fineractMatch = value.match(/\/api\/fineract\/clients\/(\d+)\/documents\/(\d+)\/attachment/);
+    if (fineractMatch) {
+      return {
+        fineractClientId: parseInt(fineractMatch[1], 10),
+        documentId: parseInt(fineractMatch[2], 10),
+      };
+    }
+
+    return null;
   };
 
-  // Refs for contract sections (for PDF generation)
-  const keyFactsRef = useRef<HTMLDivElement>(null);
-  const salaryAdvanceRef = useRef<HTMLDivElement>(null);
+  // Sequence counter for preview rendering to avoid race conditions
+  const previewSequenceRef = useRef<number>(0);
 
   useEffect(() => {
     // The server is the source of truth for tenant- and product-specific
@@ -685,6 +551,78 @@ export function LoanContracts({
 
     loadSignatures();
   }, [clientId]);
+
+  // Preview rendering: every document is rendered by loan-matrix-be.
+  useEffect(() => {
+    if (!leadId || !contractData) return;
+
+    const currentSequence = ++previewSequenceRef.current;
+    const abortController = new AbortController();
+    const docs: PreviewDoc[] = hasTenantContractTemplate
+      ? ["contract", "mandate"]
+      : ["contract", "mandate", "kfs"];
+
+    // Debounce so typing/uploading signatures doesn't fire a request per change.
+    const renderTimeout = setTimeout(async () => {
+      setIsRenderingPreview(true);
+      setRenderPreviewError(null);
+      const signatures = {
+        borrower: toBackendSignature(borrowerSignature),
+        guarantor: toBackendSignature(guarantorSignature),
+        loanOfficer: toBackendSignature(loanOfficerSignature),
+      };
+
+      try {
+        const results = await Promise.all(
+          docs.map(async (doc) => {
+            const res = await fetch(`/api/leads/${leadId}/contracts/render`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                documentType: PREVIEW_DOCUMENT_TYPES[doc],
+                format: "HTML",
+                contractData,
+                signatures,
+              }),
+              signal: abortController.signal,
+            });
+            return [doc, res.ok ? withBaseTag(await res.text()) : null] as const;
+          }),
+        );
+
+        if (currentSequence !== previewSequenceRef.current) return;
+        setRenderedPreviews(Object.fromEntries(results));
+        if (results.some(([, html]) => html === null)) {
+          setRenderPreviewError("Failed to render one or more document previews");
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        console.error("Error rendering preview:", err);
+        if (currentSequence === previewSequenceRef.current) {
+          setRenderPreviewError("Failed to render preview");
+        }
+      } finally {
+        if (currentSequence === previewSequenceRef.current) {
+          setIsRenderingPreview(false);
+        }
+      }
+    }, 400);
+
+    return () => {
+      clearTimeout(renderTimeout);
+      abortController.abort();
+    };
+    // toBackendSignature is a pure helper recreated each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    leadId,
+    contractData,
+    hasTenantContractTemplate,
+    previewNonce,
+    borrowerSignature,
+    guarantorSignature,
+    loanOfficerSignature,
+  ]);
 
   const buildContractDataFromSchedule = async () => {
     try {
@@ -1521,18 +1459,10 @@ export function LoanContracts({
   const refreshContract = async () => {
     setIsRefreshing(true);
     try {
-      const [templateRes, tenantRes] = await Promise.all([
-        fetch("/api/tenant/contract-template?slug=full-loan"),
-        fetch("/api/tenant"),
-      ]);
+      const templateRes = await fetch("/api/tenant/contract-template?slug=full-loan");
       const templateData = templateRes.ok ? await templateRes.json() : null;
-      const tenantData = tenantRes.ok ? await tenantRes.json() : null;
-      if (templateData?.html) setTenantContractHtml(templateData.html);
-      setTenantLogoUrl(
-        normalizeTenantAssetUrl(templateData?.logoUrl) ||
-          normalizeTenantAssetUrl(tenantData?.logoFileUrl),
-      );
-      setTenantName(tenantData?.name ?? null);
+      setHasTenantContractTemplate(Boolean(templateData?.html));
+      setPreviewNonce((n) => n + 1);
 
       let dataRefreshed = false;
       if (leadId) {
@@ -1607,48 +1537,37 @@ export function LoanContracts({
     try {
       setUploading(true);
 
-      // Document names for different signature types
-      const documentNames: {
-        [key: string]: { name: string; description: string };
-      } = {
-        borrower: {
-          name: "borrowerSignature",
-          description: "Borrower signature for loan contract",
-        },
-        guarantor: {
-          name: "guarantorSignature",
-          description: "Guarantor signature for loan contract",
-        },
-      };
+      // Convert file to base64 for local preview (works for both modes)
+      const reader = new FileReader();
+      const dataUrlPromise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          resolve(reader.result as string);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
-      // Upload to Fineract
+      // Upload to backend
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("name", documentNames[signatureType].name);
-      formData.append("description", documentNames[signatureType].description);
+      formData.append("role", signatureType);
+      formData.append("clientId", String(clientId));
 
-      const response = await fetch(
-        `/api/fineract/clients/${clientId}/documents`,
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
+      const response = await fetch(`/api/leads/${leadId}/contracts/signatures`, {
+        method: "POST",
+        body: formData,
+      });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to upload signature");
       }
 
-      const result = await response.json();
-      console.log("Signature uploaded to Fineract:", result);
+      console.log("Signature uploaded:", response.status);
 
-      // Convert file to base64 for local preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSignature(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      // Update local preview with base64
+      const dataUrl = await dataUrlPromise;
+      setSignature(dataUrl);
 
       toast({
         title: "Signature uploaded",
@@ -1671,641 +1590,67 @@ export function LoanContracts({
     }
   };
 
-  const formatCurrency = (amount: number): string => {
-    return amount.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
 
-  const handlePrint = (
+  const handlePrint = async (
     printType: "kfs" | "contract" | "mandate" | "both" = "both"
   ) => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+    if (!leadId || !contractData) return;
 
-    if (printType === "kfs") {
-      const keyFactsData = getKeyFactsData();
-      if (!keyFactsData) return;
-      const kfsHTML = generateKeyFactsStatementHTML(keyFactsData, {
-        borrower: borrowerSignature,
-        guarantor: guarantorSignature,
-        creditProvider: loanOfficerSignature,
+    const docs: PreviewDoc[] =
+      printType !== "both"
+        ? [printType]
+        : hasTenantContractTemplate
+          ? ["contract", "mandate"]
+          : ["kfs", "contract", "mandate"];
+
+    // Open the windows synchronously, inside the click, so popup blockers allow them.
+    const windows = docs.map(() => window.open("", "_blank"));
+    const signatures = {
+      borrower: toBackendSignature(borrowerSignature),
+      guarantor: toBackendSignature(guarantorSignature),
+      loanOfficer: toBackendSignature(loanOfficerSignature),
+    };
+
+    const results = await Promise.all(
+      docs.map(async (doc, i) => {
+        const w = windows[i];
+        try {
+          const res = await fetch(`/api/leads/${leadId}/contracts/render`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              documentType: PREVIEW_DOCUMENT_TYPES[doc],
+              format: "PDF",
+              contractData,
+              signatures,
+            }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const url = URL.createObjectURL(await res.blob());
+          if (w) w.location.href = url;
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          return true;
+        } catch (err) {
+          console.error(`Failed to generate ${doc} PDF:`, err);
+          if (w && !w.closed) w.close();
+          return false;
+        }
+      }),
+    );
+
+    if (results.includes(false)) {
+      toast({
+        title: "Error",
+        description: "Failed to generate one or more PDFs",
+        variant: "destructive",
       });
-      printWindow.document.write(kfsHTML);
-    } else if (printType === "contract") {
-      const contractHTML = generatedContractHtml;
-      if (!contractHTML) return;
-      printWindow.document.write(contractHTML);
-    } else if (printType === "mandate") {
-      const mandateHTML = generatedMandateHtml;
-      if (!mandateHTML) return;
-      printWindow.document.write(mandateHTML);
-    } else {
-      // Print all three: KFS + Contract + Mandate
-      const extractBody = (html: string): string =>
-        html.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? "";
-      const extractStyles = (html: string): string[] =>
-        html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) ?? [];
-
-      const keyFactsData = getKeyFactsData();
-
-      const kfsSection = keyFactsData
-        ? `<div class="page-break">${extractBody(
-            generateKeyFactsStatementHTML(keyFactsData, {
-              borrower: borrowerSignature,
-              guarantor: guarantorSignature,
-              creditProvider: loanOfficerSignature,
-            })
-          )}</div>`
-        : "";
-
-      const contractHTML = generatedContractHtml;
-      if (!contractHTML) return;
-
-      const mandateHTML = generatedMandateHtml;
-      if (!mandateHTML) return;
-
-      const kfsStyles = keyFactsData
-        ? extractStyles(
-            generateKeyFactsStatementHTML(keyFactsData, {
-              borrower: borrowerSignature,
-              guarantor: guarantorSignature,
-              creditProvider: loanOfficerSignature,
-            })
-          )
-        : [];
-
-      const combinedStyles = [
-        ...kfsStyles,
-        ...extractStyles(contractHTML),
-        ...(mandateHTML ? extractStyles(mandateHTML) : []),
-      ].join("\n");
-
-      const combinedHTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${isArdaStockLoanContract ? "ARDA Agricultural Input Agreement and Repayment Mandate" : "Loan Documents"}</title>
-  ${combinedStyles}
-  <style>
-    .page-break { page-break-after: always; break-after: page; }
-    @media print { .page-break { page-break-after: always; break-after: page; } }
-  </style>
-</head>
-<body>
-  ${kfsSection}
-  <div${mandateHTML ? ' class="page-break"' : ""}>${extractBody(contractHTML)}</div>
-  ${mandateHTML ? `<div>${extractBody(mandateHTML)}</div>` : ""}
-</body>
-</html>`;
-
-      printWindow.document.write(combinedHTML);
     }
-
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
   };
 
   const handlePrintKeyFacts = () => handlePrint("kfs");
   const handlePrintContract = () => handlePrint("contract");
   const handlePrintMandate = () => handlePrint("mandate");
   const handlePrintBoth = () => handlePrint("both");
-
-  // Generate Key Facts Statement PDF (BOZ Format)
-  const generateKeyFactsPDF = async (): Promise<Blob> => {
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-      compress: true,
-    });
-
-    const margin = 12;
-    let yPosition = 15;
-    const lineHeight = 4.5;
-    const pageHeight = 280;
-    const pageWidth = 210 - 2 * margin;
-    const colWidth = pageWidth / 3 - 2;
-
-    const addText = (
-      text: string,
-      fontSize: number = 9,
-      bold: boolean = false,
-      x: number = margin,
-    ) => {
-      if (yPosition > pageHeight - 15) {
-        pdf.addPage();
-        yPosition = 15;
-      }
-      pdf.setFontSize(fontSize);
-      pdf.setFont("helvetica", bold ? "bold" : "normal");
-      const splitLines = pdf.splitTextToSize(text, pageWidth);
-      splitLines.forEach((line: string) => {
-        pdf.text(line, x, yPosition);
-        yPosition += lineHeight;
-      });
-    };
-
-    const addSection = (title: string) => {
-      yPosition += 4;
-      pdf.setFillColor(240, 240, 240);
-      pdf.rect(margin, yPosition - 3, pageWidth, 6, "F");
-      addText(title, 10, true);
-      yPosition += 2;
-    };
-
-    const addTableRow = (cols: string[], widths: number[], header = false) => {
-      if (yPosition > pageHeight - 15) {
-        pdf.addPage();
-        yPosition = 15;
-      }
-
-      if (header) {
-        pdf.setFillColor(51, 51, 51);
-        pdf.setTextColor(255, 255, 255);
-        pdf.rect(margin, yPosition - 3, pageWidth, 5, "F");
-      } else {
-        pdf.setTextColor(0, 0, 0);
-      }
-
-      pdf.setFontSize(7);
-      pdf.setFont("helvetica", header ? "bold" : "normal");
-
-      let x = margin;
-      cols.forEach((col, i) => {
-        const text = pdf.splitTextToSize(col, widths[i] - 2);
-        pdf.text(text[0] || "", x + 1, yPosition);
-        x += widths[i];
-      });
-
-      pdf.setTextColor(0, 0, 0);
-      yPosition += lineHeight;
-    };
-
-    // ========== HEADER ==========
-    pdf.setFontSize(12);
-    pdf.setFont("helvetica", "bold");
-    pdf.text(
-      "KEY FACTS STATEMENT FOR CONSUMER CREDIT",
-      pageWidth / 2 + margin,
-      yPosition,
-      { align: "center" },
-    );
-    yPosition += 5;
-    pdf.setFontSize(8);
-    pdf.setFont("helvetica", "italic");
-    pdf.text(
-      "*Review carefully before agreeing to a loan.*",
-      pageWidth / 2 + margin,
-      yPosition,
-      { align: "center" },
-    );
-    yPosition += 3;
-    pdf.text(
-      "*You have the right to get a copy of the full loan agreement.*",
-      pageWidth / 2 + margin,
-      yPosition,
-      { align: "center" },
-    );
-    yPosition += 4;
-    pdf.setDrawColor(0, 0, 0);
-    pdf.line(margin, yPosition, margin + pageWidth, yPosition);
-    yPosition += 5;
-
-    // ========== SECTION I: KEY TERMS ==========
-    addSection("SECTION I: KEY TERMS");
-    yPosition += 2;
-
-    // Three column layout for key terms
-    const startY = yPosition;
-
-    // Column 1: LOAN SUMMARY
-    let col1Y = startY;
-    pdf.setFontSize(8);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("LOAN SUMMARY", margin, col1Y);
-    col1Y += 4;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7);
-    pdf.text("1. Amount of Loan:", margin, col1Y);
-    col1Y += 3;
-    pdf.text(
-      `${contractData.currency} ${formatCurrency(contractData.loanAmount)}`,
-      margin,
-      col1Y,
-    );
-    col1Y += 4;
-    pdf.text("2. Duration of Loan Agreement:", margin, col1Y);
-    col1Y += 3;
-    pdf.text(contractData.tenure, margin, col1Y);
-    col1Y += 4;
-    pdf.text("3. Amount Received:", margin, col1Y);
-    col1Y += 3;
-    pdf.text(
-      `${contractData.currency} ${formatCurrency(contractData.disbursedAmount)}`,
-      margin,
-      col1Y,
-    );
-    col1Y += 4;
-
-    // Column 2: COST OF CREDIT
-    let col2Y = startY;
-    const col2X = margin + colWidth + 4;
-    pdf.setFontSize(8);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("COST OF CREDIT", col2X, col2Y);
-    col2Y += 4;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7);
-    pdf.text("4. Interest:", col2X, col2Y);
-    col2Y += 3;
-    pdf.text(
-      `${contractData.currency} ${formatCurrency(contractData.interest)}`,
-      col2X,
-      col2Y,
-    );
-    col2Y += 4;
-    pdf.text("5. Other Fees and Charges:", col2X, col2Y);
-    col2Y += 3;
-    pdf.text(
-      `${contractData.currency} ${formatCurrency(contractData.fees)}`,
-      col2X,
-      col2Y,
-    );
-    col2Y += 4;
-    pdf.text("6. Monthly Percentage Rate:", col2X, col2Y);
-    col2Y += 3;
-    pdf.text(`${contractData.monthlyPercentageRate.toFixed(0)}%`, col2X, col2Y);
-    col2Y += 4;
-    pdf.text("7. Total Cost of Credit:", col2X, col2Y);
-    col2Y += 3;
-    pdf.text(
-      `${contractData.currency} ${formatCurrency(contractData.totalCostOfCredit)}`,
-      col2X,
-      col2Y,
-    );
-    col2Y += 4;
-
-    // Column 3: REPAYMENT SCHEDULE
-    let col3Y = startY;
-    const col3X = margin + (colWidth + 4) * 2;
-    pdf.setFontSize(8);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("REPAYMENT SCHEDULE", col3X, col3Y);
-    col3Y += 4;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7);
-    pdf.text("7. Date First Payment Due:", col3X, col3Y);
-    col3Y += 3;
-    pdf.text(contractData.firstPaymentDate, col3X, col3Y);
-    col3Y += 4;
-    pdf.text("8. Number of Payments:", col3X, col3Y);
-    col3Y += 3;
-    pdf.text(String(contractData.numberOfPayments), col3X, col3Y);
-    col3Y += 4;
-    pdf.text("9. Payment Frequency:", col3X, col3Y);
-    col3Y += 3;
-    pdf.text(contractData.paymentFrequency, col3X, col3Y);
-    col3Y += 4;
-    pdf.text("10. Amount Per Payment:", col3X, col3Y);
-    col3Y += 3;
-    pdf.text(
-      `${contractData.currency} ${formatCurrency(contractData.paymentPerPeriod)}`,
-      col3X,
-      col3Y,
-    );
-    col3Y += 4;
-
-    yPosition = Math.max(col1Y, col2Y, col3Y) + 5;
-
-    // Summary Box
-    pdf.setDrawColor(51, 51, 51);
-    pdf.setLineWidth(0.5);
-    pdf.rect(margin, yPosition, pageWidth, 15);
-
-    const boxY = yPosition + 3;
-    const boxColWidth = pageWidth / 5;
-
-    pdf.setFontSize(7);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Amount of Loan", margin + 5, boxY);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(
-      `${contractData.currency} ${formatCurrency(contractData.loanAmount)}`,
-      margin + 5,
-      boxY + 5,
-    );
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(12);
-    pdf.text("+", margin + boxColWidth + 5, boxY + 4);
-
-    pdf.setFontSize(7);
-    pdf.text("Total Cost of Credit", margin + boxColWidth + 15, boxY);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(
-      `${contractData.currency} ${formatCurrency(contractData.totalCostOfCredit)}`,
-      margin + boxColWidth + 15,
-      boxY + 5,
-    );
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(12);
-    pdf.text("=", margin + boxColWidth * 2 + 20, boxY + 4);
-
-    pdf.setFontSize(7);
-    pdf.text("TOTAL AMOUNT YOU PAY", margin + boxColWidth * 2 + 30, boxY);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(9);
-    pdf.text(
-      `${contractData.currency} ${formatCurrency(contractData.totalRepayment)}`,
-      margin + boxColWidth * 2 + 30,
-      boxY + 6,
-    );
-
-    yPosition += 20;
-
-    // ========== SECTION II: RISKS ==========
-    addSection("SECTION II: RISKS TO YOU");
-    addText(
-      "* Late or missing payments may be reported to a credit reference bureau and may severely affect your financial situation, collateral, and ability to reborrow.",
-    );
-    addText(
-      "* Your interest rate will change based on changes in the Bank of Zambia's Policy Rate. This change will affect the duration of your loan and your repayment amount.",
-    );
-
-    // ========== SECTION III: RIGHTS ==========
-    addSection("SECTION III: YOUR RIGHTS AND OBLIGATIONS");
-    addText(
-      "Any questions or complaints? Call +260 211 238719, email info@goodfellow.co.zm or write to P.O. Box 50644 Lusaka.",
-    );
-    addText(
-      "Unsatisfied with our response? Contact the Bank of Zambia at +260 211 399300 or info@boz.zm. Visit www.boz.zm.",
-    );
-    addText(
-      "Want to pay off your loan early? You can do so without any penalties or fees.",
-    );
-
-    // ========== SECTION IV: FEES ==========
-    addSection("SECTION IV: UPFRONT AND RECURRING FEES");
-
-    const feeWidths = [pageWidth / 2, pageWidth / 4, pageWidth / 4];
-    addTableRow(["Fee Description", "Amount", "Type"], feeWidths, true);
-
-    contractData.charges.forEach((charge) => {
-      const isRecurring =
-        charge.name.toLowerCase().includes("monthly") ||
-        charge.name.toLowerCase().includes("recurring");
-      addTableRow(
-        [
-          charge.name,
-          `${contractData.currency} ${formatCurrency(charge.amount)}`,
-          isRecurring ? "Recurring" : "Upfront",
-        ],
-        feeWidths,
-      );
-    });
-
-    addTableRow(
-      [
-        "TOTAL FEES (excluding interest)",
-        `${contractData.currency} ${formatCurrency(contractData.fees)}`,
-        "",
-      ],
-      feeWidths,
-    );
-
-    // ========== SECTION V: TERMS ==========
-    addSection("SECTION V: IMPORTANT TERMS AND CONDITIONS");
-    addText("Late fees: Applicable if payment is more than 30 days late");
-    addText(
-      "Default interest: 25% per month if payment is more than 10 days late",
-    );
-
-    // ========== SECTION VI: REPAYMENT SCHEDULE ==========
-    // Check if we need a new page for the schedule
-    if (yPosition > pageHeight - 80) {
-      pdf.addPage();
-      yPosition = 15;
-    }
-
-    addSection("SECTION VI: REPAYMENT SCHEDULE");
-
-    const scheduleWidths = [15, 25, 25, 25, 30, 30];
-    addTableRow(
-      ["#", "Due Date", "Payment", "Principal", "Interest/Fees", "Balance"],
-      scheduleWidths,
-      true,
-    );
-
-    // Show first 12 payments and summary if more
-    const maxPayments = Math.min(contractData.repaymentSchedule.length, 12);
-    for (let i = 0; i < maxPayments; i++) {
-      const period = contractData.repaymentSchedule[i];
-      addTableRow(
-        [
-          String(period.paymentNumber),
-          period.dueDate,
-          formatCurrency(period.paymentAmount),
-          formatCurrency(period.principal),
-          formatCurrency(period.interestAndFees),
-          `${contractData.currency} ${formatCurrency(period.remainingBalance)}`,
-        ],
-        scheduleWidths,
-      );
-    }
-
-    if (contractData.repaymentSchedule.length > 12) {
-      addTableRow(["...", "...", "...", "...", "...", "..."], scheduleWidths);
-    }
-
-    // Totals row
-    pdf.setFont("helvetica", "bold");
-    addTableRow(
-      [
-        "TOTAL",
-        "",
-        formatCurrency(contractData.totalRepayment),
-        formatCurrency(contractData.loanAmount),
-        formatCurrency(contractData.totalCostOfCredit),
-        "",
-      ],
-      scheduleWidths,
-    );
-
-    // ========== SIGNATURES ==========
-    yPosition += 8;
-    if (yPosition > pageHeight - 40) {
-      pdf.addPage();
-      yPosition = 15;
-    }
-
-    pdf.setFontSize(8);
-    pdf.setFont("helvetica", "italic");
-    pdf.text(
-      "* This information is not final until signed by all parties and does not replace the loan agreement. *",
-      pageWidth / 2 + margin,
-      yPosition,
-      { align: "center" },
-    );
-    yPosition += 8;
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(8);
-    pdf.text("CERTIFIED CORRECT:", margin, yPosition);
-    yPosition += 10;
-    pdf.setDrawColor(0, 0, 0);
-    pdf.line(margin, yPosition, margin + 60, yPosition);
-    yPosition += 3;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7);
-    pdf.text("Credit provider representative", margin, yPosition);
-
-    yPosition += 8;
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(8);
-    pdf.text(
-      "I ACKNOWLEDGE RECEIPT OF THIS STATEMENT PRIOR TO SIGNING THE LOAN AGREEMENT:",
-      margin,
-      yPosition,
-    );
-    yPosition += 10;
-    pdf.line(margin, yPosition, margin + 60, yPosition);
-    pdf.line(margin + 90, yPosition, margin + 150, yPosition);
-    yPosition += 3;
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7);
-    pdf.text("Borrower", margin, yPosition);
-    pdf.text("Guarantor (if applicable)", margin + 90, yPosition);
-
-    yPosition += 8;
-    pdf.setFontSize(7);
-    pdf.text(
-      `Name of Borrower: ${contractData.clientName}    NRC: ${contractData.nrc}    Date prepared: ${format(new Date(), "dd/MM/yyyy")}`,
-      margin,
-      yPosition,
-    );
-
-    return pdf.output("blob");
-  };
-
-  // Generate Salary Advance Contract PDF
-  const generateSalaryAdvanceContractPDF = async (): Promise<Blob> => {
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-      compress: true,
-    });
-
-    const margin = 15;
-    let yPosition = 20;
-    const lineHeight = 5;
-    const pageHeight = 280;
-
-    const addText = (
-      text: string,
-      fontSize: number = 10,
-      bold: boolean = false,
-    ) => {
-      if (yPosition > pageHeight - 20) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-      pdf.setFontSize(fontSize);
-      pdf.setFont("helvetica", bold ? "bold" : "normal");
-      const splitLines = pdf.splitTextToSize(text, 180);
-      splitLines.forEach((line: string) => {
-        pdf.text(line, margin, yPosition);
-        yPosition += lineHeight;
-      });
-    };
-
-    const addSection = (title: string) => {
-      yPosition += 3;
-      addText(title, 11, true);
-      yPosition += 2;
-    };
-
-    // ========== SALARY ADVANCE CONTRACT ==========
-    addText("GOODFELLOW FINANCE LIMITED (GFL)", 14, true);
-    addText("SALARY ADVANCE CONTRACT", 12, true);
-    addText(
-      `GFL/LC/${format(new Date(), "yyyy")}/${contractData.gflNo || "N/A"}`,
-      9,
-    );
-    yPosition += 3;
-
-    addSection("LOAN DETAILS");
-    addText(`GFL No.: ${contractData.gflNo || "N/A"}`);
-    addText(`NRC: ${contractData.nrc}`);
-    addText(`Loan ID: ${contractData.loanId || "N/A"}`);
-    addText(
-      `Loan Amount: ${contractData.currency} ${formatCurrency(
-        contractData.loanAmount,
-      )}`,
-    );
-    addText(`Tenure: ${contractData.tenure}`);
-    addText(`First Payment Due: ${contractData.firstPaymentDate}`);
-    addText(
-      `Interest: ${contractData.currency} ${formatCurrency(
-        contractData.interest,
-      )}`,
-    );
-    addText(
-      `Service Fee: ${contractData.currency} ${formatCurrency(
-        contractData.fees,
-      )}`,
-    );
-    addText(
-      `Total Cost of Borrowing: ${contractData.currency} ${formatCurrency(
-        contractData.totalCostOfCredit,
-      )}`,
-    );
-
-    addSection("PARTIES");
-    addText('Lender: Goodfellow Finance Limited ("Lender")');
-    addText(`Borrower: ${contractData.clientName}`);
-    addText(`NRC: ${contractData.nrc}`);
-    addText(`Date of Birth: ${contractData.dateOfBirth}`);
-    addText(`Employee No.: ${contractData.employeeNo || "N/A"}`);
-    addText(`Employer: ${contractData.employer || "N/A"}`);
-
-    addSection("OBLIGATIONS AND PERMISSIONS");
-    addText(
-      "1. Notify Lender immediately of changes to address, contact, bank details",
-    );
-    addText(
-      "2. Borrower permits Lender to draw against any registered bank account",
-    );
-    addText(
-      "3. Lender may obtain credit information from Credit Reference Bureaux",
-    );
-    addText(
-      "4. Payroll deduction may be used if Direct Debit collection fails",
-    );
-    addText("5. Outstanding balance may be rescheduled with applicable fees");
-    addText(
-      "6. Lender may take legal action; borrower agrees to repay legal costs",
-    );
-
-    addSection("DECLARATION");
-    addText(
-      `I, ${contractData.clientName}, confirm that I have read and understood the terms of this contract.`,
-    );
-    yPosition += 3;
-    addText(`Signed at: ${contractData.branch}`);
-    addText(`Date: ${format(new Date(), "dd/MM/yyyy")}`);
-    addText(`Loan Purpose: ${contractData.loanPurpose || "N/A"}`);
-    yPosition += 5;
-    addText(`Borrower Name: ${contractData.clientName}`);
-    addText("Borrower Signature: [Signed electronically]");
-
-    return pdf.output("blob");
-  };
 
   const handleComplete = async () => {
     if (!signaturesOptional && !borrowerSignature) {
@@ -2363,16 +1708,7 @@ export function LoanContracts({
         }
       }
 
-      // Step 2: Generate PDFs from contract data
-      toast({
-        title: "Generating contracts...",
-        description: "Creating PDF documents",
-      });
-
-      const keyFactsPDF = tenantContractHtml ? null : await generateKeyFactsPDF();
-      const salaryAdvancePDF = await generateSalaryAdvanceContractPDF();
-
-      // Step 3: Create loan in Fineract
+      // Step 2: Create loan in Fineract
       toast({
         title: "Creating loan...",
         description: "Submitting loan application to Fineract",
@@ -2613,42 +1949,51 @@ export function LoanContracts({
         }
       }
 
-      // Step 4: Upload PDF contracts to the loan
+      // Step 3: Upload contracts via backend
       toast({
         title: "Uploading contracts...",
-        description: "Attaching contract documents to loan",
+        description: "Generating and attaching contract documents to loan",
       });
 
-      const uploadDocument = async (pdf: Blob, documentName: string) => {
-        const formData = new FormData();
-        formData.append("file", pdf, `${documentName}.pdf`);
-        formData.append("name", documentName);
-        formData.append("description", `Loan contract: ${documentName}`);
-
-        const uploadResponse = await fetch(
-          `/api/fineract/loans/${createdLoanId}/documents`,
-          {
-            method: "POST",
-            body: formData,
-          },
-        );
-
-        if (!uploadResponse.ok) {
-          throw new Error(`Failed to upload ${documentName}`);
-        }
-
-        return uploadResponse.json();
+      const signatures = {
+        borrower: toBackendSignature(borrowerSignature),
+        guarantor: toBackendSignature(guarantorSignature),
+        loanOfficer: toBackendSignature(loanOfficerSignature),
       };
 
-      // Upload both contract PDFs
-      if (keyFactsPDF) {
-        await uploadDocument(keyFactsPDF, "Key_Facts_Statement");
-      }
-      if (salaryAdvancePDF) {
-        await uploadDocument(salaryAdvancePDF, "Salary_Advance_Contract");
+      const uploadResponse = await fetch(`/api/leads/${leadId}/contracts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loanId: createdLoanId,
+          contractData,
+          signatures,
+        }),
+      });
+
+      const uploadResult: {
+        documents?: Array<{ name: string; status: string; error?: string }>;
+        message?: string;
+        error?: string;
+      } = await uploadResponse.json().catch(() => ({}));
+
+      // 200 = all uploaded/already present/skipped, 207 = some failed.
+      const failedDocs = (uploadResult.documents ?? []).filter((d) => d.status === "FAILED");
+      if (!uploadResponse.ok || failedDocs.length > 0) {
+        const failedNames =
+          failedDocs.map((d) => (d.error ? `${d.name}: ${d.error}` : d.name)).join(", ") ||
+          uploadResult.message ||
+          uploadResult.error ||
+          "unknown error";
+        // The loan exists; warn and carry on to CDE and the redirect.
+        toast({
+          title: "Warning",
+          description: `Loan created, but contract documents were not uploaded: ${failedNames}.`,
+          variant: "destructive",
+        });
       }
 
-      // Call CDE to evaluate the loan application
+      // Step 4: Call CDE to evaluate the loan application
       if (leadId) {
         try {
           toast({
@@ -3051,7 +2396,7 @@ export function LoanContracts({
                 </Button>
               </div>
               <div className="flex gap-2">
-                  {!tenantContractHtml && (
+                  {!hasTenantContractTemplate && (
                     <Button
                       variant={activeDoc === "kfs" ? "default" : "outline"}
                       size="sm"
@@ -3078,24 +2423,30 @@ export function LoanContracts({
             </div>
           </CardHeader>
           <CardContent className="p-4">
+            {renderPreviewError && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{renderPreviewError}</AlertDescription>
+              </Alert>
+            )}
+            {isRenderingPreview && (
+              <div className="flex items-center justify-center p-8">
+                <div className="text-center">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">Loading preview…</p>
+                </div>
+              </div>
+            )}
             {activeDoc === "kfs" ? (
               <iframe
-                srcDoc={
-                  getKeyFactsData()
-                    ? generateKeyFactsStatementHTML(getKeyFactsData()!, {
-                        borrower: borrowerSignature,
-                        guarantor: guarantorSignature,
-                        creditProvider: loanOfficerSignature,
-                      })
-                    : "<p>Loading...</p>"
-                }
+                srcDoc={renderedPreviews.kfs ?? PREVIEW_PLACEHOLDER}
                 className="w-full border rounded bg-white"
                 style={{ height: "700px", minHeight: "500px" }}
                 title="Key Facts Statement Preview"
               />
             ) : activeDoc === "mandate" ? (
               <iframe
-                srcDoc={generatedMandateHtml || "<p>Loading...</p>"}
+                srcDoc={renderedPreviews.mandate ?? PREVIEW_PLACEHOLDER}
                 className="w-full border rounded bg-white"
                 style={{ height: "700px", minHeight: "500px" }}
                 title={
@@ -3106,9 +2457,7 @@ export function LoanContracts({
               />
             ) : (
               <iframe
-                srcDoc={
-                  generatedContractHtml || "<p>Loading...</p>"
-                }
+                srcDoc={renderedPreviews.contract ?? PREVIEW_PLACEHOLDER}
                 className="w-full border rounded bg-white"
                 style={{ height: "700px", minHeight: "500px" }}
                 title="Loan Contract Preview"
@@ -3116,611 +2465,6 @@ export function LoanContracts({
             )}
           </CardContent>
         </Card>
-
-        {/* Hidden: Key Facts Statement (for PDF generation) */}
-        <div className="hidden">
-          <Card
-            className="mb-6 break-after-page bg-white text-black border-gray-200 [&_*]:text-inherit"
-            ref={keyFactsRef}
-          >
-            <CardContent className="p-8 bg-white text-black">
-              <div className="space-y-6">
-                {/* Header */}
-                <div className="flex items-center gap-4 pb-4 border-b">
-                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-[#004f73] to-[#00a5c4] flex items-center justify-center text-white font-bold text-xl">
-                    GFL
-                  </div>
-                  <div>
-                    <h1 className="text-xl font-bold text-[#004f73]">
-                      GOODFELLOW FINANCE LIMITED (GFL)
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                      Key Facts Statement & Loan Contract
-                    </p>
-                  </div>
-                </div>
-
-                {/* ANNEX 1 - KEY FACTS STATEMENT */}
-                <div>
-                  <h2 className="text-lg font-bold text-[#004f73] mb-2">
-                    ANNEX 1 — KEY FACTS STATEMENT FOR CONSUMER CREDIT
-                  </h2>
-                  <p className="text-xs text-muted-foreground mb-4">
-                    Review carefully before agreeing to a loan. You have the
-                    right to get a copy of the full loan agreement.
-                  </p>
-
-                  {/* Section I: Key Terms */}
-                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-3">
-                    SECTION I: KEY TERMS
-                  </h3>
-
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        1. Amount of Loan
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.currency}{" "}
-                        {formatCurrency(contractData.loanAmount)}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        2. Duration of Loan Agreement
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.tenure}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        3. Amount Received
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.currency}{" "}
-                        {formatCurrency(contractData.disbursedAmount)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        4. Interest
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.currency}{" "}
-                        {formatCurrency(contractData.interest)}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        5. Other Fees and Charges
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.currency}{" "}
-                        {formatCurrency(contractData.fees)}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        6. Monthly Percentage Rate
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.monthlyPercentageRate.toFixed(2)}%
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        7. Date First Payment Due
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.firstPaymentDate}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        8. Number of Payments
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.numberOfPayments}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        9. Payment Frequency
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.paymentFrequency}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <Label className="text-xs font-semibold">
-                      10. Amount Per Payment (Includes capital, interest,
-                      recurring fees)
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.paymentPerPeriod)}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        11. Total Cost of Credit (interest + fees)
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                        {contractData.currency}{" "}
-                        {formatCurrency(contractData.totalCostOfCredit)}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-semibold">
-                        12. TOTAL AMOUNT YOU PAY
-                      </Label>
-                      <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1 font-bold">
-                        {contractData.currency}{" "}
-                        {formatCurrency(contractData.totalRepayment)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Section II: Risks */}
-                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2 mt-6">
-                    SECTION II: RISKS TO YOU
-                  </h3>
-                  <ul className="list-disc list-inside text-sm space-y-1 text-gray-700 dark:text-gray-700 mb-4">
-                    <li>
-                      Late or missing payments may be reported to a credit
-                      reference bureau and may severely affect your financial
-                      situation, collateral, and ability to reborrow.
-                    </li>
-                    <li>
-                      Your interest rate will change based on changes in the
-                      Bank of Zambia's Policy Rate. This change will affect the
-                      duration of your loan and your repayment amount.
-                    </li>
-                  </ul>
-
-                  {/* Section III: Rights and Obligations */}
-                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                    SECTION III: YOUR RIGHTS AND OBLIGATIONS
-                  </h3>
-                  <div className="text-sm space-y-2 text-gray-700 dark:text-gray-700 mb-4">
-                    <p>
-                      Any questions or complaints? Call{" "}
-                      <strong>+260 211 238719</strong>, email{" "}
-                      <a
-                        href="mailto:info@goodfellow.co.zm"
-                        className="text-blue-600"
-                      >
-                        info@goodfellow.co.zm
-                      </a>{" "}
-                      or write to P.O. Box 50644 Lusaka.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Unsatisfied with our response? Contact the Bank of Zambia
-                      at <strong>+260 211 399300</strong> or{" "}
-                      <a href="mailto:info@boz.zm" className="text-blue-600">
-                        info@boz.zm
-                      </a>
-                      . Visit{" "}
-                      <a href="https://www.boz.zm" className="text-blue-600">
-                        www.boz.zm
-                      </a>
-                      .
-                    </p>
-                    <p>
-                      You may pay off your loan early without penalties. You are
-                      required to make payments according to your loan agreement
-                      and to notify us of important changes in your situation.
-                    </p>
-                  </div>
-
-                  {/* Section IV: Fees */}
-                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                    SECTION IV: UPFRONT AND RECURRING FEES
-                  </h3>
-                  <div className="border rounded-lg overflow-hidden mb-4">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gradient-to-r from-[#004f73] to-[#00a5c4] text-white">
-                        <tr>
-                          <th className="p-2 text-left">Fee</th>
-                          <th className="p-2 text-right">
-                            Amount ({contractData.currency})
-                          </th>
-                          <th className="p-2 text-left">Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {contractData.charges.map((charge, index) => (
-                          <tr key={index} className="border-t">
-                            <td className="p-2">{charge.name}</td>
-                            <td className="p-2 text-right">
-                              {formatCurrency(charge.amount)}
-                            </td>
-                            <td className="p-2">-</td>
-                          </tr>
-                        ))}
-                        <tr className="border-t font-bold bg-gray-50 dark:bg-gray-50 dark:text-black">
-                          <td className="p-2">Total (excluding interest)</td>
-                          <td className="p-2 text-right">
-                            {formatCurrency(
-                              contractData.charges.reduce(
-                                (sum, c) => sum + c.amount,
-                                0,
-                              ),
-                            )}
-                          </td>
-                          <td className="p-2">-</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Section VI: Repayment Schedule */}
-                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                    SECTION V: REPAYMENT SCHEDULE
-                  </h3>
-                  <div className="border rounded-lg overflow-hidden mb-4">
-                    <div className="max-h-64 overflow-y-auto">
-                      <table className="w-full text-xs">
-                        <thead className="bg-gradient-to-r from-[#004f73] to-[#00a5c4] text-white sticky top-0">
-                          <tr>
-                            <th className="p-2 text-left">Payment #</th>
-                            <th className="p-2 text-left">Due Date</th>
-                            <th className="p-2 text-right">Payment Amount</th>
-                            <th className="p-2 text-right">Principal</th>
-                            <th className="p-2 text-right">Interest & Fees</th>
-                            <th className="p-2 text-right">
-                              Remaining Balance
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {contractData.repaymentSchedule.map(
-                            (period, index) => (
-                              <tr key={index} className="border-t">
-                                <td className="p-2">{period.paymentNumber}</td>
-                                <td className="p-2">{period.dueDate}</td>
-                                <td className="p-2 text-right">
-                                  {formatCurrency(period.paymentAmount)}
-                                </td>
-                                <td className="p-2 text-right">
-                                  {formatCurrency(period.principal)}
-                                </td>
-                                <td className="p-2 text-right">
-                                  {formatCurrency(period.interestAndFees)}
-                                </td>
-                                <td className="p-2 text-right">
-                                  {formatCurrency(period.remainingBalance)}
-                                </td>
-                              </tr>
-                            ),
-                          )}
-                          <tr className="border-t font-bold bg-gray-50 dark:bg-gray-50 dark:text-black">
-                            <td className="p-2" colSpan={2}>
-                              TOTAL
-                            </td>
-                            <td className="p-2 text-right">
-                              {formatCurrency(contractData.totalRepayment)}
-                            </td>
-                            <td className="p-2 text-right">
-                              {formatCurrency(contractData.loanAmount)}
-                            </td>
-                            <td className="p-2 text-right">
-                              {formatCurrency(contractData.totalCostOfCredit)}
-                            </td>
-                            <td className="p-2 text-right">-</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground mb-4">
-                    This information is not final until signed by all parties
-                    and does not replace the loan agreement.
-                  </p>
-
-                  {/* Signatures */}
-                  <div className="grid grid-cols-2 gap-6 mt-6">
-                    <div>
-                      <p className="text-sm mb-2">Certified correct:</p>
-                      {loanOfficerSignature && (
-                        <img
-                          src={loanOfficerSignature}
-                          alt="Officer signature"
-                          className="max-h-16 mb-2"
-                        />
-                      )}
-                      <div className="border-b-2 border-gray-300 mb-1"></div>
-                      <p className="text-xs text-muted-foreground">
-                        Credit provider representative
-                      </p>
-                      <p className="text-xs mt-2">
-                        {contractData.loanOfficer || "___________"}
-                      </p>
-                    </div>
-                    <div className="space-y-4">
-                      <div>
-                        {borrowerSignature && (
-                          <img
-                            src={borrowerSignature}
-                            alt="Borrower signature"
-                            className="max-h-16 mb-2"
-                          />
-                        )}
-                        <div className="border-b-2 border-gray-300 mb-1"></div>
-                        <p className="text-xs text-muted-foreground">
-                          Borrower (I acknowledge receipt prior to signing)
-                        </p>
-                        <p className="text-xs mt-1">
-                          {contractData.clientName}
-                        </p>
-                      </div>
-                      {guarantorSignature && (
-                        <div>
-                          <img
-                            src={guarantorSignature}
-                            alt="Guarantor signature"
-                            className="max-h-16 mb-2"
-                          />
-                          <div className="border-b-2 border-gray-300 mb-1"></div>
-                          <p className="text-xs text-muted-foreground">
-                            Guarantor
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground mt-4">
-                    Name of Borrower: {contractData.clientName} &nbsp; NRC:{" "}
-                    {contractData.nrc} &nbsp; Date prepared:{" "}
-                    {format(new Date(), "dd/MM/yyyy")}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Salary Advance Contract */}
-          <Card
-            className="bg-white text-black border-gray-200 [&_*]:text-inherit"
-            ref={salaryAdvanceRef}
-          >
-            <CardContent className="p-8 bg-white text-black">
-              <div className="space-y-6">
-                {/* Header */}
-                <div className="flex items-center gap-4 pb-4 border-b">
-                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-[#004f73] to-[#00a5c4] flex items-center justify-center text-white font-bold text-xl">
-                    GFL
-                  </div>
-                  <div>
-                    <h1 className="text-xl font-bold text-[#004f73]">
-                      SALARY ADVANCE CONTRACT
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                      GFL/LC/2025/02
-                    </p>
-                  </div>
-                </div>
-
-                {/* Contract Details */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-xs font-semibold">GFL NO.</Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.gflNo || "N/A"}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">NRC</Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.nrc}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">LOAN ID</Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.loanId || leadId || "N/A"}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-xs font-semibold">Loan Amount</Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.loanAmount)}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Tenure</Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.tenure}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Payment Due</Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.firstPaymentDate}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label className="text-xs font-semibold">Interest</Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.interest)}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Service Fee</Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.fees)}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      Total Cost of Borrowing
-                    </Label>
-                    <div className="bg-[#f1fcff] border border-dashed rounded p-2 mt-1">
-                      {contractData.currency}{" "}
-                      {formatCurrency(contractData.totalRepayment)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Parties */}
-                <div>
-                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                    Parties
-                  </h3>
-                  <p className="text-sm">
-                    <strong>Lender:</strong> Goodfellow Finance Limited
-                    ("Lender")
-                  </p>
-                  <p className="text-sm mt-2">
-                    <strong>Borrower:</strong> {contractData.clientName} | NRC:{" "}
-                    {contractData.nrc} | DOB: {contractData.dateOfBirth} |
-                    Gender: {contractData.gender}
-                  </p>
-                  {contractData.employeeNo && contractData.employer && (
-                    <p className="text-sm mt-1">
-                      Employee No.: {contractData.employeeNo} | Employer:{" "}
-                      {contractData.employer}
-                    </p>
-                  )}
-                </div>
-
-                {/* Obligations */}
-                <div>
-                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                    Obligations & Permissions
-                  </h3>
-                  <ol className="list-decimal list-inside text-sm space-y-1 text-gray-700 dark:text-gray-700">
-                    <li>
-                      Notify the Lender immediately of changes to address,
-                      contact, bank details, employment or financial condition.
-                    </li>
-                    <li>
-                      The Borrower permits the Lender to draw against any bank
-                      account registered to the borrower (costs for bounced
-                      direct debit apply).
-                    </li>
-                    <li>
-                      The Lender may obtain and verify credit information from
-                      licensed Credit Reference Bureaux.
-                    </li>
-                    <li>
-                      In case of collection failure through Direct Debit,
-                      payroll deduction may be used to recover the amount owed.
-                    </li>
-                    <li>
-                      Reschedule outstanding balance if repayment is not
-                      completed within the scheduled month; full monthly
-                      interest and administrative fees may apply.
-                    </li>
-                    <li>
-                      The Lender may take legal action in Zambia; borrower
-                      agrees to repay expenses and legal costs incurred in
-                      recovery.
-                    </li>
-                  </ol>
-                </div>
-
-                {/* Declaration */}
-                <div>
-                  <h3 className="text-sm font-semibold text-[#00a5c4] mb-2">
-                    Declaration & Signatures
-                  </h3>
-                  <p className="text-sm mb-4">
-                    I <strong>{contractData.clientName}</strong> confirm that I
-                    have read and understood the terms of this salary advance
-                    contract.
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-sm">
-                        Signed at:{" "}
-                        <span className="bg-[#f1fcff] px-2">
-                          {contractData.branch}
-                        </span>
-                      </p>
-                      <p className="text-sm mt-2">
-                        Date:{" "}
-                        <span className="bg-[#f1fcff] px-2">
-                          {format(new Date(), "dd/MM/yyyy")}
-                        </span>
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm">
-                        Borrower's Name: {contractData.clientName}
-                      </p>
-                      <div className="mt-2">
-                        {borrowerSignature && (
-                          <img
-                            src={borrowerSignature}
-                            alt="Borrower signature"
-                            className="max-h-16 mb-2"
-                          />
-                        )}
-                        <div className="border-b-2 border-gray-300"></div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Borrower's Signature
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-6 mt-6">
-                    <div>
-                      <p className="text-sm">
-                        Loan Officer's Name:{" "}
-                        {contractData.loanOfficer || "___________"}
-                      </p>
-                      <div className="mt-2">
-                        {loanOfficerSignature && (
-                          <img
-                            src={loanOfficerSignature}
-                            alt="Officer signature"
-                            className="max-h-16 mb-2"
-                          />
-                        )}
-                        <div className="border-b-2 border-gray-300"></div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Loan Officer's Signature
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-sm">
-                        Loan Purpose:{" "}
-                        {contractData.loanPurpose || "___________"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        {/* End hidden section */}
 
         {/* Navigation Buttons at Bottom */}
         <Card className="print:hidden">
@@ -3736,7 +2480,7 @@ export function LoanContracts({
               </Button>
             )}
             <div className="flex gap-4 ml-auto">
-              {!tenantContractHtml && (
+              {!hasTenantContractTemplate && (
                 <Button onClick={handlePrintKeyFacts} variant="outline" size="sm">
                   <FileText className="mr-2 h-4 w-4" />
                   Print Key Facts
@@ -3750,7 +2494,7 @@ export function LoanContracts({
                 <FileText className="mr-2 h-4 w-4" />
                 Print Mandate
               </Button>
-              {(!tenantContractHtml || isArdaStockLoanContract) && (
+              {(!hasTenantContractTemplate || isArdaStockLoanContract) && (
                 <Button onClick={handlePrintBoth} variant="outline" size="sm">
                   <FileText className="mr-2 h-4 w-4" />
                   Print All

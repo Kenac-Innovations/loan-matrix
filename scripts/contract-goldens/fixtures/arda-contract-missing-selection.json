@@ -1,0 +1,55 @@
+{
+  "template": "arda-contract",
+  "leadId": "clead008ardacontractmissingsel",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "documentVariant": "ARDA_STOCK_INPUT",
+    "clientName": "Blessing Mukuma",
+    "nrc": "444444/55/5",
+    "dateOfBirth": "1991-09-30",
+    "gender": "Male",
+    "gflNo": "GFL-2026-008901",
+    "loanId": "LOAN-2026-008901",
+    "loanAmount": 75000,
+    "disbursedAmount": 0,
+    "tenure": "12 months",
+    "numberOfPayments": 12,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-05-01",
+    "interest": 11250,
+    "fees": 3750,
+    "totalCostOfCredit": 15000,
+    "totalRepayment": 90000,
+    "paymentPerPeriod": 7500,
+    "monthlyPercentageRate": 2.0,
+    "currency": "ZMW",
+    "branch": "Mazabuka",
+    "loanOfficer": "Alice Banda",
+    "loanPurpose": "Agricultural input financing",
+    "executionPlace": "Mazabuka",
+    "executionDate": "2026-03-15",
+    "accountNumber": "ACC444555666",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-05-01",
+        "paymentAmount": 7500,
+        "principal": 6250,
+        "interestAndFees": 1250,
+        "remainingBalance": 68750
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-06-01",
+        "paymentAmount": 7500,
+        "principal": 6250,
+        "interestAndFees": 1250,
+        "remainingBalance": 62500
+      }
+    ],
+    "charges": []
+  },
+  "signatures": {
+    "borrower": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  }
+}

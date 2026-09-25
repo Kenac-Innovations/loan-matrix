@@ -1,0 +1,54 @@
+{
+  "template": "kfs",
+  "leadId": "clead004kfssparse",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "clientName": "Patricia Lungile",
+    "nrc": "555555/99/9",
+    "dateOfBirth": "1992-07-08",
+    "gender": "Female",
+    "gflNo": "GFL-2026-004567",
+    "loanAmount": 15000,
+    "disbursedAmount": 15000,
+    "tenure": "3 months",
+    "numberOfPayments": 3,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-04-25",
+    "interest": 562.5,
+    "fees": 187.5,
+    "totalCostOfCredit": 750,
+    "totalRepayment": 15750,
+    "paymentPerPeriod": 5250,
+    "monthlyPercentageRate": 1.25,
+    "currency": "ZMW",
+    "branch": "Kitwe",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-25",
+        "paymentAmount": 5250,
+        "principal": 5000,
+        "interestAndFees": 250,
+        "remainingBalance": 10000
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-25",
+        "paymentAmount": 5250,
+        "principal": 5000,
+        "interestAndFees": 250,
+        "remainingBalance": 5000
+      },
+      {
+        "paymentNumber": 3,
+        "dueDate": "2026-06-25",
+        "paymentAmount": 5250,
+        "principal": 5000,
+        "interestAndFees": 250,
+        "remainingBalance": 0
+      }
+    ],
+    "charges": []
+  },
+  "signatures": {}
+}

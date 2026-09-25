@@ -1,0 +1,93 @@
+{
+  "template": "omama",
+  "leadId": "clead011omamarulethu",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "clientName": "Simon Kalombo",
+    "nrc": "777777/88/8",
+    "dateOfBirth": "1993-08-22",
+    "gender": "Male",
+    "gflNo": "GFL-2026-011234",
+    "loanId": "LOAN-2026-011234",
+    "loanAmount": 18000,
+    "disbursedAmount": 18000,
+    "tenure": "6 months",
+    "numberOfPayments": 6,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-04-25",
+    "interest": 1350,
+    "fees": 450,
+    "totalCostOfCredit": 1800,
+    "totalRepayment": 19800,
+    "paymentPerPeriod": 3300,
+    "monthlyPercentageRate": 1.8,
+    "currency": "ZMW",
+    "branch": "Chingola",
+    "loanPurpose": "Personal loan",
+    "executionPlace": "Chingola",
+    "executionDate": "2026-03-15",
+    "firstname": "Simon",
+    "lastname": "Kalombo",
+    "mobileNo": "+260766667890",
+    "residentialAddress": "321 Commercial Road, Chingola",
+    "accountNumber": "ACC555666777",
+    "branchName": "Chingola Branch",
+    "sortCode": "GFLZM",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-25",
+        "paymentAmount": 3300,
+        "principal": 3000,
+        "interestAndFees": 300,
+        "remainingBalance": 15000
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-25",
+        "paymentAmount": 3300,
+        "principal": 3000,
+        "interestAndFees": 300,
+        "remainingBalance": 12000
+      },
+      {
+        "paymentNumber": 3,
+        "dueDate": "2026-06-25",
+        "paymentAmount": 3300,
+        "principal": 3000,
+        "interestAndFees": 300,
+        "remainingBalance": 9000
+      },
+      {
+        "paymentNumber": 4,
+        "dueDate": "2026-07-25",
+        "paymentAmount": 3300,
+        "principal": 3000,
+        "interestAndFees": 300,
+        "remainingBalance": 6000
+      },
+      {
+        "paymentNumber": 5,
+        "dueDate": "2026-08-25",
+        "paymentAmount": 3300,
+        "principal": 3000,
+        "interestAndFees": 300,
+        "remainingBalance": 3000
+      },
+      {
+        "paymentNumber": 6,
+        "dueDate": "2026-09-25",
+        "paymentAmount": 3300,
+        "principal": 3000,
+        "interestAndFees": 300,
+        "remainingBalance": 0
+      }
+    ],
+    "charges": []
+  },
+  "signatures": {
+    "borrower": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  },
+  "logoUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "templateFile": "rulethu-full-loan/acknowledgement-of-debt-2025.html"
+}

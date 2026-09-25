@@ -1,0 +1,78 @@
+{
+  "template": "default-contract",
+  "leadId": "clead002sparse",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "clientName": "Grace Mwangi",
+    "nrc": "987654/32/1",
+    "dateOfBirth": "1990-12-20",
+    "gender": "Female",
+    "gflNo": "GFL-2026-002345",
+    "loanAmount": 25000,
+    "disbursedAmount": 25000,
+    "tenure": "6 months",
+    "numberOfPayments": 6,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-04-20",
+    "interest": 1875,
+    "fees": 625,
+    "totalCostOfCredit": 2500,
+    "totalRepayment": 27500,
+    "paymentPerPeriod": 4583.33,
+    "monthlyPercentageRate": 1.5,
+    "currency": "ZMW",
+    "branch": "Ndola",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-20",
+        "paymentAmount": 4583.33,
+        "principal": 4166.67,
+        "interestAndFees": 416.66,
+        "remainingBalance": 20833.33
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-20",
+        "paymentAmount": 4583.33,
+        "principal": 4166.67,
+        "interestAndFees": 416.66,
+        "remainingBalance": 16666.66
+      },
+      {
+        "paymentNumber": 3,
+        "dueDate": "2026-06-20",
+        "paymentAmount": 4583.33,
+        "principal": 4166.67,
+        "interestAndFees": 416.66,
+        "remainingBalance": 12499.99
+      },
+      {
+        "paymentNumber": 4,
+        "dueDate": "2026-07-20",
+        "paymentAmount": 4583.33,
+        "principal": 4166.67,
+        "interestAndFees": 416.66,
+        "remainingBalance": 8333.32
+      },
+      {
+        "paymentNumber": 5,
+        "dueDate": "2026-08-20",
+        "paymentAmount": 4583.33,
+        "principal": 4166.67,
+        "interestAndFees": 416.66,
+        "remainingBalance": 4166.65
+      },
+      {
+        "paymentNumber": 6,
+        "dueDate": "2026-09-20",
+        "paymentAmount": 4583.34,
+        "principal": 4166.68,
+        "interestAndFees": 416.66,
+        "remainingBalance": 0
+      }
+    ],
+    "charges": []
+  },
+  "signatures": {}
+}

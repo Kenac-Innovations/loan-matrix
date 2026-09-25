@@ -1,0 +1,63 @@
+{
+  "template": "arda-mandate",
+  "leadId": "clead009ardamandatewithsel",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "documentVariant": "ARDA_STOCK_INPUT",
+    "clientName": "Mildred Kaponda",
+    "nrc": "555555/66/6",
+    "dateOfBirth": "1987-02-14",
+    "gender": "Female",
+    "gflNo": "GFL-2026-009012",
+    "loanId": "LOAN-2026-009012",
+    "loanAmount": 50000,
+    "disbursedAmount": 0,
+    "tenure": "6 months",
+    "numberOfPayments": 6,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-04-15",
+    "interest": 7500,
+    "fees": 2500,
+    "totalCostOfCredit": 10000,
+    "totalRepayment": 60000,
+    "paymentPerPeriod": 10000,
+    "monthlyPercentageRate": 3.0,
+    "currency": "ZMW",
+    "branch": "Monze",
+    "loanPurpose": "Agricultural input financing",
+    "executionPlace": "Monze",
+    "executionDate": "2026-03-15",
+    "accountNumber": "ACC777888999",
+    "stockLoanSelection": {
+      "inventoryItemName": "DAP Fertilizer",
+      "quantity": "100",
+      "unitOfMeasure": "bags",
+      "unitValue": "500",
+      "totalValue": "50000",
+      "currencyCode": "ZMW",
+      "fineractOfficeName": "Monze Agricultural Office"
+    },
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-15",
+        "paymentAmount": 10000,
+        "principal": 8333.33,
+        "interestAndFees": 1666.67,
+        "remainingBalance": 41666.67
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-15",
+        "paymentAmount": 10000,
+        "principal": 8333.33,
+        "interestAndFees": 1666.67,
+        "remainingBalance": 33333.34
+      }
+    ],
+    "charges": []
+  },
+  "signatures": {
+    "borrower": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  }
+}
