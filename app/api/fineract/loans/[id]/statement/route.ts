@@ -5,6 +5,7 @@ import {
   generateLoanStatementHTML,
   transformFineractLoanToStatement,
   getPrincipalBalanceEffect,
+  getRunningBalanceEffect,
 } from "@/lib/loan-statement-template";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
@@ -123,6 +124,7 @@ export async function GET(
     // Filter transactions by date if provided
     let transactions = loanData.transactions || [];
     let openingPrincipalBalance = 0;
+    let openingRunningBalance = 0;
     if (hasTransactionDateFilter) {
       // Compare calendar dates as YYYY-MM-DD strings so the server timezone
       // cannot shift transactions across the from/to boundaries.
@@ -134,6 +136,7 @@ export async function GET(
         if (fromKey && txKey < fromKey) {
           // Carried forward into the Balance B/Fwd row
           openingPrincipalBalance += getPrincipalBalanceEffect(tx);
+          openingRunningBalance += getRunningBalanceEffect(tx);
         } else if (!toKey || txKey <= toKey) {
           inPeriod.push(tx);
         }
@@ -174,6 +177,8 @@ export async function GET(
         balanceSource: hasTransactionDateFilter ? "transaction-ledger" : "summary",
         // Pass the opening principal balance computed before the from date
         openingBalance: openingPrincipalBalance,
+        // Pass the opening running balance computed before the from date
+        openingRunningBalance,
       }
     );
 

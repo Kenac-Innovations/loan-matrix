@@ -36,9 +36,10 @@ export interface LoanStatementData {
 
   // Summary
   openingBalance: number;
+  openingRunningBalance: number;
   totalDebits: number;
   totalCredits: number;
-  /** Balance derived only from effective transaction debit/credit movements. */
+  /** Same as closingRunningBalance; kept for backwards-compatible JSON consumers. */
   ledgerClosingBalance: number;
   /** Closing principal balance, matching the repayment schedule's "Balance Of Loan". */
   closingBalance: number;
@@ -50,6 +51,8 @@ export interface LoanStatementData {
   principalDecreases?: number;
   /** Fineract summary total outstanding (principal + interest + fees + penalties), when unfiltered. */
   totalOutstanding?: number | null;
+  /** Closing running balance: opening running balance + sum of running balance effects. */
+  closingRunningBalance: number;
 
   // Prepared by
   preparedBy?: string;
@@ -68,6 +71,7 @@ export interface LoanTransaction {
   fees?: number;
   penalties?: number;
   cumulativeBalance: number;
+  runningBalance: number;
   isHighlighted?: boolean; // For disbursements and certain transactions
   isReversed?: boolean;
 }
@@ -115,6 +119,8 @@ export interface LoanStatementTransformOptions {
   useTransactionLedgerBalance?: boolean;
   /** Opening principal balance for filtered statements (computed before the from date). */
   openingBalance?: number;
+  /** Opening running balance for filtered statements (computed before the from date). */
+  openingRunningBalance?: number;
 }
 
 const formatCurrency = (amount: number, symbol: string = ""): string => {
@@ -442,6 +448,7 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
         <td class="amount-cell component-cell">${formatCurrency(tx.interest ?? 0, "")}</td>
         <td class="amount-cell component-cell">${formatCurrency(tx.fees ?? 0, "")}</td>
         <td class="amount-cell component-cell">${formatCurrency(tx.penalties ?? 0, "")}</td>
+        <td class="amount-cell balance-cell">${formatSignedCurrency(tx.runningBalance, "")}</td>
         <td class="amount-cell balance-cell">${formatSignedCurrency(tx.cumulativeBalance, "")}</td>
       </tr>
     `
@@ -609,7 +616,7 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
     }
     
     .transactions-table .trxn-id-cell {
-      width: 80px;
+      width: 70px;
       text-align: center;
     }
     
@@ -805,11 +812,12 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
             <th class="amount-header">Interest</th>
             <th class="amount-header">Fees</th>
             <th class="amount-header">Penalties</th>
+            <th class="amount-header">Running Balance</th>
             <th class="amount-header">Principal Balance</th>
           </tr>
         </thead>
         <tbody>
-          ${transactionRows || '<tr><td colspan="10" style="text-align: center; padding: 20px;">No transactions found</td></tr>'}
+          ${transactionRows || '<tr><td colspan="11" style="text-align: center; padding: 20px;">No transactions found</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -846,6 +854,15 @@ export function generateLoanStatementHTML(data: LoanStatementData): string {
             <tr>
               <td>Principal Repaid</td>
               <td>${data.currencySymbol}${formatCurrency(data.principalDecreases ?? 0, "")}</td>
+            </tr>
+            ${data.openingRunningBalance !== 0 ? `
+            <tr>
+              <td>Opening Running Balance</td>
+              <td>${formatSignedCurrency(data.openingRunningBalance, data.currencySymbol)}</td>
+            </tr>` : ""}
+            <tr>
+              <td>Closing Running Balance</td>
+              <td>${formatSignedCurrency(data.closingRunningBalance, data.currencySymbol)}</td>
             </tr>
             <tr class="closing-row">
               <td>Closing Principal Balance</td>
@@ -1032,6 +1049,33 @@ export function getPrincipalBalanceEffect(tx: TransactionLike): number {
   }
 
   return 0;
+}
+
+/**
+ * Statement amounts as displayed on the single-loan statement. Charges collected
+ * at disbursement (e.g. Admin Processing Fee) are shown as charged (debit) and
+ * paid (credit) on the same row, like the schedule's period 0, so they net to
+ * zero on the running balance and never reduce the principal balance.
+ */
+function getDisplayedStatementAmounts(tx: TransactionLike) {
+  const amounts = getStatementTransactionAmounts(tx);
+  if (!tx.type?.repaymentAtDisbursement) return amounts;
+
+  const debit = amounts.interest + amounts.fees + amounts.penalties;
+  return {
+    ...amounts,
+    debit,
+    effectiveDebit: amounts.isReversed ? 0 : debit,
+  };
+}
+
+/**
+ * Signed change a transaction makes to the running balance (total owed as a
+ * ledger): displayed debit − credit. Reversed rows have no effect.
+ */
+export function getRunningBalanceEffect(tx: TransactionLike): number {
+  const { effectiveDebit, effectiveCredit } = getDisplayedStatementAmounts(tx);
+  return effectiveDebit - effectiveCredit;
 }
 
 export function generateConsolidatedStatementHTML(data: ConsolidatedStatementData): string {
@@ -1247,9 +1291,11 @@ export function transformFineractLoanToStatement(
 
   // Calculate totals
   const initialOpeningBalance = options.openingBalance ?? 0;
+  const initialOpeningRunningBalance = options.openingRunningBalance ?? 0;
   let totalDebits = 0;
   let totalCredits = 0;
   let principalBalance = initialOpeningBalance;
+  let runningBalance = initialOpeningRunningBalance;
   let principalIncreases = 0;
   let principalDecreases = 0;
 
@@ -1269,6 +1315,7 @@ export function transformFineractLoanToStatement(
     fees: 0,
     penalties: 0,
     cumulativeBalance: initialOpeningBalance,
+    runningBalance: initialOpeningRunningBalance,
     isHighlighted: false,
   });
 
@@ -1299,9 +1346,7 @@ export function transformFineractLoanToStatement(
       isReversed,
       effectiveDebit,
       effectiveCredit,
-    } = getStatementTransactionAmounts(tx);
-
-    const isRepaymentAtDisbursement = tx.type?.repaymentAtDisbursement;
+    } = getDisplayedStatementAmounts(tx);
 
     totalDebits += effectiveDebit;
     totalCredits += effectiveCredit;
@@ -1312,27 +1357,21 @@ export function transformFineractLoanToStatement(
     if (principalEffect > 0) principalIncreases += principalEffect;
     else principalDecreases -= principalEffect;
 
-    // Charges collected at disbursement (e.g. Admin Processing Fee) are shown
-    // as charged (debit) and paid (credit) on the same row, like the schedule's
-    // period 0, so they net to zero and never reduce the principal balance.
-    let displayDebit = debit;
-    if (isRepaymentAtDisbursement) {
-      displayDebit = interest + fees + penalties;
-      if (!isReversed) totalDebits += displayDebit;
-    }
+    runningBalance += effectiveDebit - effectiveCredit;
 
     processedTransactions.push({
       id: tx.id ?? 0,
       date: parseFineractDate(tx.date),
       type: getStatementTransactionType(tx),
       trxnId: tx.id?.toString() || "",
-      debit: displayDebit,
+      debit,
       credit,
       principal,
       interest,
       fees,
       penalties,
       cumulativeBalance: principalBalance,
+      runningBalance,
       isHighlighted,
       isReversed,
     });
@@ -1359,7 +1398,7 @@ export function transformFineractLoanToStatement(
     parseFineractDate(timeline.actualDisbursementDate || timeline.submittedOnDate);
   const actualPeriodTo = periodTo || format(now, "dd MMMM yyyy");
   const printDate = format(now, "M/d/yyyy h:mm:ss a");
-  const ledgerClosingBalance = initialOpeningBalance + totalDebits - totalCredits;
+  const ledgerClosingBalance = runningBalance;
   const hasSummaryOutstanding =
     typeof summary.principalOutstanding === "number" &&
     Number.isFinite(summary.principalOutstanding);
@@ -1412,12 +1451,14 @@ export function transformFineractLoanToStatement(
     transactions: processedTransactions,
 
     openingBalance: initialOpeningBalance,
+    openingRunningBalance: initialOpeningRunningBalance,
     totalDebits,
     totalCredits,
     ledgerClosingBalance,
     closingBalance,
     closingBalanceSource,
     totalOutstanding,
+    closingRunningBalance: runningBalance,
     principalIncreases,
     principalDecreases,
 

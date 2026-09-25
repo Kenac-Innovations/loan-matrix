@@ -5,6 +5,7 @@ import {
   generateLoanStatementHTML,
   transformFineractLoanToStatement,
   getPrincipalBalanceEffect,
+  getRunningBalanceEffect,
 } from "../loan-statement-template";
 
 function buildRulethuLoan() {
@@ -753,4 +754,245 @@ test("statement footer reconciles principal movements to the closing principal b
   assert.match(html, />Principal Disbursed</);
   assert.match(html, />Principal Repaid</);
   assert.doesNotMatch(html, />Total Debits</);
+});
+
+test("getRunningBalanceEffect covers disbursement, accrual, repayment, and fee rows", () => {
+  // Disbursement: running balance increases
+  const disbursement = {
+    id: 1,
+    date: [2026, 3, 2],
+    amount: 150000,
+    principalPortion: 0,
+    type: { disbursement: true },
+  };
+  assert.equal(getRunningBalanceEffect(disbursement), 150000);
+
+  // Accrual: running balance increases
+  const accrual = {
+    id: 2,
+    date: [2026, 3, 3],
+    amount: 8250,
+    principalPortion: 0,
+    interestPortion: 8250,
+    type: { accrual: true },
+  };
+  assert.equal(getRunningBalanceEffect(accrual), 8250);
+
+  // Repayment: running balance decreases
+  const repayment = {
+    id: 3,
+    date: [2026, 5, 18],
+    amount: 13200,
+    principalPortion: 4950,
+    interestPortion: 8250,
+    type: { repayment: true },
+  };
+  assert.equal(getRunningBalanceEffect(repayment), -13200);
+
+  // Admin fee (repaymentAtDisbursement): net 0
+  const adminFee = {
+    id: 4,
+    date: [2026, 3, 2],
+    amount: 4500,
+    principalPortion: 0,
+    interestPortion: 0,
+    feeChargesPortion: 4500,
+    penaltyChargesPortion: 0,
+    type: { repaymentAtDisbursement: true },
+  };
+  assert.equal(getRunningBalanceEffect(adminFee), 0);
+
+  // Reversed: no effect
+  const reversedRepayment = {
+    id: 5,
+    date: [2026, 5, 19],
+    amount: 5000,
+    principalPortion: 5000,
+    type: { repayment: true },
+    manuallyReversed: true,
+  };
+  assert.equal(getRunningBalanceEffect(reversedRepayment), 0);
+});
+
+test("loan 335 fixture: disbursement, admin fee, accrual, repayments with running balances", () => {
+  const statement = transformFineractLoanToStatement(
+    {
+      accountNo: "000000335",
+      clientName: "Hanzala Minerals",
+      currency: { code: "USD", displaySymbol: "$" },
+      summary: {
+        principalDisbursed: 150000,
+        totalOutstanding: 136800,
+      },
+      transactions: [
+        // Disbursement: 150,000 (2 Mar)
+        {
+          id: 1,
+          date: [2026, 3, 2],
+          amount: 150000,
+          principalPortion: 0,
+          interestPortion: 0,
+          feeChargesPortion: 0,
+          penaltyChargesPortion: 0,
+          type: { disbursement: true },
+        },
+        // Admin fee: 4,500 fee portion (2 Mar)
+        {
+          id: 2,
+          date: [2026, 3, 2],
+          amount: 4500,
+          principalPortion: 0,
+          interestPortion: 0,
+          feeChargesPortion: 4500,
+          penaltyChargesPortion: 0,
+          type: { repaymentAtDisbursement: true },
+        },
+        // Accrual: 8,250 (20 Apr)
+        {
+          id: 3,
+          date: [2026, 4, 20],
+          amount: 8250,
+          principalPortion: 0,
+          interestPortion: 8250,
+          feeChargesPortion: 0,
+          penaltyChargesPortion: 0,
+          type: { accrual: true },
+        },
+        // Repayment: 8,250 all interest (7 May)
+        {
+          id: 4,
+          date: [2026, 5, 7],
+          amount: 8250,
+          principalPortion: 0,
+          interestPortion: 8250,
+          feeChargesPortion: 0,
+          penaltyChargesPortion: 0,
+          type: { repayment: true },
+        },
+        // Repayment: 13,200 = principal 4,950 + interest 8,250 (18 May)
+        {
+          id: 5,
+          date: [2026, 5, 18],
+          amount: 13200,
+          principalPortion: 4950,
+          interestPortion: 8250,
+          feeChargesPortion: 0,
+          penaltyChargesPortion: 0,
+          type: { repayment: true },
+        },
+      ],
+      timeline: { actualDisbursementDate: [2026, 3, 2] },
+    },
+    { displayName: "Hanzala Minerals" },
+    { name: "Test Organization" },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    "annual",
+    { balanceSource: "transaction-ledger" }
+  );
+
+  const disbursement = statement.transactions.find((row) => row.id === 1);
+  const adminFee = statement.transactions.find((row) => row.id === 2);
+  const accrual = statement.transactions.find((row) => row.id === 3);
+  const repayment1 = statement.transactions.find((row) => row.id === 4);
+  const repayment2 = statement.transactions.find((row) => row.id === 5);
+
+  // Running balance: 150,000, 150,000, 158,250, 150,000, 136,800
+  assert.equal(disbursement?.runningBalance, 150000);
+  assert.equal(adminFee?.runningBalance, 150000);
+  assert.equal(accrual?.runningBalance, 158250);
+  assert.equal(repayment1?.runningBalance, 150000);
+  assert.equal(repayment2?.runningBalance, 136800);
+
+  // Principal balance: 150,000, 150,000, 150,000, 150,000, 145,050
+  assert.equal(disbursement?.cumulativeBalance, 150000);
+  assert.equal(adminFee?.cumulativeBalance, 150000);
+  assert.equal(accrual?.cumulativeBalance, 150000);
+  assert.equal(repayment1?.cumulativeBalance, 150000);
+  assert.equal(repayment2?.cumulativeBalance, 145050);
+
+  assert.equal(statement.closingRunningBalance, 136800);
+  assert.equal(statement.closingBalance, 145050);
+});
+
+test("opening running balance option: B/Fwd row and subsequent rows use it", () => {
+  const statement = transformFineractLoanToStatement(
+    {
+      accountNo: "000000335",
+      clientName: "Hanzala Minerals",
+      currency: { code: "USD", displaySymbol: "$" },
+      summary: { totalOutstanding: 136800 },
+      transactions: [
+        {
+          id: 1,
+          date: [2026, 5, 7],
+          amount: 8250,
+          principalPortion: 0,
+          type: { repayment: true },
+        },
+      ],
+      timeline: { actualDisbursementDate: [2026, 3, 2] },
+    },
+    { displayName: "Hanzala Minerals" },
+    { name: "Test Organization" },
+    "01 May 2026",
+    undefined,
+    undefined,
+    undefined,
+    "annual",
+    {
+      balanceSource: "transaction-ledger",
+      openingRunningBalance: 158250,
+    }
+  );
+
+  const bfwdRow = statement.transactions[0];
+  const repaymentRow = statement.transactions[1];
+
+  // B/Fwd should show the opening running balance
+  assert.equal(bfwdRow?.runningBalance, 158250);
+  assert.equal(statement.openingRunningBalance, 158250);
+
+  // First transaction row continues from opening running balance
+  assert.equal(repaymentRow?.runningBalance, 150000); // 158250 - 8250
+  assert.equal(statement.closingRunningBalance, 150000);
+});
+
+test("HTML contains Running Balance and Principal Balance headers in correct order", () => {
+  const statement = transformFineractLoanToStatement(
+    {
+      accountNo: "000000335",
+      currency: { code: "USD", displaySymbol: "$" },
+      summary: { totalOutstanding: 150000 },
+      transactions: [
+        { id: 1, date: [2026, 3, 2], amount: 150000, principalPortion: 0, type: { disbursement: true } },
+      ],
+      timeline: { actualDisbursementDate: [2026, 3, 2] },
+    },
+    null,
+    { name: "Test Organization" },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    "annual",
+    { balanceSource: "transaction-ledger" }
+  );
+
+  const html = generateLoanStatementHTML(statement);
+
+  // Check that both headers are present
+  assert.match(html, />Running Balance</);
+  assert.match(html, />Principal Balance</);
+
+  // Check that "Running Balance" comes before "Principal Balance" in the HTML
+  const runningBalancePos = html.indexOf(">Running Balance<");
+  const principalBalancePos = html.indexOf(">Principal Balance<");
+  assert.ok(runningBalancePos > 0 && principalBalancePos > 0, "Both headers should be in HTML");
+  assert.ok(runningBalancePos < principalBalancePos, "Running Balance should come before Principal Balance");
+
+  // Check that "Closing Running Balance" is in the footer
+  assert.match(html, />Closing Running Balance</);
 });
