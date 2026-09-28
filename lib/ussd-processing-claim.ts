@@ -50,7 +50,6 @@ export async function claimUssdApplicationForProcessing(
   applicationId: string,
   options?: {
     tenantId?: string;
-    expectedStatus?: string;
     now?: Date;
     leaseMs?: number;
     tokenFactory?: () => string;
@@ -68,7 +67,7 @@ export async function claimUssdApplicationForProcessing(
     where: {
       id: applicationId,
       ...(options?.tenantId ? { tenantId: options.tenantId } : {}),
-      status: options?.expectedStatus ?? "CREATED",
+      status: "CREATED",
       autoProcessingClaimToken: null,
     },
     data: {
@@ -90,13 +89,13 @@ export async function claimUssdApplicationForProcessing(
  */
 export async function quarantineStaleUssdApplicationsForProcessing(
   db: UssdApplicationProcessingDatabase,
-  options?: { now?: Date; tenantId?: string; expectedStatus?: string }
+  options?: { now?: Date; tenantId?: string }
 ): Promise<number> {
   const now = options?.now ?? new Date();
   const quarantined = await db.ussdLoanApplication.updateMany({
     where: {
       ...(options?.tenantId ? { tenantId: options.tenantId } : {}),
-      status: options?.expectedStatus ?? "CREATED",
+      status: "CREATED",
       autoProcessingClaimToken: { not: null },
       autoProcessingClaimExpiresAt: { lte: now },
     },
@@ -134,14 +133,13 @@ export async function finalizeUssdApplicationProcessing(
   applicationId: string,
   claimToken: string,
   finalization: UssdProcessingFinalization,
-  tenantId?: string,
-  expectedStatus = "CREATED"
+  tenantId?: string
 ): Promise<boolean> {
   const result = await db.ussdLoanApplication.updateMany({
     where: {
       id: applicationId,
       ...(tenantId ? { tenantId } : {}),
-      status: expectedStatus,
+      status: "CREATED",
       autoProcessingClaimToken: claimToken,
     },
     data: {
