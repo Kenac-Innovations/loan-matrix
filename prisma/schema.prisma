@@ -860,6 +860,10 @@ model UssdLoanApplication {
   loanMatrixPaymentMethodId Int?
   submissionSmsAttemptedAt  DateTime?
   rejectionSmsAttemptedAt   DateTime?
+  autoProcessingClaimToken  String?
+  autoProcessingClaimedAt   DateTime?
+  autoProcessingClaimExpiresAt DateTime?
+  autoProcessingAttempts    Int       @default(0)
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
@@ -867,6 +871,8 @@ model UssdLoanApplication {
   @@index([referenceNumber])
   @@index([userPhoneNumber])
   @@index([status, createdAt])
+  @@index([status, autoProcessingClaimToken, createdAt])
+  @@index([status, autoProcessingClaimExpiresAt])
 }
 
 model UssdPinResetLog {

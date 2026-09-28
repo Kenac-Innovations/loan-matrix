@@ -24,10 +24,18 @@ import {
   processUssdApplicationToDisbursement,
   type UssdLoanProcessingResult,
 } from "./ussd-loan-processing-service";
+import {
+  claimUssdApplicationForProcessing,
+  finalizeUssdApplicationProcessing,
+  quarantineStaleUssdApplicationsForProcessing,
+} from "./ussd-processing-claim";
 
 const APPLICATION_STATUS_BY_OUTCOME: Record<
   UssdAutoProcessingStatus,
-  string
+  | "AUTO_DISBURSED"
+  | "MANUAL_REVIEW"
+  | "AUTO_PROCESSING_STOPPED"
+  | "AUTO_PROCESSING_FAILED"
 > = {
   completed: "AUTO_DISBURSED",
   manual_review: "MANUAL_REVIEW",
@@ -92,10 +100,20 @@ export async function pollUssdAutoProcessing(): Promise<void> {
   if (isPolling) return; // previous tick still running, skip this one
   isPolling = true;
   try {
+    const now = new Date();
+    const quarantinedCount =
+      await quarantineStaleUssdApplicationsForProcessing(prisma, { now });
+    if (quarantinedCount > 0) {
+      console.warn(
+        `[UssdAutoProcessing] Quarantined ${quarantinedCount} stale application claim(s) for reconciliation`
+      );
+    }
+
     const candidates = await prisma.ussdLoanApplication.findMany({
       where: {
         status: "CREATED",
         createdAt: { gte: new Date(Date.now() - CANDIDATE_WINDOW_MS) },
+        autoProcessingClaimToken: null,
       },
       orderBy: { createdAt: "asc" },
       take: BATCH_SIZE,
@@ -141,6 +159,18 @@ async function evaluateAndProcess(
     return;
   }
 
+  const claim = await claimUssdApplicationForProcessing(
+    prisma,
+    ussdApplication.id,
+    { tenantId: ussdApplication.tenantId }
+  );
+  if (!claim) {
+    // Another replica owns the active lease, or the application moved out of
+    // CREATED between the candidate query and this CAS. Either way, this
+    // worker must not invoke CDE/Fineract for it.
+    return;
+  }
+
   try {
     const result = await runWithBoundedRetries(
       async () => {
@@ -164,14 +194,24 @@ async function evaluateAndProcess(
       }
     );
 
-    await prisma.ussdLoanApplication.update({
-      where: { id: ussdApplication.id },
-      data: {
+    const finalized = await finalizeUssdApplicationProcessing(
+      prisma,
+      ussdApplication.id,
+      claim.token,
+      {
         status: APPLICATION_STATUS_BY_OUTCOME[result.status],
         processedAt: new Date(),
         processingNotes: buildProcessingNotes(result),
       },
-    });
+      ussdApplication.tenantId
+    );
+
+    if (!finalized) {
+      console.warn(
+        `[UssdAutoProcessing] Lease lost before finalizing application ${ussdApplication.id}; leaving the newer worker's result untouched`
+      );
+      return;
+    }
 
     console.log(
       `[UssdAutoProcessing] ${result.status} for lead ${result.leadId}`
@@ -179,14 +219,23 @@ async function evaluateAndProcess(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
-    await prisma.ussdLoanApplication.update({
-      where: { id: ussdApplication.id },
-      data: {
+    const finalized = await finalizeUssdApplicationProcessing(
+      prisma,
+      ussdApplication.id,
+      claim.token,
+      {
         status: "AUTO_PROCESSING_FAILED",
         processedAt: new Date(),
         processingNotes: `Automatic processing failed after 3 attempts: ${message}`,
       },
-    });
+      ussdApplication.tenantId
+    );
+
+    if (!finalized) {
+      console.warn(
+        `[UssdAutoProcessing] Lease lost before recording failure for application ${ussdApplication.id}; leaving the newer worker's result untouched`
+      );
+    }
 
     console.error(
       `[UssdAutoProcessing] Failed for application ${ussdApplication.loanApplicationUssdId}:`,
