@@ -29,15 +29,20 @@ import {
   finalizeUssdApplicationProcessing,
   quarantineStaleUssdApplicationsForProcessing,
 } from "./ussd-processing-claim";
+import {
+  reconcileSalaryAdvanceGeePaySettlement,
+} from "./salary-advance-geepay-settlement";
 
 const APPLICATION_STATUS_BY_OUTCOME: Record<
   UssdAutoProcessingStatus,
   | "AUTO_DISBURSED"
+  | "PAYMENT_PENDING"
   | "MANUAL_REVIEW"
   | "AUTO_PROCESSING_STOPPED"
   | "AUTO_PROCESSING_FAILED"
 > = {
   completed: "AUTO_DISBURSED",
+  payment_pending: "PAYMENT_PENDING",
   manual_review: "MANUAL_REVIEW",
   stopped: "AUTO_PROCESSING_STOPPED",
   failed: "AUTO_PROCESSING_FAILED",
@@ -103,9 +108,19 @@ export async function pollUssdAutoProcessing(): Promise<void> {
     const now = new Date();
     const quarantinedCount =
       await quarantineStaleUssdApplicationsForProcessing(prisma, { now });
+    const quarantinedSettlementCount =
+      await quarantineStaleUssdApplicationsForProcessing(prisma, {
+        now,
+        expectedStatus: "PAYMENT_PENDING",
+      });
     if (quarantinedCount > 0) {
       console.warn(
         `[UssdAutoProcessing] Quarantined ${quarantinedCount} stale application claim(s) for reconciliation`
+      );
+    }
+    if (quarantinedSettlementCount > 0) {
+      console.warn(
+        `[UssdAutoProcessing] Quarantined ${quarantinedSettlementCount} stale payment settlement claim(s) for reconciliation`
       );
     }
 
@@ -122,6 +137,20 @@ export async function pollUssdAutoProcessing(): Promise<void> {
     for (const application of candidates) {
       await evaluateAndProcess(application);
     }
+
+    const settlementCandidates = await prisma.ussdLoanApplication.findMany({
+      where: {
+        status: "PAYMENT_PENDING",
+        paymentStatus: "PENDING",
+        autoProcessingClaimToken: null,
+      },
+      orderBy: { updatedAt: "asc" },
+      take: BATCH_SIZE,
+    });
+
+    for (const application of settlementCandidates) {
+      await reconcilePaymentSettlement(application);
+    }
     lastError = null;
   } catch (error) {
     lastError = error instanceof Error ? error.message : String(error);
@@ -129,6 +158,75 @@ export async function pollUssdAutoProcessing(): Promise<void> {
   } finally {
     lastTickAt = new Date();
     isPolling = false;
+  }
+}
+
+async function reconcilePaymentSettlement(
+  ussdApplication: Awaited<
+    ReturnType<typeof prisma.ussdLoanApplication.findMany>
+  >[number]
+): Promise<void> {
+  const claim = await claimUssdApplicationForProcessing(
+    prisma,
+    ussdApplication.id,
+    {
+      tenantId: ussdApplication.tenantId,
+      expectedStatus: "PAYMENT_PENDING",
+    }
+  );
+  if (!claim) {
+    return;
+  }
+
+  try {
+    const result = await reconcileSalaryAdvanceGeePaySettlement(ussdApplication);
+    const status =
+      result.outcome === "settled"
+        ? "AUTO_DISBURSED"
+        : result.outcome === "manual_review"
+          ? "MANUAL_REVIEW"
+          : "PAYMENT_PENDING";
+    const finalized = await finalizeUssdApplicationProcessing(
+      prisma,
+      ussdApplication.id,
+      claim.token,
+      {
+        status,
+        processedAt: result.outcome === "pending" ? ussdApplication.processedAt ?? new Date() : new Date(),
+        processingNotes: result.message,
+      },
+      ussdApplication.tenantId,
+      "PAYMENT_PENDING"
+    );
+
+    if (!finalized) {
+      console.warn(
+        `[UssdAutoProcessing] Settlement lease lost before finalizing application ${ussdApplication.id}`
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const finalized = await finalizeUssdApplicationProcessing(
+      prisma,
+      ussdApplication.id,
+      claim.token,
+      {
+        status: "PAYMENT_PENDING",
+        processedAt: ussdApplication.processedAt ?? new Date(),
+        processingNotes: `Payment settlement check failed: ${message}`,
+      },
+      ussdApplication.tenantId,
+      "PAYMENT_PENDING"
+    );
+    if (!finalized) {
+      console.warn(
+        `[UssdAutoProcessing] Settlement lease lost after an error for application ${ussdApplication.id}`
+      );
+    }
+    console.error(
+      `[UssdAutoProcessing] Payment settlement check failed for application ${ussdApplication.loanApplicationUssdId}:`,
+      error
+    );
   }
 }
 

@@ -102,6 +102,18 @@ export interface TenantAutoProgressToDisbursementRule {
    * the existing income-based decision path.
    */
   incomeEvaluationRequired?: boolean;
+  /**
+   * When enabled, Loan Matrix sends the approved USSD loan through the
+   * Payment Service's GeePay disbursement path and waits for a settled result
+   * before recording the local payout as paid. Omitted rules keep the
+   * existing immediate-payout workflow.
+   */
+  requireGeePaySettlement?: boolean;
+  /**
+   * Optional Payment Service tenant identifier. The Loan Matrix tenant slug
+   * is used when this is omitted.
+   */
+  paymentServiceTenantId?: string;
 }
 
 export interface TenantUssdAutoLeadRule {

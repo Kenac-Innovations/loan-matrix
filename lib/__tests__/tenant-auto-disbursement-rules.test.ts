@@ -37,6 +37,8 @@ test("normalizes persisted auto-disbursement rules from tenant settings", async 
       loanProductId: 12,
       triggerStageId: "stage-cde",
       allowedCdeDecisions: ["APPROVED", "MANUAL_REVIEW"],
+      incomeEvaluationRequired: true,
+      requireGeePaySettlement: false,
     },
   ]);
 });
@@ -72,6 +74,33 @@ test("sanitizes incoming auto-disbursement rules payloads", async () => {
       loanProductId: 12,
       triggerStageId: "stage-cde",
       allowedCdeDecisions: ["APPROVED", "MANUAL_REVIEW"],
+      incomeEvaluationRequired: true,
+      requireGeePaySettlement: false,
+    },
+  ]);
+});
+
+test("preserves the explicit GeePay settlement gate and Payment Service tenant", async () => {
+  const mod = await import("../tenant-auto-disbursement-rules.ts");
+  const rules = mod.sanitizeTenantAutoDisbursementRulesInput([
+    {
+      loanProductId: 13,
+      triggerStageId: "cde-stage",
+      allowedCdeDecisions: ["APPROVED"],
+      requireGeePaySettlement: true,
+      paymentServiceTenantId: " goodfellow ",
+    },
+  ]);
+
+  assert.deepEqual(rules, [
+    {
+      enabled: true,
+      loanProductId: 13,
+      triggerStageId: "cde-stage",
+      allowedCdeDecisions: ["APPROVED"],
+      incomeEvaluationRequired: true,
+      requireGeePaySettlement: true,
+      paymentServiceTenantId: "goodfellow",
     },
   ]);
 });

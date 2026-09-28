@@ -28,6 +28,10 @@ function sanitizeRule(
   const allowedCdeDecisions = Array.isArray(candidate.allowedCdeDecisions)
     ? candidate.allowedCdeDecisions.filter(isSupportedDecision)
     : [];
+  const paymentServiceTenantId =
+    typeof candidate.paymentServiceTenantId === "string"
+      ? candidate.paymentServiceTenantId.trim()
+      : "";
 
   if (!Number.isFinite(loanProductId) || loanProductId <= 0) {
     return null;
@@ -43,6 +47,8 @@ function sanitizeRule(
     triggerStageId,
     allowedCdeDecisions: Array.from(new Set(allowedCdeDecisions)),
     incomeEvaluationRequired: candidate.incomeEvaluationRequired !== false,
+    requireGeePaySettlement: candidate.requireGeePaySettlement === true,
+    ...(paymentServiceTenantId ? { paymentServiceTenantId } : {}),
   };
 }
 
