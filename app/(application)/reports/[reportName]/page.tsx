@@ -656,6 +656,29 @@ export default function ReportDetailPage() {
     return String(cell);
   };
 
+  const rowTypeIndex = reportData?.columnHeaders.findIndex(
+    (header) => header.columnName === "row_type"
+  ) ?? -1;
+  const visibleColumnHeaders = reportData?.columnHeaders.filter(
+    (header) => header.columnName !== "row_type"
+  ) ?? [];
+  const metadataRows = (reportData?.data ?? []).filter((item) => {
+    const rowType = rowTypeIndex >= 0 ? item.row[rowTypeIndex] : null;
+    return rowType === "TITLE" || rowType === "METADATA";
+  });
+  const titleRows = metadataRows.filter(
+    (item) => item.row[rowTypeIndex] === "TITLE");
+  const reportDetails = (reportData?.data ?? []).filter((item) => {
+    const rowType = rowTypeIndex >= 0 ? item.row[rowTypeIndex] : null;
+    return rowType !== "TITLE" && rowType !== "METADATA";
+  });
+  const metadataText = (item: ReportData["data"][number]) => {
+    const value = item.row.find(
+      (cell, index) => index !== rowTypeIndex && cell !== null && cell !== undefined
+    );
+    return safeText(value);
+  };
+
   return (
     <>
       {/* Header */}
@@ -716,7 +739,7 @@ export default function ReportDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {reportData ? reportData.data.length : 0}
+              {reportDetails.length}
             </div>
             <p className="text-xs text-muted-foreground">Data records</p>
           </CardContent>
@@ -830,23 +853,47 @@ export default function ReportDetailPage() {
                     variant="outline"
                     className="bg-green-500 text-white border-0"
                   >
-                    {reportData.data.length} rows
+                    {reportDetails.length} rows
                   </Badge>
                   <Badge
                     variant="outline"
                     className="bg-blue-500 text-white border-0"
                   >
-                    {reportData.columnHeaders.length} columns
+                    {visibleColumnHeaders.length} columns
                   </Badge>
                 </div>
               </div>
+              {metadataRows.length > 0 && (
+                <div className="mb-6 rounded-md border bg-muted/30 px-6 py-5">
+                  <div className="space-y-1 text-center">
+                    {titleRows.map((item, index) => (
+                      <p
+                        key={`title-${index}`}
+                        className={index === 0 ? "text-xl font-bold" : "text-lg font-semibold"}
+                      >
+                        {metadataText(item)}
+                      </p>
+                    ))}
+                  </div>
+                  {metadataRows.some(
+                    (item) => item.row[rowTypeIndex] === "METADATA"
+                  ) && (
+                    <div className="mt-4 flex flex-col gap-1 border-t pt-4 text-sm text-muted-foreground sm:flex-row sm:justify-center sm:gap-6">
+                      {metadataRows
+                        .filter((item) => item.row[rowTypeIndex] === "METADATA")
+                        .map((item, index) => (
+                          <span key={`metadata-${index}`}>{metadataText(item)}</span>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="border rounded-md overflow-hidden">
                 <div className="overflow-auto max-h-[600px]">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        {reportData.columnHeaders.map((header, index) => {
-                          if (header.columnName === "row_type") return null;
+                        {visibleColumnHeaders.map((header, index) => {
                           return (
                             <TableHead
                               key={index}
@@ -859,12 +906,25 @@ export default function ReportDetailPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {reportData.data.slice(0, 100).map((item, rowIndex) => {
-                        const rowTypeIndex = reportData.columnHeaders.findIndex(h => h.columnName === "row_type");
+                      {reportDetails.slice(0, 100).map((item, rowIndex) => {
                         const rowType = rowTypeIndex >= 0 ? item.row[rowTypeIndex] : null;
-                        const isBold = rowType === "HEADER" || rowType === "SUBTOTAL" || rowType === "TOTAL";
+                        const isBold = [
+                          "HEADER",
+                          "SECTION",
+                          "GROUP",
+                          "SUBTOTAL",
+                          "TOTAL",
+                          "GROUP_TOTAL",
+                          "SECTION_TOTAL",
+                          "GRAND_TOTAL",
+                        ].includes(String(rowType));
+                        const rowClassName = ["SECTION", "GROUP"].includes(String(rowType))
+                          ? "bg-muted/40"
+                          : ["GROUP_TOTAL", "SECTION_TOTAL", "GRAND_TOTAL"].includes(String(rowType))
+                            ? "bg-muted/20"
+                            : undefined;
                         return (
-                          <TableRow key={rowIndex}>
+                          <TableRow key={rowIndex} className={rowClassName}>
                             {item.row.map((cell, cellIndex) => {
                               const header = reportData.columnHeaders[cellIndex];
                               if (header?.columnName === "row_type") return null;
@@ -883,9 +943,9 @@ export default function ReportDetailPage() {
                     </TableBody>
                   </Table>
                 </div>
-                {reportData.data.length > 100 && (
+                {reportDetails.length > 100 && (
                   <div className="text-center text-sm text-muted-foreground p-4 border-t bg-muted/30">
-                    Showing first 100 rows of {reportData.data.length} total
+                    Showing first 100 rows of {reportDetails.length} total
                     rows
                   </div>
                 )}
