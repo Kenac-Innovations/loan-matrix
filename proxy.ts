@@ -26,11 +26,27 @@ const NO_CACHE_HEADERS = {
   "Expires": "0",
 } as const;
 
+// Cloudflare terminates TLS and the Istio gateway rewrites X-Forwarded-Proto
+// to "http", so prefer the scheme Cloudflare saw from the visitor.
+function getCloudflareScheme(request: NextRequest): string | null {
+  const cfVisitor = request.headers.get("cf-visitor");
+  if (!cfVisitor) return null;
+  try {
+    const scheme = JSON.parse(cfVisitor)?.scheme;
+    return scheme === "https" || scheme === "http" ? scheme : null;
+  } catch {
+    return null;
+  }
+}
+
 function getRequestOrigin(request: NextRequest): string {
-  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   const forwardedHost = request.headers.get("x-forwarded-host");
   const host = forwardedHost?.split(",")[0]?.trim() || request.headers.get("host");
-  const protocol = forwardedProto || request.nextUrl.protocol.replace(/:$/, "");
+  const protocol =
+    getCloudflareScheme(request) ||
+    forwardedProto ||
+    request.nextUrl.protocol.replace(/:$/, "");
 
   if (host) {
     return `${protocol}://${host}`;
