@@ -12,6 +12,7 @@
 // That business logic is unchanged — only the trigger changed, from "a
 // message arrived" to "poll for recently-queued CREATED rows".
 import prisma from "./prisma";
+import { isBackendOwnedSalaryAdvanceRule } from "./tenant-auto-disbursement-rules";
 import {
   getTenantUssdAutoLeadRules,
   findMatchingUssdAutoLeadRule,
@@ -150,9 +151,20 @@ async function evaluateAndProcess(
     return;
   }
 
-  const autoLeadRules = getTenantUssdAutoLeadRules(
-    (tenant.settings as unknown as Record<string, unknown> | null) || null
-  );
+  const tenantSettings =
+    (tenant.settings as unknown as Record<string, unknown> | null) || null;
+  const autoLeadRules = getTenantUssdAutoLeadRules(tenantSettings);
+  if (
+    isBackendOwnedSalaryAdvanceRule(
+      tenantSettings,
+      ussdApplication.loanMatrixLoanProductId
+    )
+  ) {
+    // New backend-owned Salary Advance applications are inserted as
+    // BACKEND_QUEUED. This is only a defensive guard for any application that
+    // was manually inserted with CREATED status.
+    return;
+  }
   const matchingRule = findMatchingUssdAutoLeadRule(
     autoLeadRules,
     ussdApplication.loanMatrixLoanProductId

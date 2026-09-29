@@ -88,6 +88,7 @@ test("preserves the explicit GeePay settlement gate and Payment Service tenant",
       triggerStageId: "cde-stage",
       allowedCdeDecisions: ["APPROVED"],
       requireGeePaySettlement: true,
+      processInBackend: true,
       paymentServiceTenantId: " goodfellow ",
     },
   ]);
@@ -100,7 +101,34 @@ test("preserves the explicit GeePay settlement gate and Payment Service tenant",
       allowedCdeDecisions: ["APPROVED"],
       incomeEvaluationRequired: true,
       requireGeePaySettlement: true,
+      processInBackend: true,
       paymentServiceTenantId: "goodfellow",
     },
   ]);
+});
+
+test("backend ownership is opt-in and limited to a GeePay settlement product", async () => {
+  const mod = await import("../tenant-auto-disbursement-rules.ts");
+  const settings = {
+    autoProgressToDisbursementRules: [
+      {
+        enabled: true,
+        loanProductId: 13,
+        triggerStageId: "salary-cde",
+        allowedCdeDecisions: ["APPROVED"],
+        requireGeePaySettlement: true,
+        processInBackend: true,
+      },
+      {
+        enabled: true,
+        loanProductId: 12,
+        triggerStageId: "yango-cde",
+        allowedCdeDecisions: ["APPROVED"],
+      },
+    ],
+  };
+
+  assert.equal(mod.isBackendOwnedSalaryAdvanceRule(settings, 13), true);
+  assert.equal(mod.isBackendOwnedSalaryAdvanceRule(settings, 12), false);
+  assert.equal(mod.isBackendOwnedSalaryAdvanceRule(settings, 99), false);
 });

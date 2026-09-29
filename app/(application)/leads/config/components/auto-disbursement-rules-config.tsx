@@ -20,6 +20,7 @@ type RuleDraft = {
   allowedCdeDecisions: AutoDisbursementDecision[];
   incomeEvaluationRequired: boolean;
   requireGeePaySettlement: boolean;
+  processInBackend: boolean;
   paymentServiceTenantId: string;
 };
 
@@ -52,6 +53,7 @@ function makeRuleDraft(): RuleDraft {
     allowedCdeDecisions: ["APPROVED"],
     incomeEvaluationRequired: true,
     requireGeePaySettlement: false,
+    processInBackend: false,
     paymentServiceTenantId: "",
   };
 }
@@ -110,6 +112,7 @@ export function AutoDisbursementRulesConfig() {
                 : ["APPROVED"],
               incomeEvaluationRequired: rule.incomeEvaluationRequired !== false,
               requireGeePaySettlement: rule.requireGeePaySettlement === true,
+              processInBackend: rule.processInBackend === true,
               paymentServiceTenantId: String(rule.paymentServiceTenantId ?? ""),
             }))
           : [];
@@ -221,6 +224,8 @@ export function AutoDisbursementRulesConfig() {
         allowedCdeDecisions: rule.allowedCdeDecisions,
         incomeEvaluationRequired: rule.incomeEvaluationRequired,
         requireGeePaySettlement: rule.requireGeePaySettlement,
+        processInBackend:
+          rule.requireGeePaySettlement && rule.processInBackend,
         paymentServiceTenantId: rule.paymentServiceTenantId.trim() || undefined,
       }));
 
@@ -248,6 +253,7 @@ export function AutoDisbursementRulesConfig() {
               : ["APPROVED"],
               incomeEvaluationRequired: rule.incomeEvaluationRequired !== false,
               requireGeePaySettlement: rule.requireGeePaySettlement === true,
+              processInBackend: rule.processInBackend === true,
               paymentServiceTenantId: String(rule.paymentServiceTenantId ?? ""),
           }))
         : [];
@@ -394,20 +400,40 @@ export function AutoDisbursementRulesConfig() {
             </div>
 
             {rule.requireGeePaySettlement ? (
-              <div className="space-y-2">
-                <Label htmlFor={`${rule.id}-payment-service-tenant`}>
-                  Payment Service Tenant ID (optional)
-                </Label>
-                <Input
-                  id={`${rule.id}-payment-service-tenant`}
-                  value={rule.paymentServiceTenantId}
-                  onChange={(event) =>
-                    updateRule(rule.id, {
-                      paymentServiceTenantId: event.target.value,
-                    })
-                  }
-                  placeholder="Defaults to this Loan Matrix tenant"
-                />
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor={`${rule.id}-payment-service-tenant`}>
+                    Payment Service Tenant ID (optional)
+                  </Label>
+                  <Input
+                    id={`${rule.id}-payment-service-tenant`}
+                    value={rule.paymentServiceTenantId}
+                    onChange={(event) =>
+                      updateRule(rule.id, {
+                        paymentServiceTenantId: event.target.value,
+                      })
+                    }
+                    placeholder="Defaults to this Loan Matrix tenant"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="font-medium">Process in Loan Matrix Backend</p>
+                    <p className="text-sm text-muted-foreground">
+                      New USSD applications for this product are owned by the
+                      dedicated Salary Advance backend worker. Existing queued
+                      applications and every other product stay on their current path.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={rule.processInBackend}
+                    onCheckedChange={(checked) =>
+                      updateRule(rule.id, {
+                        processInBackend: Boolean(checked),
+                      })
+                    }
+                  />
+                </div>
               </div>
             ) : null}
 

@@ -110,6 +110,13 @@ export interface TenantAutoProgressToDisbursementRule {
    */
   requireGeePaySettlement?: boolean;
   /**
+   * Routes newly received USSD applications for this product to the dedicated
+   * Loan Matrix Backend Salary Advance worker. This is deliberately opt-in:
+   * existing products and applications already queued keep their current
+   * Next.js processing path.
+   */
+  processInBackend?: boolean;
+  /**
    * Optional Payment Service tenant identifier. The Loan Matrix tenant slug
    * is used when this is omitted.
    */
