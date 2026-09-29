@@ -116,6 +116,7 @@ export type UssdProcessingFinalization = {
   status:
     | "AUTO_DISBURSED"
     | "MANUAL_REVIEW"
+    | "PAYMENT_PENDING"
     | "AUTO_PROCESSING_STOPPED"
     | "AUTO_PROCESSING_FAILED";
   processedAt?: Date;
