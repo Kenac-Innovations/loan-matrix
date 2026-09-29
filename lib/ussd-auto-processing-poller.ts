@@ -12,6 +12,7 @@
 // That business logic is unchanged — only the trigger changed, from "a
 // message arrived" to "poll for recently-queued CREATED rows".
 import prisma from "./prisma";
+import { isBackendOwnedSalaryAdvanceRule } from "./tenant-auto-disbursement-rules";
 import {
   getTenantUssdAutoLeadRules,
   findMatchingUssdAutoLeadRule,
@@ -33,11 +34,13 @@ import {
 const APPLICATION_STATUS_BY_OUTCOME: Record<
   UssdAutoProcessingStatus,
   | "AUTO_DISBURSED"
+  | "PAYMENT_PENDING"
   | "MANUAL_REVIEW"
   | "AUTO_PROCESSING_STOPPED"
   | "AUTO_PROCESSING_FAILED"
 > = {
   completed: "AUTO_DISBURSED",
+  payment_pending: "PAYMENT_PENDING",
   manual_review: "MANUAL_REVIEW",
   stopped: "AUTO_PROCESSING_STOPPED",
   failed: "AUTO_PROCESSING_FAILED",
@@ -122,6 +125,7 @@ export async function pollUssdAutoProcessing(): Promise<void> {
     for (const application of candidates) {
       await evaluateAndProcess(application);
     }
+
     lastError = null;
   } catch (error) {
     lastError = error instanceof Error ? error.message : String(error);
@@ -147,9 +151,20 @@ async function evaluateAndProcess(
     return;
   }
 
-  const autoLeadRules = getTenantUssdAutoLeadRules(
-    (tenant.settings as unknown as Record<string, unknown> | null) || null
-  );
+  const tenantSettings =
+    (tenant.settings as unknown as Record<string, unknown> | null) || null;
+  const autoLeadRules = getTenantUssdAutoLeadRules(tenantSettings);
+  if (
+    isBackendOwnedSalaryAdvanceRule(
+      tenantSettings,
+      ussdApplication.loanMatrixLoanProductId
+    )
+  ) {
+    // New backend-owned Salary Advance applications are inserted as
+    // BACKEND_QUEUED. This is only a defensive guard for any application that
+    // was manually inserted with CREATED status.
+    return;
+  }
   const matchingRule = findMatchingUssdAutoLeadRule(
     autoLeadRules,
     ussdApplication.loanMatrixLoanProductId
