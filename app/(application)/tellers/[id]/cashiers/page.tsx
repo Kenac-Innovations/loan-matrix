@@ -80,6 +80,7 @@ interface Cashier {
   netCash?: number;
   expectedBalance?: number;
   currencyCode?: string;
+  balance?: number; // Fineract cash position computed by /api/tellers/[id]/cashiers
 }
 
 interface CashierSessionData {
@@ -94,11 +95,6 @@ interface CashierSessionData {
     cashOut?: number;
     expectedBalance?: number;
   };
-}
-
-interface CashierSummaryResponse {
-  netCash?: number;
-  sumCashAllocation?: number;
 }
 
 interface Staff {
@@ -243,6 +239,9 @@ export default function CashiersPage({
     []
   );
 
+  // One /cashiers request already returns each cashier's Fineract balance, so the
+  // page must not re-fetch the list or call /transactions per cashier just for netCash:
+  // every one of those is an expensive Fineract summaryandtransactions query.
   const fetchCashierBalances = useCallback(
     async (id: string, balanceCurrency: string) => {
       if (!balanceCurrency) return;
@@ -259,21 +258,11 @@ export default function CashiersPage({
         const updatedCashiers = await Promise.all(
           fetchedCashiers.map(async (cashier) => {
             const cashierId = cashier.dbId || cashier.id?.toString() || "";
+            const fineractBalance = cashier.balance ?? 0;
             try {
-              const [sessionResponse, summaryResponse] = await Promise.all([
-                fetch(`/api/tellers/${id}/cashiers/${cashierId}/session`),
-                fetch(
-                  `/api/tellers/${id}/cashiers/${cashierId}/transactions?currencyCode=${balanceCurrency}`
-                ),
-              ]);
-
-              let fineractBalance = 0;
-              if (summaryResponse.ok) {
-                const summaryData =
-                  (await summaryResponse.json()) as CashierSummaryResponse;
-                fineractBalance =
-                  summaryData.netCash ?? summaryData.sumCashAllocation ?? 0;
-              }
+              const sessionResponse = await fetch(
+                `/api/tellers/${id}/cashiers/${cashierId}/session`
+              );
 
               let sessionInfo: CashierSessionData = {
                 session: null,
@@ -302,7 +291,7 @@ export default function CashiersPage({
               return {
                 ...cashier,
                 sessionStatus: "NOT_STARTED",
-                netCash: 0,
+                netCash: fineractBalance,
                 currencyCode: balanceCurrency,
               };
             }
@@ -313,6 +302,7 @@ export default function CashiersPage({
       } catch (error) {
         console.error("Error fetching cashier balances:", error);
       } finally {
+        setLoading(false);
         setLoadingBalances(false);
       }
     },
@@ -335,9 +325,10 @@ export default function CashiersPage({
 
   const refreshCashiers = useCallback(
     async (id: string, balanceCurrency?: string) => {
-      await fetchCashiers(id);
       if (balanceCurrency) {
         await fetchCashierBalances(id, balanceCurrency);
+      } else {
+        await fetchCashiers(id);
       }
     },
     [fetchCashierBalances, fetchCashiers]
@@ -364,6 +355,8 @@ export default function CashiersPage({
     if (!tellerId) return;
 
     const interval = setInterval(() => {
+      // Skip background tabs: every refresh queries Fineract for each cashier
+      if (document.visibilityState === "hidden") return;
       // Only refresh if there are active sessions
       const hasActiveSession = cashiers.some(
         (c) => c.sessionStatus === "ACTIVE"

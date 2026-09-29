@@ -181,28 +181,14 @@ export async function GET(
       });
     }
 
-    // For active sessions, calculate balances from current allocations and transactions
-    let cashIn = 0;
-    let cashOut = 0;
-    if (teller.fineractTellerId && fineractCashierId) {
-      try {
-        const fineractService = await getFineractServiceWithSession();
-        const transactions = await fineractService.getCashierTransactions(
-          teller.fineractTellerId,
-          fineractCashierId
-        );
-
-        transactions.forEach((tx: any) => {
-          if (tx.type?.deposit || tx.type?.cashIn) {
-            cashIn += tx.amount || 0;
-          } else if (tx.type?.withdrawal || tx.type?.cashOut) {
-            cashOut += tx.amount || 0;
-          }
-        });
-      } catch (error) {
-        console.error("Error fetching transactions:", error);
-      }
-    }
+    // For active sessions, calculate balances from current allocations.
+    // cashIn/cashOut used to be summed from getCashierTransactions, but that call
+    // never yielded any rows (Fineract returns a page object, not an array, and it
+    // was sent without a currency), so they were always 0. The call was one of the
+    // most expensive Fineract queries, so it is no longer made; the Fineract cash
+    // position comes from /api/tellers/[id]/cashiers (balance) instead.
+    const cashIn = 0;
+    const cashOut = 0;
 
     const netCash = cashIn - cashOut;
     const expectedBalance = allocatedBalance + cashIn - cashOut;
@@ -763,27 +749,9 @@ export async function POST(
       const allocatedBalance =
         activeSession.allocatedBalance || activeSession.openingFloat || 0;
 
-      let cashIn = 0;
-      let cashOut = 0;
-      if (teller.fineractTellerId && fineractCashierId) {
-        try {
-          const fineractService = await getFineractServiceWithSession();
-          const transactions = await fineractService.getCashierTransactions(
-            teller.fineractTellerId,
-            fineractCashierId
-          );
-
-          transactions.forEach((tx: any) => {
-            if (tx.type?.deposit || tx.type?.cashIn) {
-              cashIn += tx.amount || 0;
-            } else if (tx.type?.withdrawal || tx.type?.cashOut) {
-              cashOut += tx.amount || 0;
-            }
-          });
-        } catch (error) {
-          console.error("Error fetching transactions:", error);
-        }
-      }
+      // Always 0 in practice: see the GET handler for why getCashierTransactions is no longer called.
+      const cashIn = 0;
+      const cashOut = 0;
 
       const netCash = cashIn - cashOut;
       const expectedBalance = allocatedBalance + cashIn - cashOut;
