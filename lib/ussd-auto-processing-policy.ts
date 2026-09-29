@@ -1,5 +1,6 @@
 export type UssdAutoProcessingStatus =
   | "completed"
+  | "payment_pending"
   | "manual_review"
   | "stopped"
   | "failed";
@@ -27,6 +28,14 @@ export function classifyUssdAutoProcessingOutcome(input: {
 
   if (decision !== "APPROVED") {
     return "stopped";
+  }
+
+  if (message.includes("payment settlement pending")) {
+    return "payment_pending";
+  }
+
+  if (message.includes("payment settlement requires review")) {
+    return "manual_review";
   }
 
   if (

@@ -45,6 +45,10 @@ import { getTenantAutoDisbursementRules } from "./tenant-auto-disbursement-rules
 import { resolvePaymentTypeForPreferredMethod } from "./payment-method-resolution";
 import { resolveYangoUssdDisbursementDetailsForLead } from "./yango-ussd-disbursement";
 import {
+  initiateSalaryAdvanceGeePaySettlement,
+  requiresGeePaySettlement,
+} from "./salary-advance-geepay-settlement";
+import {
   applyArdaInventoryWorkflowOperation,
   validateArdaInventoryWorkflowOperation,
 } from "./inventory/arda-stock-workflow-service";
@@ -626,6 +630,8 @@ export class TeamAwareStateMachineService {
       return `Auto disbursement stopped: ${paymentResolution.error}`;
     }
 
+    const requiresSettlement = requiresGeePaySettlement(rule);
+
     let currentLead = lead;
     const attemptedStages: Array<Record<string, unknown>> = [];
 
@@ -665,10 +671,16 @@ export class TeamAwareStateMachineService {
         triggeredBy: effectiveTriggeredBy,
         reason: `Auto-progressed after CDE ${cdeResult.decision}`,
         fineractOverrides: isDisbursementHop
-          ? {
-              ...paymentResolution.fineractOverrides,
-              payoutNote: `Auto-progressed after CDE ${cdeResult.decision}`,
-            }
+          ? requiresSettlement
+            ? {
+                paymentTypeId: paymentResolution.fineractOverrides.paymentTypeId,
+                accountNumber: paymentResolution.fineractOverrides.accountNumber,
+                note: `Auto-progressed after CDE ${cdeResult.decision}; awaiting GeePay settlement`,
+              }
+            : {
+                ...paymentResolution.fineractOverrides,
+                payoutNote: `Auto-progressed after CDE ${cdeResult.decision}`,
+              }
           : {
               note: `Auto-progressed after CDE ${cdeResult.decision}`,
         },
@@ -705,6 +717,33 @@ export class TeamAwareStateMachineService {
       currentLead = reloadedLead;
 
       if (isDisbursementHop) {
+        if (requiresSettlement) {
+          const settlement = await initiateSalaryAdvanceGeePaySettlement({
+            leadId: currentLead.id,
+            rule,
+          });
+
+          await this.updateLeadAutoDisbursementMetadata(currentLead.id, {
+            status:
+              settlement.outcome === "settled"
+                ? "completed"
+                : settlement.outcome === "pending"
+                  ? "payment_pending"
+                  : "stopped",
+            cdeDecision: cdeResult.decision,
+            attemptedStages,
+            lastCompletedStageId: currentLead.currentStageId,
+            lastCompletedStageName: currentLead.currentStage?.name || null,
+            stopReason:
+              settlement.outcome === "manual_review" ? settlement.message : null,
+            ...(settlement.outcome === "settled"
+              ? { completedAt: new Date().toISOString() }
+              : {}),
+          });
+
+          return settlement.message;
+        }
+
         await this.updateLeadAutoDisbursementMetadata(currentLead.id, {
           status: "completed",
           cdeDecision: cdeResult.decision,

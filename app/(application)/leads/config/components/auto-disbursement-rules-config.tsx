@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/searchable-select";
@@ -18,6 +19,9 @@ type RuleDraft = {
   triggerStageId: string;
   allowedCdeDecisions: AutoDisbursementDecision[];
   incomeEvaluationRequired: boolean;
+  requireGeePaySettlement: boolean;
+  processInBackend: boolean;
+  paymentServiceTenantId: string;
 };
 
 type LoanProduct = {
@@ -48,6 +52,9 @@ function makeRuleDraft(): RuleDraft {
     triggerStageId: "",
     allowedCdeDecisions: ["APPROVED"],
     incomeEvaluationRequired: true,
+    requireGeePaySettlement: false,
+    processInBackend: false,
+    paymentServiceTenantId: "",
   };
 }
 
@@ -104,6 +111,9 @@ export function AutoDisbursementRulesConfig() {
                 ? rule.allowedCdeDecisions
                 : ["APPROVED"],
               incomeEvaluationRequired: rule.incomeEvaluationRequired !== false,
+              requireGeePaySettlement: rule.requireGeePaySettlement === true,
+              processInBackend: rule.processInBackend === true,
+              paymentServiceTenantId: String(rule.paymentServiceTenantId ?? ""),
             }))
           : [];
 
@@ -213,6 +223,10 @@ export function AutoDisbursementRulesConfig() {
         triggerStageId: rule.triggerStageId,
         allowedCdeDecisions: rule.allowedCdeDecisions,
         incomeEvaluationRequired: rule.incomeEvaluationRequired,
+        requireGeePaySettlement: rule.requireGeePaySettlement,
+        processInBackend:
+          rule.requireGeePaySettlement && rule.processInBackend,
+        paymentServiceTenantId: rule.paymentServiceTenantId.trim() || undefined,
       }));
 
       const response = await fetch("/api/tenant/auto-disbursement-rules", {
@@ -237,7 +251,10 @@ export function AutoDisbursementRulesConfig() {
             allowedCdeDecisions: Array.isArray(rule.allowedCdeDecisions)
               ? rule.allowedCdeDecisions
               : ["APPROVED"],
-            incomeEvaluationRequired: rule.incomeEvaluationRequired !== false,
+              incomeEvaluationRequired: rule.incomeEvaluationRequired !== false,
+              requireGeePaySettlement: rule.requireGeePaySettlement === true,
+              processInBackend: rule.processInBackend === true,
+              paymentServiceTenantId: String(rule.paymentServiceTenantId ?? ""),
           }))
         : [];
 
@@ -363,6 +380,62 @@ export function AutoDisbursementRulesConfig() {
                 }
               />
             </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <p className="font-medium">Require GeePay Settlement</p>
+                <p className="text-sm text-muted-foreground">
+                  For this product, record the payout as paid only after Payment
+                  Service confirms the GeePay disbursement has settled.
+                </p>
+              </div>
+              <Switch
+                checked={rule.requireGeePaySettlement}
+                onCheckedChange={(checked) =>
+                  updateRule(rule.id, {
+                    requireGeePaySettlement: Boolean(checked),
+                  })
+                }
+              />
+            </div>
+
+            {rule.requireGeePaySettlement ? (
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor={`${rule.id}-payment-service-tenant`}>
+                    Payment Service Tenant ID (optional)
+                  </Label>
+                  <Input
+                    id={`${rule.id}-payment-service-tenant`}
+                    value={rule.paymentServiceTenantId}
+                    onChange={(event) =>
+                      updateRule(rule.id, {
+                        paymentServiceTenantId: event.target.value,
+                      })
+                    }
+                    placeholder="Defaults to this Loan Matrix tenant"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="font-medium">Process in Loan Matrix Backend</p>
+                    <p className="text-sm text-muted-foreground">
+                      New USSD applications for this product are owned by the
+                      dedicated Salary Advance backend worker. Existing queued
+                      applications and every other product stay on their current path.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={rule.processInBackend}
+                    onCheckedChange={(checked) =>
+                      updateRule(rule.id, {
+                        processInBackend: Boolean(checked),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
