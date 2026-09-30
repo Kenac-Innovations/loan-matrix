@@ -15,4 +15,5 @@ test("ussd auto-lead rules API persists tenant settings under ussdAutoLeadRules"
   assert.match(source, /ussdAutoLeadRules/);
   assert.match(source, /sanitizeTenantUssdAutoLeadRulesInput/);
   assert.match(source, /getTenantUssdAutoLeadRules/);
+  assert.match(source, /hasSuperAdminServer/);
 });

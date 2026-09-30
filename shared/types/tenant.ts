@@ -123,9 +123,26 @@ export interface TenantAutoProgressToDisbursementRule {
   paymentServiceTenantId?: string;
 }
 
+export type TenantUssdLoanChargeAttachmentMode = "NONE" | "SELECTED";
+
+/**
+ * Product-owned Fineract charge selection for a USSD-created loan. Monetary
+ * values deliberately remain in Fineract; the tenant setting selects only
+ * charge IDs that the backend resolves against the live product template.
+ */
+export interface TenantUssdLoanChargeAttachment {
+  mode: TenantUssdLoanChargeAttachmentMode;
+  chargeIds?: number[];
+}
+
 export interface TenantUssdAutoLeadRule {
   enabled?: boolean;
   loanProductId: number;
+  /**
+   * Missing on a legacy rule means no charges are attached. Salary Advance's
+   * backend worker requires an explicit SELECTED policy before it can pay.
+   */
+  loanChargeAttachment?: TenantUssdLoanChargeAttachment;
 }
 
 /**
