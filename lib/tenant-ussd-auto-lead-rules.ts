@@ -1,5 +1,6 @@
 import type {
   TenantSettings,
+  TenantUssdLoanChargeAttachment,
   TenantUssdAutoLeadRule,
 } from "@/shared/types/tenant";
 
@@ -16,6 +17,50 @@ function parsePositiveInteger(value: unknown): number | null {
   return null;
 }
 
+function sanitizeLoanChargeAttachment(
+  value: unknown
+): TenantUssdLoanChargeAttachment | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const mode = candidate.mode;
+
+  if (mode === "NONE") {
+    if (
+      candidate.chargeIds !== undefined &&
+      (!Array.isArray(candidate.chargeIds) || candidate.chargeIds.length > 0)
+    ) {
+      return null;
+    }
+    return { mode: "NONE" };
+  }
+
+  if (mode !== "SELECTED" || !Array.isArray(candidate.chargeIds)) {
+    return null;
+  }
+
+  const chargeIds = candidate.chargeIds.map(parsePositiveInteger);
+  if (
+    chargeIds.some((chargeId) => chargeId === null) ||
+    chargeIds.length === 0
+  ) {
+    return null;
+  }
+
+  const canonicalChargeIds = chargeIds as number[];
+  if (new Set(canonicalChargeIds).size !== canonicalChargeIds.length) {
+    return null;
+  }
+
+  return { mode: "SELECTED", chargeIds: canonicalChargeIds };
+}
+
 function sanitizeRule(rule: unknown): TenantUssdAutoLeadRule | null {
   if (!rule || typeof rule !== "object") {
     return null;
@@ -28,9 +73,17 @@ function sanitizeRule(rule: unknown): TenantUssdAutoLeadRule | null {
     return null;
   }
 
+  const loanChargeAttachment = sanitizeLoanChargeAttachment(
+    candidate.loanChargeAttachment
+  );
+  if (loanChargeAttachment === null) {
+    return null;
+  }
+
   return {
     enabled: candidate.enabled !== false,
     loanProductId,
+    ...(loanChargeAttachment ? { loanChargeAttachment } : {}),
   };
 }
 

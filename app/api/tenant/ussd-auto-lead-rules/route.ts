@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/app/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { hasSuperAdminServer } from "@/lib/authorization";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import {
   getTenantUssdAutoLeadRules,
@@ -9,6 +10,10 @@ import {
 
 export async function GET() {
   try {
+    if (!(await hasSuperAdminServer())) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const tenant = await getTenantFromHeaders();
 
     if (!tenant) {
@@ -17,7 +22,7 @@ export async function GET() {
 
     return NextResponse.json({
       rules: getTenantUssdAutoLeadRules(
-        (tenant.settings as Record<string, unknown> | null) || null
+        tenant.settings as unknown as Record<string, unknown> | null
       ),
     });
   } catch (error) {
@@ -32,14 +37,13 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const tenant = await getTenantFromHeaders();
-    const session = await getSession();
 
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!(await hasSuperAdminServer())) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -61,7 +65,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const currentSettings = (tenant.settings as Record<string, unknown>) || {};
+    const currentSettings =
+      (tenant.settings as unknown as Record<string, unknown> | null) || {};
     const updatedSettings = {
       ...currentSettings,
       ussdAutoLeadRules: rules,
@@ -69,7 +74,7 @@ export async function PUT(request: NextRequest) {
 
     await prisma.tenant.update({
       where: { id: tenant.id },
-      data: { settings: updatedSettings },
+      data: { settings: updatedSettings as unknown as Prisma.InputJsonValue },
     });
 
     return NextResponse.json({
