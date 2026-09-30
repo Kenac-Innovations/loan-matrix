@@ -2,6 +2,11 @@ import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { transferClientToOfficeWithServiceAuth } from "./fineract-client-transfer-service";
 import { getFineractBaseUrl } from "./fineract-base-url";
 import { normalizeFineractErrorPayload } from "./fineract-error";
+import {
+  cashierSummaryScope,
+  getOrLoadCashierSummary,
+  invalidateCashierSummary,
+} from "./cashier-summary-cache";
 
 const DEFAULT_FINERACT_REPORT_TIMEOUT_MS = 300_000;
 
@@ -491,9 +496,14 @@ export class FineractAPIService {
   private client: AxiosInstance;
   private clientV2: AxiosInstance;
   private config: FineractConfig;
+  private cashierSummaryScope: string;
 
   constructor(config: FineractConfig, authToken?: string) {
     this.config = config;
+    this.cashierSummaryScope = cashierSummaryScope(
+      config.tenantId,
+      authToken ?? `basic:${config.username}`
+    );
 
     console.log("FineractAPIService initialized with tenant:", config.tenantId);
 
@@ -1291,6 +1301,7 @@ export class FineractAPIService {
         `/tellers/${tellerId}/cashiers/${cashierId}`,
         payload
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       const errorDetails = {
@@ -1322,6 +1333,7 @@ export class FineractAPIService {
         `/tellers/${tellerId}/cashiers/allocate`,
         allocationData
       );
+      invalidateCashierSummary(tellerId);
       return response.data;
     } catch (error) {
       console.error("Fineract API Error:", error);
@@ -1350,6 +1362,7 @@ export class FineractAPIService {
           locale: allocationData.locale || "en",
         }
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       console.error("Fineract API Error allocating cash to cashier:", {
@@ -1384,6 +1397,7 @@ export class FineractAPIService {
           locale: settlementData.locale || "en",
         }
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       console.error("Fineract API Error settling cash for cashier:", {
@@ -1403,17 +1417,29 @@ export class FineractAPIService {
     options?: { offset?: number; limit?: number }
   ): Promise<any> {
     try {
-      const params = new URLSearchParams({ currencyCode });
-      if (options?.offset != null) params.set("offset", String(options.offset));
-      if (options?.limit != null) params.set("limit", String(options.limit));
-      const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?${params}`;
-      console.log("Fetching cashier summary and transactions:", url);
-      const response: AxiosResponse<any> = await this.client.get(url);
-      console.log(
-        "Cashier summary response:",
-        JSON.stringify(response.data, null, 2).substring(0, 500)
+      return await getOrLoadCashierSummary(
+        {
+          scope: this.cashierSummaryScope,
+          tellerId,
+          cashierId,
+          currencyCode,
+          offset: options?.offset,
+          limit: options?.limit,
+        },
+        async () => {
+          const params = new URLSearchParams({ currencyCode });
+          if (options?.offset != null) params.set("offset", String(options.offset));
+          if (options?.limit != null) params.set("limit", String(options.limit));
+          const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?${params}`;
+          console.log("Fetching cashier summary and transactions:", url);
+          const response: AxiosResponse<any> = await this.client.get(url);
+          console.log(
+            "Cashier summary response:",
+            JSON.stringify(response.data, null, 2).substring(0, 500)
+          );
+          return response.data;
+        }
       );
-      return response.data;
     } catch (error: any) {
       console.error("Fineract API Error getting cashier summary:", {
         message: error.message,
@@ -1491,6 +1517,7 @@ export class FineractAPIService {
           locale: sessionData?.locale || "en",
         }
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       console.error("Fineract API Error starting session:", {
@@ -1522,6 +1549,7 @@ export class FineractAPIService {
           locale: closeData.locale || "en",
         }
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       console.error("Fineract API Error closing session:", {
