@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/app/generated/prisma";
+import { fetchFineractAPI } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { hasSuperAdminServer } from "@/lib/authorization";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import {
+  getInvalidTenantUssdLoanChargeIds,
   getTenantUssdAutoLeadRules,
+  SALARY_ADVANCE_LOAN_PRODUCT_ID,
   sanitizeTenantUssdAutoLeadRulesInput,
 } from "@/lib/tenant-ussd-auto-lead-rules";
 
@@ -63,6 +66,61 @@ export async function PUT(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    const rulesWithChargeAttachments = rules.filter(
+      (rule) => rule.loanChargeAttachment !== undefined
+    );
+    const nonSalaryAdvanceChargeRule = rulesWithChargeAttachments.find(
+      (rule) => rule.loanProductId !== SALARY_ADVANCE_LOAN_PRODUCT_ID
+    );
+
+    if (nonSalaryAdvanceChargeRule) {
+      return NextResponse.json(
+        {
+          error:
+            "Loan charge attachments are supported only for Salary Advance (product 13).",
+        },
+        { status: 400 }
+      );
+    }
+
+    const hasSelectedCharges = rules.some(
+      (rule) => rule.loanChargeAttachment?.mode === "SELECTED"
+    );
+
+    if (hasSelectedCharges) {
+      let chargePool: unknown;
+
+      try {
+        chargePool = await fetchFineractAPI("/charges", {
+          method: "GET",
+          cache: "no-store",
+          authMode: "service",
+        });
+      } catch (error) {
+        console.error("Error validating USSD auto-lead charge settings:", error);
+        return NextResponse.json(
+          { error: "Could not validate selected charges against Fineract" },
+          { status: 502 }
+        );
+      }
+
+      const invalidChargeIds = getInvalidTenantUssdLoanChargeIds(
+        rules,
+        chargePool
+      );
+
+      if (invalidChargeIds.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Selected charges must be active loan charges with a specified due date.",
+            invalidChargeIds,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const currentSettings =
