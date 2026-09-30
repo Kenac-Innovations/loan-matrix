@@ -1,0 +1,63 @@
+{
+  "template": "omama",
+  "leadId": "clead012omamasparse",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "clientName": "Lucy Phiri",
+    "nrc": "888888/99/9",
+    "dateOfBirth": "2026-04-15",
+    "gender": "Female",
+    "gflNo": "GFL-2026-012345",
+    "loanAmount": 12000,
+    "disbursedAmount": 12000,
+    "tenure": "4 months",
+    "numberOfPayments": 4,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "15/04/2026",
+    "interest": 720,
+    "fees": 240,
+    "totalCostOfCredit": 960,
+    "totalRepayment": 12960,
+    "paymentPerPeriod": 3240,
+    "monthlyPercentageRate": 1.2,
+    "currency": "ZMW",
+    "branch": "Kafue",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-15",
+        "paymentAmount": 3240,
+        "principal": 3000,
+        "interestAndFees": 240,
+        "remainingBalance": 9000
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-15",
+        "paymentAmount": 3240,
+        "principal": 3000,
+        "interestAndFees": 240,
+        "remainingBalance": 6000
+      },
+      {
+        "paymentNumber": 3,
+        "dueDate": "2026-06-15",
+        "paymentAmount": 3240,
+        "principal": 3000,
+        "interestAndFees": 240,
+        "remainingBalance": 3000
+      },
+      {
+        "paymentNumber": 4,
+        "dueDate": "2026-07-15",
+        "paymentAmount": 3240,
+        "principal": 3000,
+        "interestAndFees": 240,
+        "remainingBalance": 0
+      }
+    ],
+    "charges": []
+  },
+  "signatures": {},
+  "templateFile": "omama-full-loan/full-loan-template-from-db.html"
+}
