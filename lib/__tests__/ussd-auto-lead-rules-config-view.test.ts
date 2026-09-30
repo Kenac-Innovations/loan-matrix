@@ -15,7 +15,11 @@ test("lead config includes a USSD auto-lead rules editor", () => {
   );
 
   assert.match(source, /USSD Auto Lead Rules/);
+  assert.match(source, /Remove ineligible selections/);
   assert.match(source, /\/api\/tenant\/ussd-auto-lead-rules/);
   assert.match(source, /\/api\/fineract\/loanproducts/);
+  assert.match(source, /\/api\/fineract\/charges/);
+  assert.match(source, /specified due date/i);
+  assert.doesNotMatch(source, /loanproducts\/\$\{.*\}\?template=true/);
   assert.match(source, /Automatically create leads/);
 });
