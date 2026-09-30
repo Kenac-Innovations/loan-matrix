@@ -41,6 +41,7 @@ type LoanCharge = {
   active?: boolean;
   penalty?: boolean;
   currency?: { displaySymbol?: string; code?: string };
+  chargeAppliesTo?: { code?: string; value?: string };
   chargeTimeType?: { code?: string; value?: string };
   chargeCalculationType?: { code?: string; value?: string };
 };
@@ -52,29 +53,37 @@ function chargeId(charge: LoanCharge): number | null {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
-function isOverdueOrPenaltyCharge(charge: LoanCharge): boolean {
-  const timeType = `${charge.chargeTimeType?.code || ""} ${
-    charge.chargeTimeType?.value || ""
-  }`.toLowerCase();
-  return charge.penalty === true || timeType.includes("overdue");
+function normalizeOptionValue(value: string | undefined): string {
+  return (value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
 
 function isSpecifiedDueDateCharge(charge: LoanCharge): boolean {
-  const timeType = `${charge.chargeTimeType?.code || ""} ${
-    charge.chargeTimeType?.value || ""
-  }`.toLowerCase();
+  const timeTypeCode = normalizeOptionValue(charge.chargeTimeType?.code);
+  const timeTypeValue = normalizeOptionValue(charge.chargeTimeType?.value);
+
   return (
-    timeType.includes("specifiedduedate") ||
-    timeType.includes("specified due date")
+    timeTypeCode === "chargetimetype.specifiedduedate" ||
+    timeTypeValue === "specifiedduedate"
+  );
+}
+
+function isLoanCharge(charge: LoanCharge): boolean {
+  const appliesToCode = normalizeOptionValue(charge.chargeAppliesTo?.code);
+  const appliesToValue = normalizeOptionValue(charge.chargeAppliesTo?.value);
+
+  return (
+    appliesToCode === "chargeappliesto.loan" ||
+    appliesToValue === "loan"
   );
 }
 
 function isEligibleCharge(charge: LoanCharge): boolean {
   return (
     chargeId(charge) !== null &&
-    charge.active !== false &&
-    !isOverdueOrPenaltyCharge(charge) &&
-    !isSpecifiedDueDateCharge(charge)
+    charge.active === true &&
+    charge.penalty !== true &&
+    isLoanCharge(charge) &&
+    isSpecifiedDueDateCharge(charge)
   );
 }
 
@@ -102,9 +111,9 @@ function makeRuleDraft(): RuleDraft {
 export function UssdAutoLeadRulesConfig() {
   const [rules, setRules] = useState<RuleDraft[]>([]);
   const [loanProducts, setLoanProducts] = useState<LoanProduct[]>([]);
-  const [chargesByProduct, setChargesByProduct] = useState<
-    Record<string, LoanCharge[]>
-  >({});
+  const [charges, setCharges] = useState<LoanCharge[]>([]);
+  const [chargesLoading, setChargesLoading] = useState(false);
+  const [chargePoolLoaded, setChargePoolLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedSnapshot, setSavedSnapshot] = useState("[]");
@@ -169,61 +178,79 @@ export function UssdAutoLeadRulesConfig() {
     fetchConfig();
   }, []);
 
-  const selectedProductIds = Array.from(
-    new Set(
-      rules
-        .map((rule) => rule.loanProductId)
-        .filter((loanProductId) => /^\d+$/.test(loanProductId))
-    )
-  )
-    .sort()
-    .join(",");
+  const hasSalaryAdvanceRule = rules.some(
+    (rule) => rule.loanProductId === SALARY_ADVANCE_LOAN_PRODUCT_ID
+  );
 
   useEffect(() => {
-    const productIds = selectedProductIds ? selectedProductIds.split(",") : [];
-    if (productIds.length === 0) {
+    if (!hasSalaryAdvanceRule) {
       return;
     }
 
     let cancelled = false;
 
-    Promise.all(
-      productIds.map(async (productId) => {
-        const response = await fetch(
-          `/api/fineract/loanproducts/${productId}?template=true`
-        );
-        if (!response.ok) {
-          throw new Error("Failed to load the product charge configuration");
+    Promise.resolve()
+      .then(() => {
+        if (cancelled) {
+          throw new Error("Charge pool request cancelled");
         }
-        const template = await response.json();
-        return [
-          productId,
-          Array.isArray(template?.charges)
-            ? template.charges.filter(isEligibleCharge)
-            : [],
-        ] as const;
+        setChargesLoading(true);
+        setChargePoolLoaded(false);
+        return fetch("/api/fineract/charges", { cache: "no-store" });
       })
-    )
-      .then((entries) => {
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Failed to load the Fineract charge pool");
+        }
+
+        const payload = await response.json();
+        let rawCharges: unknown[] | null = null;
+        if (Array.isArray(payload)) {
+          rawCharges = payload;
+        } else if (Array.isArray(payload?.pageItems)) {
+          rawCharges = payload.pageItems;
+        } else if (Array.isArray(payload?.content)) {
+          rawCharges = payload.content;
+        }
+
+        if (rawCharges === null) {
+          throw new Error("Fineract returned an unrecognised charge pool response");
+        }
+
+        return rawCharges.filter(isEligibleCharge) as LoanCharge[];
+      })
+      .then((eligibleCharges) => {
         if (cancelled) return;
-        setChargesByProduct((current) => ({
-          ...current,
-          ...Object.fromEntries(entries),
-        }));
+        setCharges(eligibleCharges);
+        setChargePoolLoaded(true);
       })
       .catch((error) => {
         if (!cancelled) {
-          console.error("Error loading USSD product charges:", error);
-          toast.error("Failed to load the product charge configuration");
+          console.error("Error loading USSD charge pool:", error);
+          setCharges([]);
+          setChargePoolLoaded(false);
+          toast.error("Failed to load the Fineract charge pool");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setChargesLoading(false);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedProductIds]);
+  }, [hasSalaryAdvanceRule]);
 
   const hasChanges = JSON.stringify(rules) !== savedSnapshot;
+
+  const eligibleChargeIds = new Set(
+    charges
+      .map(chargeId)
+      .filter((id): id is number => id !== null)
+      .map(String)
+  );
 
   const productOptions = loanProducts.map((product) => ({
     value: String(product.id),
@@ -252,13 +279,17 @@ export function UssdAutoLeadRulesConfig() {
       const payload = rules.map((rule) => ({
         enabled: rule.enabled,
         loanProductId: Number(rule.loanProductId),
-        loanChargeAttachment:
-          rule.chargeIds.length > 0
-            ? {
-                mode: "SELECTED",
-                chargeIds: rule.chargeIds.map(Number),
-              }
-            : { mode: "NONE" },
+        ...(rule.loanProductId === SALARY_ADVANCE_LOAN_PRODUCT_ID
+          ? {
+              loanChargeAttachment:
+                rule.chargeIds.length > 0
+                  ? {
+                      mode: "SELECTED",
+                      chargeIds: rule.chargeIds.map(Number),
+                    }
+                  : { mode: "NONE" },
+            }
+          : {}),
       }));
 
       const response = await fetch("/api/tenant/ussd-auto-lead-rules", {
@@ -410,31 +441,24 @@ export function UssdAutoLeadRulesConfig() {
               <div>
                 <Label>Loan Charge Attachment</Label>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Select the product charges to include when a USSD loan is
-                  created. Fineract remains the source of the charge amounts;
-                  overdue penalties and specified-due-date charges are
-                  excluded.
+                  Select active Fineract loan charges that are applied on a
+                  specified due date. Fineract remains the source of the
+                  charge amounts and due-date behavior.
                 </p>
               </div>
 
-              {!rule.loanProductId ? (
+              {chargesLoading ? (
                 <p className="text-sm text-muted-foreground">
-                  Select a loan product to configure its charges.
+                  Loading eligible Fineract charges...
                 </p>
-              ) : !Object.prototype.hasOwnProperty.call(
-                  chargesByProduct,
-                  rule.loanProductId
-                ) ? (
+              ) : charges.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Loading product charges...
-                </p>
-              ) : (chargesByProduct[rule.loanProductId] || []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  This product has no eligible configured charges.
+                  No active loan charges with a specified due date are
+                  available.
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {(chargesByProduct[rule.loanProductId] || []).map((charge) => {
+                  {charges.map((charge) => {
                     const configuredChargeId = chargeId(charge);
                     if (configuredChargeId === null) return null;
                     const checked = rule.chargeIds.includes(
@@ -474,6 +498,35 @@ export function UssdAutoLeadRulesConfig() {
                   })}
                 </div>
               )}
+              {chargePoolLoaded &&
+              !chargesLoading &&
+              rule.chargeIds.some((id) => !eligibleChargeIds.has(id)) ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                  <p>
+                    Some legacy charge selections are no longer eligible for
+                    Salary Advance because they are not active loan charges
+                    with a specified due date: {rule.chargeIds
+                      .filter((id) => !eligibleChargeIds.has(id))
+                      .join(", ")}
+                    . Remove them before saving a new charge selection.
+                  </p>
+                  <Button
+                    type="button"
+                    className="mt-2"
+                    onClick={() =>
+                      updateRule(rule.id, {
+                        chargeIds: rule.chargeIds.filter((id) =>
+                          eligibleChargeIds.has(id)
+                        ),
+                      })
+                    }
+                    size="sm"
+                    variant="outline"
+                  >
+                    Remove ineligible selections
+                  </Button>
+                </div>
+              ) : null}
               </div>
             ) : (
               <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">

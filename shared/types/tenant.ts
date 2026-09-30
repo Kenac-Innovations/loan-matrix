@@ -127,8 +127,9 @@ export type TenantUssdLoanChargeAttachmentMode = "NONE" | "SELECTED";
 
 /**
  * Product-owned Fineract charge selection for a USSD-created loan. Monetary
- * values deliberately remain in Fineract; the tenant setting selects only
- * charge IDs that the backend resolves against the live product template.
+ * values and due dates deliberately remain in Fineract; the tenant setting
+ * stores only charge IDs that the backend resolves against the live general
+ * charge pool.
  */
 export interface TenantUssdLoanChargeAttachment {
   mode: TenantUssdLoanChargeAttachmentMode;
