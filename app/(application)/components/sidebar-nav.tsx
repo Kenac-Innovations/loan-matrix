@@ -79,6 +79,7 @@ export function SidebarNav({
   organizationSubMenuItems.push(
     { label: "Manage Offices", href: "/organization/offices" },
     { label: "Manage Holidays", href: "/organization/holidays" },
+    { label: "Manage Currencies", href: "/organization/currencies" },
   );
 
   if (canReadUsers) {

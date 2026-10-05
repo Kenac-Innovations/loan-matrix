@@ -84,3 +84,23 @@ test("returns null when Fineract cannot be reached", async () => {
     console.error = originalError;
   }
 });
+
+test("invalidate drops only the current tenant's cached currency", async () => {
+  const { createOrgCurrencyResolver } = await import("../currency-utils");
+  const env = setup();
+  const resolve = createOrgCurrencyResolver(env.deps);
+
+  env.setTenant("goodfellow");
+  await resolve();
+  env.setTenant("rulethu");
+  await resolve();
+  assert.equal(env.fetches, 2);
+
+  await resolve.invalidate();
+  await resolve();
+  assert.equal(env.fetches, 3);
+
+  env.setTenant("goodfellow");
+  await resolve();
+  assert.equal(env.fetches, 3);
+});
