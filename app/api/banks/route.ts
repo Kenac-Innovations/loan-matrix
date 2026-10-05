@@ -3,8 +3,8 @@ import { Prisma } from "@/app/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
-import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { loadBankBalances } from "@/lib/bank-balance";
 import {
   canAccessOfficeId,
   resolveVisibleOfficeIdsForUser,
@@ -70,7 +70,15 @@ export async function GET(request: NextRequest) {
         },
         tellers: {
           where: { isActive: true },
-          select: { id: true },
+          select: {
+            id: true,
+            glAccountId: true,
+            glAccountCode: true,
+            glAccountName: true,
+            cashAllocations: {
+              where: { status: "ACTIVE", cashierId: null },
+            },
+          },
         },
         _count: {
           select: {
@@ -85,77 +93,11 @@ export async function GET(request: NextRequest) {
     // Calculate balances for each bank
     const banksWithBalances = await Promise.all(
       banks.map(async (bank) => {
-        // Get all teller vault allocations for this bank
-        const tellerAllocations = await prisma.cashAllocation.findMany({
-          where: {
-            tenantId: tenant.id,
-            teller: { bankId: bank.id },
-            cashierId: null, // Only vault allocations
-            status: "ACTIVE",
-          },
-        });
-
-        // Only count allocations that drew from the bank (exclude opening balance, returns from cashiers)
-        const isFromBank = (alloc: { notes?: string | null; allocatedBy?: string | null }) => {
-          const n = (alloc.notes ?? "").toLowerCase();
-          if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
-          if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
-          if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
-          return true;
-        };
-        const allocatedToTellers = tellerAllocations
-          .filter(isFromBank)
-          .reduce((sum, alloc) => sum + alloc.amount, 0);
-
-        // Get bank balance from Fineract GL account if configured
-        let totalAllocated = 0;
-        let currency = orgCurrency;
-        let balanceSource = "local";
-
-        if (bank.glAccountId) {
-          try {
-            // Fetch ALL journal entries and calculate balance manually
-            // For ASSET accounts: DEBIT increases balance, CREDIT decreases balance
-            const journalData = await fetchFineractAPI(
-              `/journalentries?glAccountId=${bank.glAccountId}&limit=500&orderBy=id&sortOrder=DESC`
-            );
-
-            if (journalData?.pageItems && journalData.pageItems.length > 0) {
-              // Calculate balance from all entries
-              let calculatedBalance = 0;
-              for (const entry of journalData.pageItems) {
-                if (entry.entryType?.value === "DEBIT") {
-                  calculatedBalance += entry.amount || 0;
-                } else if (entry.entryType?.value === "CREDIT") {
-                  calculatedBalance -= entry.amount || 0;
-                }
-              }
-              
-              const latestEntry = journalData.pageItems[0];
-              totalAllocated = calculatedBalance;
-              currency = latestEntry.currency?.code || orgCurrency;
-              balanceSource = "fineract_calculated";
-            }
-          } catch (error) {
-            console.error(`Failed to fetch GL balance for bank ${bank.id}:`, error);
-            // Fallback to local allocations
-            totalAllocated = bank.allocations.reduce(
-              (sum, alloc) => sum + alloc.amount,
-              0
-            );
-            currency = bank.allocations[0]?.currency || orgCurrency;
-            balanceSource = "local_fallback";
-          }
-        } else {
-          // No GL account configured, use local allocations
-          totalAllocated = bank.allocations.reduce(
-            (sum, alloc) => sum + alloc.amount,
-            0
-          );
-          currency = bank.allocations[0]?.currency || orgCurrency;
-        }
-
-        const availableBalance = totalAllocated - allocatedToTellers;
+        const balances = await loadBankBalances(bank);
+        const { totalAllocated, allocatedToTellers, availableBalance } = balances;
+        const currency =
+          balances.currency || bank.allocations[0]?.currency || orgCurrency;
+        const balanceSource = balances.source;
 
         return {
           ...bank,
