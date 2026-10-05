@@ -1,0 +1,52 @@
+{
+  "template": "mandate",
+  "leadId": "clead006mandatenoorg",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "clientName": "Evelyn Tembo",
+    "nrc": "222222/33/3",
+    "dateOfBirth": "1994-01-12",
+    "gender": "Female",
+    "gflNo": "GFL-2026-006789",
+    "loanAmount": 20000,
+    "disbursedAmount": 20000,
+    "tenure": "6 months",
+    "numberOfPayments": 6,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-04-20",
+    "interest": 1500,
+    "fees": 500,
+    "totalCostOfCredit": 2000,
+    "totalRepayment": 22000,
+    "paymentPerPeriod": 3666.67,
+    "monthlyPercentageRate": 1.5,
+    "currency": "ZMW",
+    "branch": "Mufulira",
+    "mobileNo": "+260764445678",
+    "residentialAddress": "456 Kenneth Kaunda Avenue, Mufulira",
+    "bankName": "ABSA Bank",
+    "branchName": "Mufulira Branch",
+    "sortCode": "ABSAZM",
+    "accountNumber": "ACC987654321",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-20",
+        "paymentAmount": 3666.67,
+        "principal": 3333.33,
+        "interestAndFees": 333.34,
+        "remainingBalance": 16666.67
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-20",
+        "paymentAmount": 3666.67,
+        "principal": 3333.33,
+        "interestAndFees": 333.34,
+        "remainingBalance": 13333.34
+      }
+    ],
+    "charges": []
+  },
+  "signatures": {}
+}

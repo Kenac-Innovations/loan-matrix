@@ -1,0 +1,104 @@
+{
+  "template": "kfs",
+  "leadId": "clead003kfsfull",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "clientName": "Joseph Nyirenda",
+    "nrc": "654321/12/1",
+    "dateOfBirth": "1988-03-22",
+    "gender": "Male",
+    "employeeNo": "EMP0054321",
+    "employer": "Zambia Revenue Authority",
+    "gflNo": "GFL-2026-003456",
+    "loanId": "LOAN-2026-003456",
+    "loanAmount": 75000,
+    "disbursedAmount": 75000,
+    "tenure": "18 months",
+    "numberOfPayments": 18,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-04-10",
+    "interest": 13500,
+    "fees": 3750,
+    "totalCostOfCredit": 17250,
+    "totalRepayment": 92250,
+    "paymentPerPeriod": 5125,
+    "monthlyPercentageRate": 2.0,
+    "currency": "ZMW",
+    "branch": "Livingstone",
+    "loanOfficer": "Samuel Mwale",
+    "loanPurpose": "Home renovation",
+    "executionPlace": "Livingstone",
+    "executionDate": "2026-03-15",
+    "firstname": "Joseph",
+    "lastname": "Nyirenda",
+    "mobileNo": "+260762234567",
+    "accountNumber": "ACC654321789",
+    "branchName": "Livingstone Branch",
+    "sortCode": "GFLZM",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-10",
+        "paymentAmount": 5125,
+        "principal": 4166.67,
+        "interestAndFees": 958.33,
+        "remainingBalance": 70833.33
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-10",
+        "paymentAmount": 5125,
+        "principal": 4166.67,
+        "interestAndFees": 958.33,
+        "remainingBalance": 66666.66
+      },
+      {
+        "paymentNumber": 3,
+        "dueDate": "2026-06-10",
+        "paymentAmount": 5125,
+        "principal": 4166.67,
+        "interestAndFees": 958.33,
+        "remainingBalance": 62499.99
+      },
+      {
+        "paymentNumber": 4,
+        "dueDate": "2026-07-10",
+        "paymentAmount": 5125,
+        "principal": 4166.67,
+        "interestAndFees": 958.33,
+        "remainingBalance": 58333.32
+      },
+      {
+        "paymentNumber": 5,
+        "dueDate": "2026-08-10",
+        "paymentAmount": 5125,
+        "principal": 4166.67,
+        "interestAndFees": 958.33,
+        "remainingBalance": 54166.65
+      },
+      {
+        "paymentNumber": 6,
+        "dueDate": "2026-09-10",
+        "paymentAmount": 5125,
+        "principal": 4166.67,
+        "interestAndFees": 958.33,
+        "remainingBalance": 49999.98
+      }
+    ],
+    "charges": [
+      {
+        "name": "Processing Fee",
+        "amount": 750
+      },
+      {
+        "name": "Monthly Administration Fee",
+        "amount": 3000
+      }
+    ]
+  },
+  "signatures": {
+    "borrower": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "guarantor": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "loanOfficer": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  }
+}
