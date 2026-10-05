@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  currencyUpdateInputSchema,
   holidayCreateInputSchema,
   holidayUpdateInputSchema,
   officeInputSchema,
@@ -112,4 +113,19 @@ test("active holiday updates can change only editable metadata", () => {
 
   assert.equal(parsed.name, "Founders Day");
   assert.equal(parsed.description, "Updated description");
+});
+
+test("currency update normalizes codes and rejects empty, duplicate or malformed lists", () => {
+  assert.deepEqual(
+    currencyUpdateInputSchema.parse({ currencies: ["usd", " ZMW "] }),
+    { currencies: ["USD", "ZMW"] },
+  );
+
+  const empty = currencyUpdateInputSchema.safeParse({ currencies: [] });
+  assert.equal(empty.success, false);
+  assert.equal(empty.error?.issues[0]?.message, "At least one currency must remain enabled.");
+
+  assert.equal(currencyUpdateInputSchema.safeParse({ currencies: ["USD", "usd"] }).success, false);
+  assert.equal(currencyUpdateInputSchema.safeParse({ currencies: ["USD1"] }).success, false);
+  assert.equal(currencyUpdateInputSchema.safeParse({}).success, false);
 });
