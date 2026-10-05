@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { fetchFineractAPI } from "@/lib/api";
 import { getGlAccountBalance } from "@/lib/gl-balance";
+import { loadBankBalances } from "@/lib/bank-balance";
 
 /**
  * POST /api/tellers/[id]/allocate
@@ -160,8 +161,6 @@ export async function POST(
     // The existing bank balance calculation applies only to the default source.
     // A selected override is checked against its own Fineract GL below.
     if (!isSourceGlOverride && teller.bankId && !skipBankCheck) {
-      const bank = teller.bank!;
-
       const bankWithBalances = await prisma.bank.findFirst({
         where: {
           id: teller.bankId,
@@ -186,60 +185,15 @@ export async function POST(
         return NextResponse.json({ error: "Bank not found" }, { status: 404 });
       }
 
-      // Match the bank details page logic exactly so allocation validation
-      // uses the same available balance the user sees on the bank screen.
-      const isFromBank = (alloc: {
-        notes?: string | null;
-        allocatedBy?: string | null;
-      }) => {
-        const n = (alloc.notes ?? "").toLowerCase();
-        if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
-        if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
-        if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
-        return true;
-      };
-
-      const allocatedToTellers = bankWithBalances.tellers.reduce((sum, bankTeller) => {
-        const bankAllocationsOnly = bankTeller.cashAllocations
-          .filter(isFromBank)
-          .reduce((allocSum, alloc) => allocSum + alloc.amount, 0);
-        return sum + bankAllocationsOnly;
-      }, 0);
-
-      // Use Fineract GL balance when available (consistent with UI display),
-      // fall back to local BankAllocation records otherwise.
-      let totalAllocated = 0;
-      let balanceSource = "local";
-
-      if (bank.glAccountId) {
-        try {
-          const journalData = await fetchFineractAPI(
-            `/journalentries?glAccountId=${bank.glAccountId}&limit=500&orderBy=id&sortOrder=DESC`,
-          );
-
-          if (journalData?.pageItems && journalData.pageItems.length > 0) {
-            for (const entry of journalData.pageItems) {
-              if (entry.entryType?.value === "DEBIT") {
-                totalAllocated += entry.amount || 0;
-              } else if (entry.entryType?.value === "CREDIT") {
-                totalAllocated -= entry.amount || 0;
-              }
-            }
-            balanceSource = "fineract_gl";
-          }
-        } catch (error) {
-          console.error(
-            "Failed to fetch GL balance from Fineract, falling back to local:",
-            error,
-          );
-        }
-      }
-
-      if (balanceSource === "local") {
-        totalAllocated = bankWithBalances.allocations.reduce((sum, alloc) => sum + alloc.amount, 0);
-      }
-
-      const bankAvailableBalance = totalAllocated - allocatedToTellers;
+      // Same calculation as the bank screens: when the bank GL is readable it
+      // is already net of earlier teller allocations, so nothing is subtracted.
+      const balances = await loadBankBalances(bankWithBalances, {
+        includeTellerVaults: false,
+      });
+      const totalAllocated = balances.totalAllocated;
+      const allocatedToTellers = balances.allocatedToTellers;
+      const bankAvailableBalance = balances.availableBalance;
+      const balanceSource = balances.source;
 
       if (requestedAmount > bankAvailableBalance) {
         return NextResponse.json(
