@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2, ArrowUpRight, Search, Banknote, Receipt } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { SearchableSelect } from "@/components/searchable-select";
 
 interface CashOutModalProps {
   open: boolean;
@@ -32,6 +33,13 @@ interface Currency {
   code: string;
   name: string;
   displaySymbol?: string;
+}
+
+interface GLAccount {
+  id: number;
+  name: string;
+  glCode: string;
+  type?: { id?: number; value?: string } | null;
 }
 
 interface PendingPayout {
@@ -67,6 +75,11 @@ export function CashOutModal({
     "EXPENSE" | "DISBURSEMENT"
   >("EXPENSE");
 
+  // Expense GL accounts for expense transactions
+  const [expenseGlAccounts, setExpenseGlAccounts] = useState<GLAccount[]>([]);
+  const [loadingExpenseGlAccounts, setLoadingExpenseGlAccounts] = useState(false);
+  const [selectedExpenseGlAccountId, setSelectedExpenseGlAccountId] = useState<string>("");
+
   // Pending payouts for disbursement
   const [pendingPayouts, setPendingPayouts] = useState<PendingPayout[]>([]);
   const [loadingPayouts, setLoadingPayouts] = useState(false);
@@ -85,11 +98,13 @@ export function CashOutModal({
   useEffect(() => {
     if (open) {
       fetchCurrencies();
+      fetchExpenseGlAccounts();
       setError(null);
       setSuccess(null);
       setTransactionType("EXPENSE");
       setSelectedPayout(null);
       setPayoutSearch("");
+      setSelectedExpenseGlAccountId("");
     } else {
       // Reset form when modal closes
       setFormData({
@@ -103,6 +118,7 @@ export function CashOutModal({
       setTransactionType("EXPENSE");
       setSelectedPayout(null);
       setPendingPayouts([]);
+      setSelectedExpenseGlAccountId("");
     }
   }, [open]);
 
@@ -152,6 +168,29 @@ export function CashOutModal({
     }
   };
 
+  const fetchExpenseGlAccounts = async () => {
+    setLoadingExpenseGlAccounts(true);
+    try {
+      const response = await fetch(
+        "/api/fineract/glaccounts/detail?usage=1&disabled=false&manualEntriesAllowed=true&type=5"
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch expense GL accounts");
+      }
+
+      const data = await response.json();
+      const accounts = (Array.isArray(data) ? data : []).filter(
+        (account: GLAccount) => account.type?.id === 5 || account.type?.value === "EXPENSE"
+      );
+
+      setExpenseGlAccounts(accounts);
+    } catch (error) {
+      console.error("Error fetching expense GL accounts:", error);
+    } finally {
+      setLoadingExpenseGlAccounts(false);
+    }
+  };
+
   const fetchPendingPayouts = async () => {
     setLoadingPayouts(true);
     try {
@@ -182,6 +221,11 @@ export function CashOutModal({
       return;
     }
 
+    if (transactionType === "EXPENSE" && !selectedExpenseGlAccountId) {
+      setError("Please select an expense account");
+      return;
+    }
+
     if (transactionType === "DISBURSEMENT" && !selectedPayout) {
       setError("Please select a loan to disburse");
       return;
@@ -203,6 +247,10 @@ export function CashOutModal({
               (transactionType === "EXPENSE" ? "Expense" : "Loan Disbursement"),
             date: formData.date,
             transactionType,
+            // Pass the expense GL account ID for expense transactions
+            ...(transactionType === "EXPENSE"
+              ? { expenseGlAccountId: Number(selectedExpenseGlAccountId) }
+              : {}),
             // Pass the Fineract loan ID for disbursement
             loanPayoutId: selectedPayout ? selectedPayout.loanId : undefined,
           }),
@@ -210,7 +258,7 @@ export function CashOutModal({
       );
 
       if (response.ok) {
-        const result = await response.json();
+        await response.json();
         const typeLabel =
           transactionType === "DISBURSEMENT" ? "Disbursement" : "Cash Out";
         setSuccess(
@@ -315,6 +363,7 @@ export function CashOutModal({
                 onValueChange={(value) => {
                   setTransactionType(value as "EXPENSE" | "DISBURSEMENT");
                   setSelectedPayout(null);
+                  setSelectedExpenseGlAccountId("");
                   setFormData((prev) => ({ ...prev, amount: "", notes: "" }));
                 }}
                 className="flex gap-4"
@@ -351,6 +400,33 @@ export function CashOutModal({
                 </div>
               </RadioGroup>
             </div>
+
+            {/* Expense Account Selection (for Expense) */}
+            {transactionType === "EXPENSE" && (
+              <div className="space-y-2">
+                <Label htmlFor="expenseGlAccount">Expense Account *</Label>
+                <SearchableSelect
+                  options={expenseGlAccounts.map((account) => ({
+                    value: account.id.toString(),
+                    label: `${account.glCode} - ${account.name}`,
+                  }))}
+                  value={selectedExpenseGlAccountId}
+                  onValueChange={setSelectedExpenseGlAccountId}
+                  placeholder={
+                    loadingExpenseGlAccounts
+                      ? "Loading expense accounts..."
+                      : expenseGlAccounts.length === 0
+                      ? "No expense GL accounts allow manual entries — configure one in Chart of Accounts."
+                      : "Select an expense account"
+                  }
+                  emptyMessage="No expense GL accounts allow manual entries — configure one in Chart of Accounts."
+                  disabled={loadingExpenseGlAccounts}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The expense is booked to this account; the cashier balance is reduced by the amount.
+                </p>
+              </div>
+            )}
 
             {/* Pending Payouts List (for Disbursement) */}
             {transactionType === "DISBURSEMENT" && (
@@ -557,6 +633,7 @@ export function CashOutModal({
                 loading ||
                 !formData.amount ||
                 !formData.currency ||
+                (transactionType === "EXPENSE" && !selectedExpenseGlAccountId) ||
                 (transactionType === "DISBURSEMENT" && !selectedPayout)
               }
               variant="destructive"

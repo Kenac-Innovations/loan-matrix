@@ -6,6 +6,7 @@ import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
  * GET /api/fineract/glaccounts/detail
  * Fetch GL accounts with optional filters
  * Query params:
+ *   - type: GL account type ID (optional, e.g., 5 for EXPENSE)
  *   - manualEntriesAllowed: boolean (optional)
  *   - usage: 1 for detail accounts, 2 for header accounts (optional)
  *   - disabled: boolean (optional, default: false)
@@ -13,13 +14,17 @@ import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const type = searchParams.get("type");
     const manualEntriesAllowed = searchParams.get("manualEntriesAllowed");
     const usage = searchParams.get("usage");
     const disabled = searchParams.get("disabled") ?? "false";
 
     const queryParams = new URLSearchParams();
-    
+
     // Only add filters if explicitly provided
+    if (type !== null) {
+      queryParams.append("type", type);
+    }
     if (manualEntriesAllowed !== null) {
       queryParams.append("manualEntriesAllowed", manualEntriesAllowed);
     }
@@ -30,11 +35,11 @@ export async function GET(request: NextRequest) {
 
     const queryString = queryParams.toString();
     const url = queryString ? `/glaccounts?${queryString}` : "/glaccounts";
-    
+
     const data = await fetchFineractAPI(url);
-    
+
     // Sort by glCode for easier selection
-    const sortedData = Array.isArray(data) 
+    const sortedData = Array.isArray(data)
       ? data.sort((a: any, b: any) => (a.glCode || "").localeCompare(b.glCode || ""))
       : data;
 

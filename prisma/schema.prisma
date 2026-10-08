@@ -1049,6 +1049,11 @@ model CashAllocation {
   allocatedBy          String
   notes                String?
   status               String   @default("ACTIVE") // ACTIVE, REVERSED
+  transactionType      String?  // EXPENSE, RETURN_TO_VAULT, DISBURSEMENT, CREDIT_BALANCE_REFUND; null for legacy rows
+  expenseGlAccountId   Int?     // GL account debited for EXPENSE transactions
+  expenseGlAccountCode String?  // Cached expense GL code for audit history
+  expenseGlAccountName String?  // Cached expense GL name for audit history
+  expenseJournalEntryId String? // Fineract journal entry ID for the expense GL posting
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   teller               Teller   @relation(fields: [tellerId], references: [id], onDelete: Cascade)
@@ -1057,6 +1062,7 @@ model CashAllocation {
   @@index([tenantId, tellerId])
   @@index([tenantId, cashierId])
   @@index([tenantId, status])
+  @@index([tenantId, transactionType])
   @@index([allocatedDate])
 }
 

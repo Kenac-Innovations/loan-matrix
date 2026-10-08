@@ -8,6 +8,7 @@ export type TellerAllocationHistoryInput = {
   status: string;
   cashierId: string | null;
   fineractAllocationId: number | null;
+  transactionType?: string | null;
 };
 
 export type TellerVaultTransaction = {
@@ -83,7 +84,20 @@ export function shouldIncludeInVaultHistory(allocation: {
   cashierId: string | null;
   amount: number;
   fineractAllocationId: number | null;
+  transactionType?: string | null;
 }) {
+  // If transactionType is set, use it for filtering
+  if (allocation.transactionType) {
+    const txType = allocation.transactionType.toUpperCase();
+    if (txType === "EXPENSE" || txType === "DISBURSEMENT" || txType === "CREDIT_BALANCE_REFUND") {
+      return false;
+    }
+    if (txType === "RETURN_TO_VAULT") {
+      return true;
+    }
+  }
+
+  // Fall back to note-based logic for legacy rows
   const narration = (allocation.notes ?? "").toLowerCase();
 
   if (
@@ -134,7 +148,15 @@ export function buildTellerVaultTransactions(
       let amount = alloc.amount;
       let transactionType = getVaultTransactionType(alloc.notes);
 
-      if (alloc.cashierId) {
+      // Handle explicit transactionType
+      if (alloc.transactionType) {
+        const txType = alloc.transactionType.toUpperCase();
+        if (txType === "RETURN_TO_VAULT") {
+          amount = Math.abs(alloc.amount);
+          transactionType = "SETTLEMENT_RETURN";
+        }
+      } else if (alloc.cashierId) {
+        // Legacy note-based logic for rows without explicit transactionType
         if (isTellerToCashierAllocation(alloc)) {
           amount = -Math.abs(alloc.amount);
           transactionType = "CASHIER_ALLOCATION";

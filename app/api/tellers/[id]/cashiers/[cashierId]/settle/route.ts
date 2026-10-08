@@ -6,6 +6,14 @@ import { getSession } from "@/lib/auth";
 import { isPaymentTypeCash } from "@/lib/cash-repayment-teller";
 import { shouldSkipManualFineractCashierSettleForLoanDisbursement } from "@/lib/loan-disbursement-cashier-policy";
 import { sendLoanStatusSms } from "@/lib/notification-service";
+import {
+  resolveSettleTransactionType,
+  validateExpenseGlAccount,
+  getMainVaultGlAccountId,
+  createFineractJournalEntry,
+  reverseFineractJournalEntry,
+} from "@/lib/cashier-expense-gl";
+import { fetchFineractAPI, isFineractCommandPendingApproval } from "@/lib/api";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/settle
@@ -38,6 +46,7 @@ export async function POST(
       transactionType,
       loanPayoutId,
       fineractLoanId,
+      expenseGlAccountId,
     } = body;
 
     if (!amount || amount <= 0) {
@@ -54,13 +63,13 @@ export async function POST(
       );
     }
 
-    // Validate transaction type
-    const txnType = transactionType || "EXPENSE";
-    if (!["EXPENSE", "DISBURSEMENT", "CREDIT_BALANCE_REFUND"].includes(txnType)) {
+    // Resolve and validate transaction type
+    const txnType = resolveSettleTransactionType(transactionType);
+    if (!txnType) {
       return NextResponse.json(
         {
           error:
-            "Invalid transaction type. Must be EXPENSE, DISBURSEMENT, or CREDIT_BALANCE_REFUND",
+            "Invalid transaction type. Must be EXPENSE, RETURN_TO_VAULT, DISBURSEMENT, or CREDIT_BALANCE_REFUND",
         },
         { status: 400 }
       );
@@ -334,6 +343,104 @@ export async function POST(
       return NextResponse.json({ error: "Cashier not found" }, { status: 404 });
     }
 
+    // EXPENSE-specific validation: require and validate GL account
+    let expenseGlAccountDetails: any = null;
+    let mainVaultGlAccountId: number | null = null;
+    let expenseOfficeId: number | null = null;
+    if (txnType === "EXPENSE") {
+      if (!expenseGlAccountId) {
+        return NextResponse.json(
+          { error: "expenseGlAccountId is required for EXPENSE transactions" },
+          { status: 400 }
+        );
+      }
+      if (
+        !Number.isInteger(Number(expenseGlAccountId)) ||
+        Number(expenseGlAccountId) <= 0
+      ) {
+        return NextResponse.json(
+          { error: "expenseGlAccountId must be a positive integer" },
+          { status: 400 }
+        );
+      }
+
+      // Fetch and validate the expense GL account
+      try {
+        const glAccountResponse = await fetchFineractAPI(
+          `/glaccounts/${Number(expenseGlAccountId)}`
+        );
+        expenseGlAccountDetails = glAccountResponse;
+
+        const validationError = validateExpenseGlAccount(expenseGlAccountDetails);
+        if (validationError) {
+          return NextResponse.json(
+            { error: `Invalid expense GL account: ${validationError}` },
+            { status: 400 }
+          );
+        }
+      } catch (error: any) {
+        console.error("Error fetching expense GL account:", error);
+        return NextResponse.json(
+          {
+            error: "Failed to validate expense GL account",
+            details: error.message,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Resolve the main vault GL account
+      try {
+        mainVaultGlAccountId = await getMainVaultGlAccountId();
+      } catch (error: any) {
+        console.error("Error fetching Fineract financial activity accounts:", error);
+        return NextResponse.json(
+          {
+            error: "Failed to load Fineract financial activity mappings",
+            details: error.message,
+          },
+          { status: 502 }
+        );
+      }
+      if (!mainVaultGlAccountId) {
+        return NextResponse.json(
+          {
+            error:
+              "CASH_AT_MAINVAULT financial activity mapping is not configured in Fineract",
+          },
+          { status: 400 }
+        );
+      }
+
+      // The correcting journal entry is booked in the teller's office, like Fineract's settle entry
+      try {
+        const fineractService = await getFineractServiceWithSession();
+        const fineractTellerData = await fineractService.getTeller(
+          teller.fineractTellerId
+        );
+        expenseOfficeId = fineractTellerData?.officeId ?? null;
+      } catch (error: any) {
+        console.error("Error fetching Fineract teller office for expense:", error);
+      }
+      if (!expenseOfficeId) {
+        return NextResponse.json(
+          { error: "Teller does not have an office ID in Fineract" },
+          { status: 400 }
+        );
+      }
+
+      // Ensure the expense GL account is not the same as the main vault
+      if (Number(expenseGlAccountId) === mainVaultGlAccountId) {
+        return NextResponse.json(
+          {
+            error:
+              "Expense GL account cannot be the same as the main vault GL account",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Check if cashier has an active session - required for cash out
     let activeSession = await prisma.cashierSession.findFirst({
       where: {
@@ -398,7 +505,7 @@ export async function POST(
       );
     }
 
-    // For return-to-vault style settlements, check if there's a closed session
+    // For return-to-vault and expense style settlements, check if there's a closed session
     if (
       !activeSession &&
       txnType !== "DISBURSEMENT" &&
@@ -424,7 +531,7 @@ export async function POST(
           { status: 400 }
         );
       }
-      // Allow settlement with closed session (return to vault after close)
+      // Allow settlement with closed session (return to vault/expense after close)
       console.log(
         `Allowing settlement with closed session ${closedSession.id}`
       );
@@ -473,14 +580,86 @@ export async function POST(
       if (fineractTxnNote.length > 200) {
         fineractTxnNote = `${fineractTxnNote.slice(0, 197)}...`;
       }
+    } else if (txnType === "EXPENSE") {
+      fineractTxnNote = (typeof notes === "string" && notes.trim()) || "Expense";
+      if (fineractTxnNote.length > 200) {
+        fineractTxnNote = `${fineractTxnNote.slice(0, 197)}...`;
+      }
     } else {
-      fineractTxnNote = (typeof notes === "string" && notes.trim()) || "Cash Out";
+      // RETURN_TO_VAULT or DISBURSEMENT
+      fineractTxnNote = (typeof notes === "string" && notes.trim()) || "Return to Vault";
       if (fineractTxnNote.length > 200) {
         fineractTxnNote = `${fineractTxnNote.slice(0, 197)}...`;
       }
     }
 
     let fineractSettlementId: number | null = null;
+    let expenseJournalEntryId: string | null = null;
+
+    // Fineract books a cashier settle as Dr Main Vault / Cr Teller Cash. For an expense the cash
+    // never reaches the vault, so post Dr Expense / Cr Main Vault first; the pair nets to
+    // Dr Expense / Cr Teller Cash. If the settle then fails, this entry is reversed below.
+    if (txnType === "EXPENSE") {
+      try {
+        const jeResult = await createFineractJournalEntry({
+          officeId: expenseOfficeId!,
+          currencyCode: currency,
+          debitGlAccountId: Number(expenseGlAccountId),
+          creditGlAccountId: mainVaultGlAccountId!,
+          amount: parseFloat(amount),
+          comments: `Cashier expense: ${notes || "Expense"}`,
+          transactionDate: date ? new Date(date) : new Date(),
+          referenceNumber: `CASHIER-EXPENSE-${teller.fineractTellerId}-${fineractCashierId}-${Date.now()}`,
+        });
+        if (
+          isFineractCommandPendingApproval(jeResult.result) ||
+          !jeResult.journalEntryId
+        ) {
+          console.error("Expense journal entry was not posted immediately:", jeResult.result);
+          return NextResponse.json(
+            {
+              error:
+                "The expense journal entry was not posted (it may be awaiting maker-checker approval). The cash out was not recorded; reject any pending journal entry in Fineract before retrying.",
+              fineractResult: jeResult.result ?? null,
+            },
+            { status: 409 }
+          );
+        }
+        expenseJournalEntryId = jeResult.journalEntryId;
+        console.log("Expense journal entry posted:", { expenseJournalEntryId });
+      } catch (error: any) {
+        console.error("Error posting expense journal entry:", {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data,
+        });
+        return NextResponse.json(
+          {
+            error: "Failed to post expense GL journal entry",
+            details:
+              error.response?.data?.defaultUserMessage ||
+              error.response?.data?.errors?.[0]?.defaultUserMessage ||
+              error.message,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const reverseExpenseJournalEntry = async (reason: string) => {
+      if (!expenseJournalEntryId) return null;
+      try {
+        await reverseFineractJournalEntry(expenseJournalEntryId, reason);
+        return null;
+      } catch (error: any) {
+        console.error(
+          `Failed to reverse expense journal entry ${expenseJournalEntryId}:`,
+          error
+        );
+        return `Expense journal entry ${expenseJournalEntryId} could not be reversed automatically; reverse it manually in Fineract.`;
+      }
+    };
+
     if (
       shouldSkipManualFineractCashierSettleForLoanDisbursement({
         transactionType: txnType,
@@ -519,7 +698,10 @@ export async function POST(
             locale: "en",
           }
         );
-        fineractSettlementId = result.resourceId || result.id || null;
+        // Fineract returns the cashier id as resourceId and the cashier transaction id as
+        // subResourceId (TellerWritePlatformServiceJpaImpl#doTransactionForCashier).
+        fineractSettlementId =
+          result.subResourceId || result.resourceId || result.id || null;
         console.log("Fineract settle response:", result);
       } catch (error: any) {
         const errorDetails = {
@@ -528,10 +710,14 @@ export async function POST(
           data: error.response?.data,
         };
         console.error("Error settling cash in Fineract:", errorDetails);
+        const journalReversalWarning = await reverseExpenseJournalEntry(
+          "Cashier settle failed - expense journal reversed"
+        );
         // Return full error details so user can see what went wrong
         return NextResponse.json(
           {
             error: "Failed to settle cash in Fineract",
+            journalReversalWarning,
             details:
               error.response?.data?.defaultUserMessage ||
               error.response?.data?.errors?.[0]?.defaultUserMessage ||
@@ -580,9 +766,9 @@ export async function POST(
         }
 
         // Determine if return to vault for existing settlement
-        const existingIsReturnToVault = txnType !== "DISBURSEMENT" && 
-          (existingSettlement.notes?.toLowerCase().includes("vault") || 
-           existingSettlement.notes?.toLowerCase().includes("safe") || 
+        const existingIsReturnToVault = txnType !== "DISBURSEMENT" &&
+          (existingSettlement.notes?.toLowerCase().includes("vault") ||
+           existingSettlement.notes?.toLowerCase().includes("safe") ||
            existingSettlement.notes?.toLowerCase().includes("settlement") ||
            existingSettlement.notes?.toLowerCase().includes("return"));
 
@@ -596,12 +782,12 @@ export async function POST(
       }
     }
 
-    // Return to vault only for generic EXPENSE flows — not customer cash out (disbursement / credit refund)
-    const isReturnToVault =
-      txnType !== "DISBURSEMENT" && txnType !== "CREDIT_BALANCE_REFUND";
-    
+    // Only a genuine return to vault puts cash back in the vault. Expenses, disbursements and
+    // credit refunds are cash leaving the business from the till.
+    const isReturnToVault = txnType === "RETURN_TO_VAULT";
+
     console.log(`Settlement type: ${txnType}, isReturnToVault: ${isReturnToVault}, amount: ${amount}`);
-    
+
     // Create a negative allocation record (cash out from cashier)
     const loanIdForNote =
       fineractLoanId != null && !Number.isNaN(Number(fineractLoanId))
@@ -616,23 +802,66 @@ export async function POST(
         loanIdForNote != null ? ` - Loan #${loanIdForNote}` : "";
       const extra = notes ? ` - ${notes}` : "";
       settlementNotes = `Credit balance refund${loanPart}${extra}`;
+    } else if (txnType === "EXPENSE") {
+      settlementNotes = notes || "Expense";
     } else {
+      // RETURN_TO_VAULT
       settlementNotes = notes || "Return to Vault";
     }
 
-    const settlement = await prisma.cashAllocation.create({
-      data: {
-        tenantId: tenant.id,
-        tellerId: teller.id,
-        cashierId: cashier.id,
-        fineractAllocationId: fineractSettlementId,
-        amount: -parseFloat(amount), // Negative for cash out
-        currency: currency,
-        allocatedBy: session.user.id,
-        notes: settlementNotes,
-        status: "ACTIVE",
-      },
-    });
+    const allocationData: any = {
+      tenantId: tenant.id,
+      tellerId: teller.id,
+      cashierId: cashier.id,
+      fineractAllocationId: fineractSettlementId,
+      amount: -parseFloat(amount), // Negative for cash out
+      currency: currency,
+      allocatedBy: session.user.id,
+      notes: settlementNotes,
+      status: "ACTIVE",
+      transactionType: txnType,
+    };
+
+    // Add expense GL details if EXPENSE type
+    if (txnType === "EXPENSE") {
+      allocationData.expenseGlAccountId = Number(expenseGlAccountId);
+      allocationData.expenseGlAccountCode = expenseGlAccountDetails?.glCode || null;
+      allocationData.expenseGlAccountName = expenseGlAccountDetails?.name || null;
+      allocationData.expenseJournalEntryId = expenseJournalEntryId;
+    }
+
+    let settlement;
+    try {
+      try {
+        settlement = await prisma.cashAllocation.create({ data: allocationData });
+      } catch (error: any) {
+        const isDuplicateFineractId =
+          error?.code === "P2002" &&
+          Array.isArray(error?.meta?.target) &&
+          error.meta.target.includes("fineractAllocationId");
+        if (!isDuplicateFineractId) throw error;
+        settlement = await prisma.cashAllocation.create({
+          data: {
+            ...allocationData,
+            fineractAllocationId: null,
+            notes: `${allocationData.notes} [Fineract ID: ${fineractSettlementId} - duplicate handled]`,
+          },
+        });
+      }
+    } catch (error: any) {
+      // Fineract has already recorded the cash out (and expense journal); retrying would double post.
+      console.error("Failed to record cashier settlement locally after Fineract succeeded:", error);
+      return NextResponse.json(
+        {
+          error:
+            "The cash out was recorded in Fineract but could not be saved in Loan Matrix. Do not retry; contact support.",
+          fineractSettlementId,
+          expenseJournalEntryId,
+          details: error.message,
+        },
+        { status: 500 }
+      );
+    }
     console.log(`Created cashier settlement: ID=${settlement.id}, cashierId=${cashier.id}, amount=-${amount} ${currency}`);
 
     // Disbursements: money moves from the cashier balance only (cashier pays customer from till).
@@ -716,6 +945,7 @@ export async function POST(
       amount: parseFloat(amount),
       currency,
       fineractSettlementId,
+      expenseJournalEntryId: expenseJournalEntryId || null,
       loanPayoutId: loanPayout?.id || null,
       vaultUpdated: isReturnToVault,
     });
