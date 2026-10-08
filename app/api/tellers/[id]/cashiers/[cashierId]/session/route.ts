@@ -1,9 +1,85 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/app/generated/prisma";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
-import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getOrgDefaultCurrencyCode, toFineractCurrencyCode } from "@/lib/currency-utils";
+import { invalidateCashierSummary } from "@/lib/cashier-summary-cache";
+import { getCashierSessionTenantSettings } from "@/lib/cashier-session-settings";
+import {
+  isSessionCountedForEnforcement,
+  resolveSessionClosureEnforcement,
+  toBusinessDateString,
+} from "@/lib/cashier-session-enforcement-policy";
+import {
+  baselineAfterClose,
+  buildSessionContextFields,
+  computeSessionBalance,
+  isBalanceReliableForVariance,
+  toCashierSummarySnapshot,
+  type FineractCashierSummarySnapshot,
+} from "@/lib/cashier-session-balance";
+import { hasFineractPermissionServer } from "@/lib/authorization";
+import {
+  resolveCurrentUserCashierContext,
+  resolveStaffIdForFineractUser,
+} from "@/lib/current-user-cashier";
+import {
+  classifyVariance,
+  closureWorkflow,
+  parseCashAmount,
+  authorizeClosureInitiation,
+  authorizeManagerClosure,
+} from "@/lib/cashier-session-closure";
+
+/**
+ * Fetch the current Fineract cashier summary snapshot (running netCash).
+ * Returns null when the teller/cashier isn't linked to Fineract or on any error.
+ */
+async function fetchCashierSummarySnapshot(
+  fineractTellerId: number | null,
+  fineractCashierId: number | null,
+  currency: string | null | undefined,
+  options: { fresh?: boolean } = {}
+): Promise<FineractCashierSummarySnapshot | null> {
+  if (!fineractTellerId || !fineractCashierId) return null;
+  try {
+    // Fineract expects its raw currency code (e.g. ZMK, not ZMW).
+    const rawCurrency = await toFineractCurrencyCode(currency);
+    // Loan transactions don't invalidate the summary cache, so session start/close read fresh.
+    if (options.fresh) invalidateCashierSummary(fineractTellerId, fineractCashierId);
+    const fineractService = await getFineractServiceWithSession();
+    const raw = await fineractService.getCashierSummaryAndTransactions(
+      fineractTellerId,
+      fineractCashierId,
+      rawCurrency
+    );
+    return toCashierSummarySnapshot(raw, rawCurrency, new Date());
+  } catch (error) {
+    console.error("Error fetching Fineract cashier summary snapshot:", error);
+    return null;
+  }
+}
+
+/** Fineract netCash left by this cashier's most recent close in the same currency, if any. */
+async function findBaselineNetCash(
+  tenantId: string,
+  cashierId: string,
+  currency: string
+): Promise<number | null> {
+  const previous = await prisma.cashierSession.findFirst({
+    where: {
+      tenantId,
+      cashierId,
+      currency,
+      fineractBaselineNetCash: { not: null },
+    },
+    orderBy: { sessionEndTime: "desc" },
+    select: { fineractBaselineNetCash: true },
+  });
+  return previous?.fineractBaselineNetCash ?? null;
+}
 
 /**
  * GET /api/tellers/[id]/cashiers/[cashierId]/session
@@ -21,6 +97,8 @@ export async function GET(
     if (!tenant) {
       return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     }
+
+    const orgCurrency = await getOrgDefaultCurrencyCode();
 
     // Try to find teller by database ID first, then by Fineract ID
     let teller = await prisma.teller.findFirst({
@@ -74,15 +152,15 @@ export async function GET(
       );
     }
 
-    // Get active or most recent closed session from database (only if we have a database cashier)
-    // First try to get active session, if not found, get most recent closed session
+    // Get active or most recent pending/closed session from database (only if we have a database cashier)
+    // First try to get active or pending closure session, if not found, get most recent closed session
     const activeSession = cashier
       ? await prisma.cashierSession.findFirst({
           where: {
             tellerId,
             cashierId: cashier.id,
             tenantId: tenant.id,
-            sessionStatus: "ACTIVE",
+            sessionStatus: { in: ["ACTIVE", "PENDING_CLOSURE"] },
           },
           orderBy: { sessionStartTime: "desc" },
         })
@@ -164,13 +242,14 @@ export async function GET(
     // If we have a closed session, use its recorded balances (don't recalculate)
     // For closed sessions, the balances are already calculated and stored
     if (closedSession && !activeSession) {
-      const expectedBalance = closedSession.expectedBalance || 0;
+      // Null when the close had no reliable expected cash (first close after rollout).
+      const expectedBalance = closedSession.expectedBalance;
       return NextResponse.json({
         session: closedSession,
         fineractSession: fineractSessionData,
         balances: {
           allocatedBalance: closedSession.allocatedBalance || 0,
-          availableBalance: expectedBalance, // Use expectedBalance for closed sessions
+          availableBalance: expectedBalance ?? 0, // Use expectedBalance for closed sessions
           openingFloat:
             closedSession.openingFloat || closedSession.allocatedBalance || 0,
           cashIn: closedSession.cashIn || 0,
@@ -181,34 +260,73 @@ export async function GET(
       });
     }
 
-    // For active sessions, calculate balances from current allocations.
-    // cashIn/cashOut used to be summed from getCashierTransactions, but that call
-    // never yielded any rows (Fineract returns a page object, not an array, and it
-    // was sent without a currency), so they were always 0. The call was one of the
-    // most expensive Fineract queries, so it is no longer made; the Fineract cash
-    // position comes from /api/tellers/[id]/cashiers (balance) instead.
-    const cashIn = 0;
-    const cashOut = 0;
+    // For active sessions, derive balances from Fineract's running netCash (which includes
+    // cash loan/savings transactions posted by the cashier) measured from the last close.
+    // Fineract-derived balances apply only when the tenant's teller module is on;
+    // otherwise keep the legacy local opening-float figures.
+    const { isTellerManagementModuleOn } = await getCashierSessionTenantSettings(tenant.id);
+    const balance = activeSession && isTellerManagementModuleOn
+      ? await (async () => {
+          const currency = await toFineractCurrencyCode(activeSession.currency ?? orgCurrency);
+          const [currentSnapshot, baselineNetCash] = await Promise.all([
+            fetchCashierSummarySnapshot(teller.fineractTellerId, fineractCashierId, currency),
+            findBaselineNetCash(tenant.id, activeSession.cashierId, currency),
+          ]);
 
-    const netCash = cashIn - cashOut;
-    const expectedBalance = allocatedBalance + cashIn - cashOut;
-    // availableBalance should be the same as expectedBalance (allocated + cash in - cash out)
-    const availableBalance = expectedBalance;
+          return computeSessionBalance({
+            baselineNetCash,
+            opening: activeSession.fineractOpeningSummary as FineractCashierSummarySnapshot | null,
+            current: currentSnapshot,
+            fallbackOpeningFloat: allocatedBalance,
+          });
+        })()
+      : computeSessionBalance({
+          baselineNetCash: null,
+          opening: null,
+          current: null,
+          fallbackOpeningFloat: allocatedBalance,
+        });
 
     const displayBalances = {
       allocatedBalance,
-      availableBalance,
-      openingFloat: allocatedBalance,
-      cashIn,
-      cashOut,
-      netCash,
-      expectedBalance,
+      availableBalance: balance.expectedBalance,
+      openingFloat: balance.openingFloat,
+      cashIn: balance.cashIn,
+      cashOut: balance.cashOut,
+      netCash: balance.netCash,
+      expectedBalance: balance.expectedBalance,
+      allocations: balance.allocations,
+      settlements: balance.settlements,
+      balanceSource: balance.source,
     };
+
+    // Determine if current user can close this session as a manager
+    const session = await getSession();
+    let canManagerClose = false;
+    if (activeSession?.sessionStatus === "PENDING_CLOSURE" && isTellerManagementModuleOn) {
+      const staffResult = await resolveStaffIdForFineractUser(session?.user?.userId);
+      const hasPermission = await hasFineractPermissionServer("SETTLECASHFROMCASHIER_TELLER");
+      const authResult = authorizeManagerClosure({
+        hasManagerPermission: hasPermission,
+        staff:
+          staffResult.status === "ERROR"
+            ? { status: "ERROR" }
+            : staffResult.status === "OK"
+              ? { status: "OK", staffId: staffResult.staffId }
+              : { status: "NO_STAFF" },
+        cashierStaffId: cashier?.staffId ?? 0,
+        actorId: session?.user?.id ?? "",
+        initiatorId: activeSession.closureInitiatedBy,
+      });
+      canManagerClose = authResult.ok;
+    }
 
     return NextResponse.json({
       session: activeSession || closedSession,
       fineractSession: fineractSessionData,
       balances: displayBalances,
+      closureWorkflow: closureWorkflow(isTellerManagementModuleOn),
+      canManagerClose,
     });
   } catch (error) {
     console.error("Error fetching session:", error);
@@ -243,10 +361,11 @@ export async function POST(
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const actorId = session.user.id;
 
     const orgCurrency = await getOrgDefaultCurrencyCode();
     const body = await request.json();
-    const { action, countedCashAmount, comments } = body;
+    const { action, countedCashAmount, comments, declaredAmount, managerCountedAmount, reason } = body;
 
     // Try to find teller by database ID first, then by Fineract ID
     let teller = await prisma.teller.findFirst({
@@ -403,6 +522,70 @@ export async function POST(
 
     if (action === "start") {
       // Start session
+      const sessionSettings = await getCashierSessionTenantSettings(tenant.id);
+      const { isTellerManagementModuleOn } = sessionSettings;
+
+      // If module on, check for existing PENDING_CLOSURE sessions first
+      if (isTellerManagementModuleOn) {
+        if (!cashier) {
+          return NextResponse.json({ error: "Cashier not found in database" }, { status: 404 });
+        }
+
+        const pendingSession = await prisma.cashierSession.findFirst({
+          where: {
+            tellerId,
+            cashierId: cashier.id,
+            tenantId: tenant.id,
+            sessionStatus: "PENDING_CLOSURE",
+          },
+        });
+
+        if (pendingSession) {
+          return NextResponse.json(
+            {
+              error: "Previous session awaiting closure",
+              code: "SESSION_CLOSURE_PENDING",
+            },
+            { status: 409 }
+          );
+        }
+
+        // Enrolled cashiers must close their open session instead of having it
+        // auto-closed. Sessions from before enrolment keep the legacy auto-close.
+        const enforcement = resolveSessionClosureEnforcement(sessionSettings, cashier);
+        if (enforcement.enforced) {
+          const openSession = await prisma.cashierSession.findFirst({
+            where: {
+              tellerId,
+              cashierId: cashier.id,
+              tenantId: tenant.id,
+              sessionStatus: "ACTIVE",
+            },
+            orderBy: { sessionStartTime: "desc" },
+          });
+          const openBusinessDate =
+            openSession &&
+            (openSession.businessDate ??
+              new Date(
+                `${toBusinessDateString(openSession.sessionStartTime ?? openSession.createdAt)}T00:00:00.000Z`
+              ));
+          if (
+            openBusinessDate &&
+            isSessionCountedForEnforcement(openBusinessDate, enforcement.enforcedFrom)
+          ) {
+            return NextResponse.json(
+              {
+                error: "Close the current session first",
+                details:
+                  "This cashier has an open session. Initiate closure and have a branch manager close it before starting a new session.",
+                code: "SESSION_NOT_CLOSED",
+              },
+              { status: 409 }
+            );
+          }
+        }
+      }
+
       let fineractSessionId: number | undefined;
       let fineractError: any = null;
       try {
@@ -439,13 +622,14 @@ export async function POST(
         0
       );
 
-      // Close any existing active sessions
+      // Close any existing active sessions (legacy path - module off must not strand PENDING_CLOSURE)
+      const statuses = isTellerManagementModuleOn ? ["ACTIVE"] : ["ACTIVE", "PENDING_CLOSURE"];
       await prisma.cashierSession.updateMany({
         where: {
           tellerId,
           cashierId: cashier.id,
           tenantId: tenant.id,
-          sessionStatus: "ACTIVE",
+          sessionStatus: { in: statuses },
         },
         data: {
           sessionStatus: "CLOSED",
@@ -453,8 +637,22 @@ export async function POST(
         },
       });
 
+      const sessionCurrency = await toFineractCurrencyCode(orgCurrency);
+      const fineractOpeningSnapshot = await fetchCashierSummarySnapshot(
+        teller.fineractTellerId,
+        fineractCashierId,
+        sessionCurrency,
+        { fresh: true }
+      );
+
       // Create new session
       try {
+        const contextFields = buildSessionContextFields({
+          teller,
+          now: new Date(),
+          currency: sessionCurrency,
+        });
+
         const newSession = await prisma.cashierSession.create({
           data: {
             tenantId: tenant.id,
@@ -469,6 +667,11 @@ export async function POST(
             cashIn: 0,
             cashOut: 0,
             netCash: 0,
+            ...contextFields,
+            ...(fineractOpeningSnapshot && {
+              fineractOpeningSummary:
+                fineractOpeningSnapshot as unknown as Prisma.InputJsonValue,
+            }),
           },
         });
 
@@ -525,7 +728,21 @@ export async function POST(
         );
       }
     } else if (action === "close") {
-      // Close session - cashier must exist in database
+      // Close session - check if module is on (then use two-step closure)
+      const { isTellerManagementModuleOn } = await getCashierSessionTenantSettings(tenant.id);
+
+      if (isTellerManagementModuleOn) {
+        return NextResponse.json(
+          {
+            error: "Two-step closure is enabled",
+            details: "Use Initiate Closure; a branch manager completes the close.",
+            code: "TWO_STEP_CLOSURE",
+          },
+          { status: 409 }
+        );
+      }
+
+      // Legacy close (module off) continues below
       // If cashier doesn't exist in database but exists in Fineract, create it
       if (!cashier) {
         try {
@@ -640,14 +857,14 @@ export async function POST(
         );
       }
 
-      // Close session
+      // Close session (module is OFF at this point - allow PENDING_CLOSURE closure)
       // Try to find session by cashier database ID first
       let activeSession = await prisma.cashierSession.findFirst({
         where: {
           tellerId,
           cashierId: cashier.id,
           tenantId: tenant.id,
-          sessionStatus: "ACTIVE",
+          sessionStatus: { in: ["ACTIVE", "PENDING_CLOSURE"] },
         },
       });
 
@@ -659,7 +876,7 @@ export async function POST(
           where: {
             tellerId,
             tenantId: tenant.id,
-            sessionStatus: "ACTIVE",
+            sessionStatus: { in: ["ACTIVE", "PENDING_CLOSURE"] },
           },
           include: {
             cashier: {
@@ -744,21 +961,86 @@ export async function POST(
         );
       }
 
-      // Use the session's recorded opening float (allocatedBalance from when session started)
-      // Don't recalculate from allocations - use what was recorded at session start
+      // Read Fineract fresh, BEFORE any settlement/vault writes, so expected excludes this close.
+      const currency = await toFineractCurrencyCode(activeSession.currency ?? orgCurrency);
+      const isFineractLinked = Boolean(teller.fineractTellerId && fineractCashierId);
+      const [fineractClosingSnapshot, baselineNetCash] = await Promise.all([
+        fetchCashierSummarySnapshot(teller.fineractTellerId, fineractCashierId, currency, {
+          fresh: true,
+        }),
+        findBaselineNetCash(tenant.id, activeSession.cashierId, currency),
+      ]);
+
+      if (isTellerManagementModuleOn && isFineractLinked && !fineractClosingSnapshot) {
+        return NextResponse.json(
+          {
+            error: "Cannot compute expected cash",
+            details:
+              "The cashier balance could not be read from Fineract. Please try closing the session again.",
+          },
+          { status: 503 }
+        );
+      }
+
       const allocatedBalance =
         activeSession.allocatedBalance || activeSession.openingFloat || 0;
+      // With the module off, keep the legacy comparison against the local opening float.
+      // Snapshots and the baseline are still stored so switching the module on starts clean.
+      const balanceResult = computeSessionBalance(
+        isTellerManagementModuleOn
+          ? {
+              baselineNetCash,
+              opening: activeSession.fineractOpeningSummary as FineractCashierSummarySnapshot | null,
+              current: fineractClosingSnapshot,
+              fallbackOpeningFloat: allocatedBalance,
+            }
+          : { baselineNetCash: null, opening: null, current: null, fallbackOpeningFloat: allocatedBalance }
+      );
 
-      // Always 0 in practice: see the GET handler for why getCashierTransactions is no longer called.
-      const cashIn = 0;
-      const cashOut = 0;
+      // Unlinked cashiers keep the legacy local-float comparison. For Fineract-linked
+      // cashiers, the first close without a baseline only establishes one: no variance.
+      const recordVariance =
+        !isTellerManagementModuleOn ||
+        !isFineractLinked ||
+        isBalanceReliableForVariance(balanceResult);
 
-      const netCash = cashIn - cashOut;
-      const expectedBalance = allocatedBalance + cashIn - cashOut;
-      const closingBalance = countedCashAmount
-        ? parseFloat(countedCashAmount)
-        : expectedBalance;
-      const difference = closingBalance - expectedBalance;
+      // 0 is a valid count (empty drawer); only a missing value is "not entered".
+      // Legacy (module off) treats a falsy count as "not entered".
+      const hasCountedCash = isTellerManagementModuleOn
+        ? countedCashAmount !== undefined && countedCashAmount !== null && countedCashAmount !== ""
+        : Boolean(countedCashAmount);
+      const countedCash = !hasCountedCash
+        ? null
+        : isTellerManagementModuleOn
+          ? Number(countedCashAmount)
+          : parseFloat(countedCashAmount);
+      if (
+        isTellerManagementModuleOn &&
+        countedCash !== null &&
+        (!Number.isFinite(countedCash) || countedCash < 0)
+      ) {
+        return NextResponse.json(
+          { error: "Counted cash must be a number of 0 or more" },
+          { status: 400 }
+        );
+      }
+      if (!recordVariance && countedCash === null) {
+        return NextResponse.json(
+          {
+            error: "Counted cash is required",
+            details: "Enter the counted cash amount to close this session.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const cashIn = balanceResult.cashIn;
+      const cashOut = balanceResult.cashOut;
+      const netCash = balanceResult.netCash;
+      const expectedBalance = recordVariance ? balanceResult.expectedBalance : null;
+      const closingBalance = countedCash ?? balanceResult.expectedBalance;
+      const difference =
+        expectedBalance === null ? null : closingBalance - expectedBalance;
 
       // Format date for Fineract
       const formatDateForFineract = (date: Date): string => {
@@ -782,7 +1064,9 @@ export async function POST(
         return `${day.toString().padStart(2, "0")} ${month} ${year}`;
       };
 
-      // Close in Fineract
+      // Close in Fineract. Track whether it settled, because a successful settle lowers
+      // Fineract netCash and the next session's baseline must account for it.
+      let settledToFineract = 0;
       if (teller.fineractTellerId && fineractCashierId) {
         try {
           const fineractService = await getFineractServiceWithSession();
@@ -797,11 +1081,22 @@ export async function POST(
               locale: "en",
             }
           );
+          settledToFineract = closingBalance;
         } catch (error) {
           console.error("Error closing session in Fineract:", error);
           // Continue with database closure
         }
       }
+
+      // Backfill context fields if not already set (from Phase 1)
+      const contextFields =
+        !activeSession.businessDate || !activeSession.officeId || !activeSession.currency
+          ? buildSessionContextFields({
+              teller,
+              now: activeSession.sessionStartTime ?? new Date(),
+              currency,
+            })
+          : undefined;
 
       // Update session
       const updatedSession = await prisma.cashierSession.update({
@@ -815,10 +1110,17 @@ export async function POST(
           closingBalance,
           expectedBalance,
           difference,
-          countedCashAmount: countedCashAmount
-            ? parseFloat(countedCashAmount)
-            : null,
+          countedCashAmount: countedCash,
           comments,
+          ...contextFields,
+          ...(fineractClosingSnapshot && {
+            fineractClosingSummary:
+              fineractClosingSnapshot as unknown as Prisma.InputJsonValue,
+            fineractBaselineNetCash: baselineAfterClose(
+              fineractClosingSnapshot,
+              settledToFineract
+            ),
+          }),
         },
       });
 
@@ -879,7 +1181,7 @@ export async function POST(
       // If there's a variance, create an allocation record for audit trail
       // NOTE: Variance allocations are EXCLUDED from cashier balance calculations
       // Variance is tracked separately and does not affect cashier balance
-      if (Math.abs(difference) > 0.01) {
+      if (difference !== null && Math.abs(difference) > 0.01) {
         try {
           // Get currency from cashier's allocations or default to USD
           const cashierAllocations = await prisma.cashAllocation.findFirst({
@@ -931,9 +1233,478 @@ export async function POST(
       }
 
       return NextResponse.json(updatedSession);
+    } else if (action === "initiate-close") {
+      // Initiate two-step closure (Phase 3) - only the cashier may initiate
+      const { isTellerManagementModuleOn } = await getCashierSessionTenantSettings(tenant.id);
+
+      if (!isTellerManagementModuleOn) {
+        return NextResponse.json(
+          { error: "Invalid action. Two-step closure is not enabled", code: "TWO_STEP_CLOSURE_DISABLED" },
+          { status: 400 }
+        );
+      }
+
+      if (!cashier) {
+        return NextResponse.json(
+          { error: "Cashier not found in database" },
+          { status: 404 }
+        );
+      }
+
+      // Session must be ACTIVE
+      const activeSession = await prisma.cashierSession.findFirst({
+        where: {
+          tellerId,
+          cashierId: cashier.id,
+          tenantId: tenant.id,
+          sessionStatus: "ACTIVE",
+        },
+      });
+
+      if (!activeSession) {
+        return NextResponse.json(
+          { error: "No active session found", code: "NO_ACTIVE_SESSION" },
+          { status: 409 }
+        );
+      }
+
+      // Validate declared amount
+      const declared = parseCashAmount(declaredAmount);
+      if (declared === null) {
+        return NextResponse.json(
+          { error: "Declared amount is required and must be a valid non-negative number" },
+          { status: 400 }
+        );
+      }
+
+      // Authorization: only the cashier may initiate closure
+      const staffResult = await resolveStaffIdForFineractUser(session?.user?.userId);
+      const authResult = authorizeClosureInitiation({
+        staff:
+          staffResult.status === "ERROR"
+            ? { status: "ERROR" }
+            : staffResult.status === "OK"
+              ? { status: "OK", staffId: staffResult.staffId }
+              : { status: "NO_STAFF" },
+        cashierStaffId: cashier.staffId,
+      });
+
+      if (!authResult.ok) {
+        return NextResponse.json(
+          {
+            error: authResult.error,
+            code: authResult.code,
+          },
+          { status: authResult.status }
+        );
+      }
+
+      // Atomic transition: ACTIVE -> PENDING_CLOSURE
+      const updateResult = await prisma.cashierSession.updateMany({
+        where: {
+          id: activeSession.id,
+          tenantId: tenant.id,
+          sessionStatus: "ACTIVE",
+        },
+        data: {
+          sessionStatus: "PENDING_CLOSURE",
+          declaredAmount: declared,
+          closureInitiatedBy: actorId,
+          closureInitiatedAt: new Date(),
+          closureRejectedBy: null,
+          closureRejectedAt: null,
+          closureRejectionReason: null,
+          comments: comments
+            ? `${activeSession.comments || ""}\n[Closure initiated]: ${comments}`.trim()
+            : activeSession.comments,
+        },
+      });
+
+      if (updateResult.count !== 1) {
+        return NextResponse.json(
+          {
+            error: "Session state changed",
+            details: "This session was updated by someone else. Refresh and try again.",
+            code: "SESSION_STATE_CONFLICT",
+          },
+          { status: 409 }
+        );
+      }
+
+      // Re-read the updated session for response
+      const updatedSession = await prisma.cashierSession.findUnique({
+        where: { id: activeSession.id },
+      });
+
+      return NextResponse.json(updatedSession);
+    } else if (action === "manager-close") {
+      // Manager completes two-step closure (Phase 3)
+      const { isTellerManagementModuleOn, cashVarianceTolerance } = await getCashierSessionTenantSettings(tenant.id);
+
+      if (!isTellerManagementModuleOn) {
+        return NextResponse.json(
+          { error: "Invalid action. Two-step closure is not enabled", code: "TWO_STEP_CLOSURE_DISABLED" },
+          { status: 400 }
+        );
+      }
+
+      if (!cashier) {
+        return NextResponse.json(
+          { error: "Cashier not found in database" },
+          { status: 404 }
+        );
+      }
+
+      // Session must be PENDING_CLOSURE
+      const pendingSession = await prisma.cashierSession.findFirst({
+        where: {
+          tellerId,
+          cashierId: cashier.id,
+          tenantId: tenant.id,
+          sessionStatus: "PENDING_CLOSURE",
+        },
+      });
+
+      if (!pendingSession) {
+        return NextResponse.json(
+          { error: "No pending closure session found", code: "NO_PENDING_CLOSURE" },
+          { status: 409 }
+        );
+      }
+
+      // Authorization: manager must have permission, not be the cashier, and not be the initiator
+      const staffResult = await resolveStaffIdForFineractUser(session?.user?.userId);
+      const hasManagerPermission = await hasFineractPermissionServer("SETTLECASHFROMCASHIER_TELLER");
+
+      const authResult = authorizeManagerClosure({
+        hasManagerPermission,
+        staff:
+          staffResult.status === "ERROR"
+            ? { status: "ERROR" }
+            : staffResult.status === "OK"
+              ? { status: "OK", staffId: staffResult.staffId }
+              : { status: "NO_STAFF" },
+        cashierStaffId: cashier.staffId,
+        actorId,
+        initiatorId: pendingSession.closureInitiatedBy,
+      });
+
+      if (!authResult.ok) {
+        return NextResponse.json(
+          {
+            error: authResult.error,
+            details:
+              authResult.status === 503
+                ? "Could not verify your identity. Please try again."
+                : undefined,
+            code: authResult.code,
+          },
+          { status: authResult.status }
+        );
+      }
+
+      // Validate manager counted amount
+      const counted = parseCashAmount(managerCountedAmount);
+      if (counted === null) {
+        return NextResponse.json(
+          { error: "Manager counted amount is required and must be a valid non-negative number" },
+          { status: 400 }
+        );
+      }
+
+      // Fetch Fineract snapshot and baseline
+      const currency = await toFineractCurrencyCode(pendingSession.currency ?? orgCurrency);
+      const isFineractLinked = Boolean(teller.fineractTellerId && fineractCashierId);
+      const [fineractClosingSnapshot, baselineNetCash] = await Promise.all([
+        fetchCashierSummarySnapshot(teller.fineractTellerId, fineractCashierId, currency, {
+          fresh: true,
+        }),
+        findBaselineNetCash(tenant.id, pendingSession.cashierId, currency),
+      ]);
+
+      if (isFineractLinked && !fineractClosingSnapshot) {
+        return NextResponse.json(
+          {
+            error: "Cannot compute expected cash",
+            details: "The cashier balance could not be read from Fineract. Please try closing the session again.",
+          },
+          { status: 503 }
+        );
+      }
+
+      // Compute expected balance
+      const allocatedBalance = pendingSession.allocatedBalance || pendingSession.openingFloat || 0;
+      const balanceResult = computeSessionBalance({
+        baselineNetCash,
+        opening: pendingSession.fineractOpeningSummary as FineractCashierSummarySnapshot | null,
+        current: fineractClosingSnapshot,
+        fallbackOpeningFloat: allocatedBalance,
+      });
+
+      // Unlinked cashiers keep the legacy local-float comparison (balanceResult is UNAVAILABLE).
+      const reliable = !isFineractLinked || isBalanceReliableForVariance(balanceResult);
+      const expected = reliable ? balanceResult.expectedBalance : null;
+      const variance = expected === null ? null : classifyVariance({ expected, counted, tolerance: cashVarianceTolerance });
+
+      // Backfill context fields if needed
+      const contextFields =
+        !pendingSession.businessDate || !pendingSession.officeId || !pendingSession.currency
+          ? buildSessionContextFields({
+              teller,
+              now: pendingSession.sessionStartTime ?? new Date(),
+              currency,
+            })
+          : undefined;
+
+      // Use display currency for variance event and allocations
+      const displayCurrency = orgCurrency;
+
+      // Create transaction: update session, create variance event, and auto-settle
+      let updatedSession: typeof pendingSession | null = null;
+      let varianceEvent: Awaited<ReturnType<typeof prisma.cashVarianceEvent.create>> | null = null;
+
+      try {
+        const closingCashier = cashier; // narrowed above; closures lose the narrowing
+        const result = await prisma.$transaction(async (tx) => {
+          // Atomic state transition: PENDING_CLOSURE -> CLOSED
+          const updateResult = await tx.cashierSession.updateMany({
+            where: {
+              id: pendingSession.id,
+              tenantId: tenant.id,
+              sessionStatus: "PENDING_CLOSURE",
+            },
+            data: {
+              sessionStatus: "CLOSED",
+              sessionEndTime: new Date(),
+              managerCountedAmount: counted,
+              countedCashAmount: counted,
+              closingBalance: counted,
+              closedBy: actorId,
+              closedAt: new Date(),
+              cashIn: balanceResult.cashIn,
+              cashOut: balanceResult.cashOut,
+              netCash: balanceResult.netCash,
+              expectedBalance: expected,
+              difference: variance?.difference ?? null,
+              comments: comments
+                ? `${pendingSession.comments || ""}\n[Closed by manager]: ${comments}`.trim()
+                : pendingSession.comments,
+              ...contextFields,
+              ...(fineractClosingSnapshot && {
+                fineractClosingSummary:
+                  fineractClosingSnapshot as unknown as Prisma.InputJsonValue,
+                fineractBaselineNetCash: baselineAfterClose(fineractClosingSnapshot, 0),
+              }),
+            },
+          });
+
+          if (updateResult.count !== 1) {
+            throw new Error("Session state conflict");
+          }
+
+          // Re-read the updated session
+          const updated = await tx.cashierSession.findUnique({
+            where: { id: pendingSession.id },
+          });
+
+          let varEvent = null;
+          if (variance?.raise) {
+            // Use businessDate from session with fallback based on session start time
+            const eventBusinessDate =
+              updated?.businessDate ??
+              new Date(`${toBusinessDateString(updated?.sessionStartTime ?? new Date())}T00:00:00.000Z`);
+
+            varEvent = await tx.cashVarianceEvent.create({
+              data: {
+                tenantId: tenant.id,
+                sessionId: updated!.id,
+                cashierId: updated!.cashierId,
+                tellerId,
+                officeId: updated!.officeId,
+                businessDate: eventBusinessDate,
+                type: variance.type!,
+                amount: variance.amount,
+                currency: displayCurrency,
+                expectedBalance: expected!,
+                countedAmount: counted,
+                status: "OPEN",
+                raisedBy: actorId,
+              },
+            });
+
+            await tx.cashVarianceEventLog.create({
+              data: {
+                tenantId: tenant.id,
+                eventId: varEvent.id,
+                action: "RAISED",
+                toStatus: "OPEN",
+                notes: comments || "",
+                performedBy: actorId,
+              },
+            });
+          }
+
+          // Auto-settle: return counted cash to vault (inside transaction)
+          if (counted > 0) {
+            await tx.cashAllocation.create({
+              data: {
+                tenantId: tenant.id,
+                tellerId,
+                cashierId: closingCashier.id,
+                fineractAllocationId: null,
+                amount: -counted,
+                currency: displayCurrency,
+                allocatedBy: actorId,
+                notes: `Session close settlement: Return to vault`,
+                status: "ACTIVE",
+              },
+            });
+
+            await tx.cashAllocation.create({
+              data: {
+                tenantId: tenant.id,
+                tellerId,
+                cashierId: null,
+                fineractAllocationId: null,
+                amount: counted,
+                currency: displayCurrency,
+                allocatedBy: actorId,
+                notes: `Return from ${closingCashier.staffName || "Cashier"}: Session close`,
+                status: "ACTIVE",
+              },
+            });
+          }
+
+          return { updated, varEvent };
+        });
+
+        updatedSession = result.updated;
+        varianceEvent = result.varEvent;
+      } catch (error: unknown) {
+        if (error instanceof Error && error.message === "Session state conflict") {
+          return NextResponse.json(
+            {
+              error: "Session state changed",
+              details: "This session was updated by someone else. Refresh and try again.",
+              code: "SESSION_STATE_CONFLICT",
+            },
+            { status: 409 }
+          );
+        }
+        throw error;
+      }
+
+      return NextResponse.json({ session: updatedSession, varianceEvent });
+    } else if (action === "reject-closure") {
+      // Reject two-step closure and revert to ACTIVE
+      const { isTellerManagementModuleOn } = await getCashierSessionTenantSettings(tenant.id);
+
+      if (!isTellerManagementModuleOn) {
+        return NextResponse.json(
+          { error: "Invalid action. Two-step closure is not enabled", code: "TWO_STEP_CLOSURE_DISABLED" },
+          { status: 400 }
+        );
+      }
+
+      if (!reason || reason.trim() === "") {
+        return NextResponse.json(
+          { error: "Rejection reason is required and must be non-empty" },
+          { status: 400 }
+        );
+      }
+
+      if (!cashier) {
+        return NextResponse.json(
+          { error: "Cashier not found in database" },
+          { status: 404 }
+        );
+      }
+
+      // Session must be PENDING_CLOSURE
+      const pendingSession = await prisma.cashierSession.findFirst({
+        where: {
+          tellerId,
+          cashierId: cashier.id,
+          tenantId: tenant.id,
+          sessionStatus: "PENDING_CLOSURE",
+        },
+      });
+
+      if (!pendingSession) {
+        return NextResponse.json(
+          { error: "No pending closure session found", code: "NO_PENDING_CLOSURE" },
+          { status: 409 }
+        );
+      }
+
+      // Authorization: manager must have permission, not be the cashier, and not be the initiator
+      const staffResult = await resolveStaffIdForFineractUser(session?.user?.userId);
+      const hasManagerPermission = await hasFineractPermissionServer("SETTLECASHFROMCASHIER_TELLER");
+
+      const authResult = authorizeManagerClosure({
+        hasManagerPermission,
+        staff:
+          staffResult.status === "ERROR"
+            ? { status: "ERROR" }
+            : staffResult.status === "OK"
+              ? { status: "OK", staffId: staffResult.staffId }
+              : { status: "NO_STAFF" },
+        cashierStaffId: cashier.staffId,
+        actorId,
+        initiatorId: pendingSession.closureInitiatedBy,
+      });
+
+      if (!authResult.ok) {
+        return NextResponse.json(
+          {
+            error: authResult.error,
+            details:
+              authResult.status === 503
+                ? "Could not verify your identity. Please try again."
+                : undefined,
+            code: authResult.code,
+          },
+          { status: authResult.status }
+        );
+      }
+
+      // Atomic transition: PENDING_CLOSURE -> ACTIVE
+      const updateResult = await prisma.cashierSession.updateMany({
+        where: {
+          id: pendingSession.id,
+          tenantId: tenant.id,
+          sessionStatus: "PENDING_CLOSURE",
+        },
+        data: {
+          sessionStatus: "ACTIVE",
+          closureRejectedBy: actorId,
+          closureRejectedAt: new Date(),
+          closureRejectionReason: reason,
+          declaredAmount: null,
+          comments: `${pendingSession.comments || ""}\n[Closure rejected]: ${reason}`.trim(),
+        },
+      });
+
+      if (updateResult.count !== 1) {
+        return NextResponse.json(
+          {
+            error: "Session state changed",
+            details: "This session was updated by someone else. Refresh and try again.",
+            code: "SESSION_STATE_CONFLICT",
+          },
+          { status: 409 }
+        );
+      }
+
+      // Re-read the updated session for response
+      const updatedSession = await prisma.cashierSession.findUnique({
+        where: { id: pendingSession.id },
+      });
+
+      return NextResponse.json(updatedSession);
     } else {
       return NextResponse.json(
-        { error: "Invalid action. Use 'start' or 'close'" },
+        { error: "Invalid action. Valid actions are: 'start', 'close' (module off only), 'initiate-close', 'manager-close', 'reject-closure'" },
         { status: 400 }
       );
     }

@@ -98,7 +98,7 @@ export async function invalidateOrgCurrencyCache(): Promise<void> {
  * Normalize currency code - converts deprecated ZMK to ZMW.
  * Fineract may return ZMK (old Zambian Kwacha code pre-2013 redenomination).
  */
-function normalizeCode(code: string): string {
+export function normalizeCode(code: string): string {
   if (code.toUpperCase() === "ZMK") return "ZMW";
   return code;
 }

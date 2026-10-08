@@ -3,6 +3,9 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getOrgDefaultCurrencyCode, getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getCashierSessionTenantSettings } from "@/lib/cashier-session-settings";
+import { closureWorkflow } from "@/lib/cashier-session-closure";
+import { resolveSessionClosureEnforcement } from "@/lib/cashier-session-enforcement-policy";
 
 interface FineractCashierRecord {
   id: number;
@@ -164,12 +167,12 @@ export async function GET(
       },
     });
 
-    // Get active sessions for all cashiers
+    // Get active or pending closure sessions for all cashiers
     const activeSessions = await prisma.cashierSession.findMany({
       where: {
         tellerId: teller.id,
         tenantId: tenant.id,
-        sessionStatus: "ACTIVE",
+        sessionStatus: { in: ["ACTIVE", "PENDING_CLOSURE"] },
       },
       select: {
         cashierId: true,
@@ -177,10 +180,17 @@ export async function GET(
       },
     });
 
-    // Create a map of cashier ID to session status
-    const sessionStatusMap = new Map(
-      activeSessions.map((s) => [s.cashierId, s.sessionStatus])
-    );
+    // Create a map of cashier ID to session status (prefer PENDING_CLOSURE if both exist)
+    const sessionStatusMap = new Map<string, string>();
+    for (const session of activeSessions) {
+      const existing = sessionStatusMap.get(session.cashierId);
+      if (!existing || session.sessionStatus === "PENDING_CLOSURE") {
+        sessionStatusMap.set(session.cashierId, session.sessionStatus);
+      }
+    }
+
+    // Get tenant settings for closure workflow
+    const tenantSettings = await getCashierSessionTenantSettings(tenant.id);
 
     // Merge Fineract data with database IDs, session status, and Fineract balance
     const mergedCashiers = await Promise.all(
@@ -215,6 +225,28 @@ export async function GET(
           console.error(`Error getting Fineract balance for cashier ${fc.id}:`, err);
         }
 
+        // Resolve session closure enforcement if cashier has a DB record
+        let sessionClosureEnforcement = null;
+        if (dbCashier) {
+          const enforcement = resolveSessionClosureEnforcement(tenantSettings, dbCashier);
+          sessionClosureEnforcement = {
+            mode: dbCashier.enforceSessionClosure === true
+              ? "ENFORCE"
+              : dbCashier.enforceSessionClosure === false
+              ? "EXEMPT"
+              : "INHERIT",
+            enforced: enforcement.enforced,
+            ...(enforcement.enforced
+              ? {
+                  source: enforcement.source,
+                  enforcedFrom: enforcement.enforcedFrom,
+                }
+              : {
+                  reason: enforcement.reason,
+                }),
+          };
+        }
+
         return {
           ...fc,
           // Include database ID if found, otherwise use Fineract ID as fallback
@@ -235,6 +267,10 @@ export async function GET(
             amount: fineractBalance,
             currency: orgCurrency,
           },
+          // Include closure workflow for this tenant
+          closureWorkflow: closureWorkflow(tenantSettings.isTellerManagementModuleOn),
+          // Include session closure enforcement info if cashier has DB record
+          sessionClosureEnforcement,
         };
       })
     );
