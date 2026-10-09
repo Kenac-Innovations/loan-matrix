@@ -6,6 +6,12 @@ import { getSession } from "@/lib/auth";
 import { isPaymentTypeCash } from "@/lib/cash-repayment-teller";
 import { shouldSkipManualFineractCashierSettleForLoanDisbursement } from "@/lib/loan-disbursement-cashier-policy";
 import { sendLoanStatusSms } from "@/lib/notification-service";
+import { buildSessionContextFields } from "@/lib/cashier-session-balance";
+import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { pendingClosureBlockResponse } from "@/lib/cashier-session-guards";
+import { getCashierSessionTenantSettings } from "@/lib/cashier-session-settings";
+import { resolveSessionClosureEnforcement } from "@/lib/cashier-session-enforcement-policy";
+import { checkCashDisbursementSessionGate } from "@/lib/cashier-session-disbursement-gate";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/settle
@@ -334,6 +340,30 @@ export async function POST(
       return NextResponse.json({ error: "Cashier not found" }, { status: 404 });
     }
 
+    // Check if session closure is pending
+    const blocked = await pendingClosureBlockResponse(tenant.id, cashier?.id);
+    if (blocked) return blocked;
+
+    // Check session closure compliance for cash disbursements
+    if (txnType === "DISBURSEMENT") {
+      const gate = await checkCashDisbursementSessionGate({
+        tenantId: tenant.id,
+        isCash: true,
+        fineractUserId: session.user.userId,
+        cashierIds: [cashier.id],
+      });
+      if (!gate.allowed) {
+        return NextResponse.json(
+          {
+            error: gate.message,
+            code: gate.code,
+            blockingSessions: gate.blockingSessions,
+          },
+          { status: gate.status }
+        );
+      }
+    }
+
     // Check if cashier has an active session - required for cash out
     let activeSession = await prisma.cashierSession.findFirst({
       where: {
@@ -344,8 +374,15 @@ export async function POST(
       },
     });
 
-    // If no local session found, check Fineract for active session and sync
-    if (!activeSession) {
+    // If no local session found, check Fineract for active session and sync.
+    // Enrolled cashiers (module on) must start sessions explicitly, so skip the
+    // auto-create; the checks below still allow settling against a closed session.
+    const sessionSettings = activeSession ? null : await getCashierSessionTenantSettings(tenant.id);
+    const skipSessionAutoCreate =
+      sessionSettings !== null &&
+      sessionSettings.isTellerManagementModuleOn &&
+      resolveSessionClosureEnforcement(sessionSettings, cashier).enforced;
+    if (!activeSession && !skipSessionAutoCreate) {
       try {
         const fineractService = await getFineractServiceWithSession();
         const fineractCashierData = await fineractService.getCashier(
@@ -374,6 +411,12 @@ export async function POST(
               cashIn: 0,
               cashOut: 0,
               netCash: 0,
+              ...buildSessionContextFields({
+                teller,
+                now: new Date(),
+                // Sessions track the org till currency, not the transaction's.
+                currency: await getOrgRawCurrencyCode(),
+              }),
             },
           });
           console.log(`Created local session for cashier ${cashier.id}`);

@@ -56,6 +56,9 @@ export enum SpecificPermission {
   // Special permission that grants all access
   ALL_FUNCTIONS = "ALL_FUNCTIONS",
   ALL_FUNCTIONS_READ = "ALL_FUNCTIONS_READ",
+
+  // Teller permissions
+  SETTLECASHFROMCASHIER_TELLER = "SETTLECASHFROMCASHIER_TELLER",
 }
 
 export enum AccessLevel {

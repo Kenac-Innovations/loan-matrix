@@ -24,6 +24,8 @@ interface CloseSessionModalProps {
   tellerId: string;
   cashierId: string;
   cashierName?: string;
+  workflow?: "TWO_STEP" | "LEGACY";
+  onSuccess?: () => void;
 }
 
 interface Currency {
@@ -41,12 +43,24 @@ interface FineractSummary {
   cashierName?: string;
 }
 
+interface SessionBalances {
+  expectedBalance: number;
+  balanceSource: "FINERACT_BASELINE" | "NO_BASELINE" | "UNAVAILABLE";
+  openingFloat?: number;
+  cashIn?: number;
+  cashOut?: number;
+  allocations?: number;
+  settlements?: number;
+}
+
 export function CloseSessionModal({
   open,
   onOpenChange,
   tellerId,
   cashierId,
   cashierName,
+  workflow = "LEGACY",
+  onSuccess,
 }: CloseSessionModalProps) {
   const router = useRouter();
   const { currencyCode: orgCurrency } = useCurrency();
@@ -55,6 +69,9 @@ export function CloseSessionModal({
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [currencyCode, setCurrencyCode] = useState("");
   const [summary, setSummary] = useState<FineractSummary | null>(null);
+  const [sessionBalances, setSessionBalances] = useState<SessionBalances | null>(
+    null
+  );
   const [sessionDate, setSessionDate] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -63,20 +80,31 @@ export function CloseSessionModal({
     comments: "",
   });
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  // Fetch currencies on mount
-  useEffect(() => {
-    if (open) {
-      fetchCurrencies();
-    }
-  }, [open]);
+  const fetchSessionBalances = async () => {
+    setLoadingData(true);
+    try {
+      const response = await fetch(
+        `/api/tellers/${tellerId}/cashiers/${cashierId}/session`
+      );
 
-  // Fetch Fineract summary when currency changes
-  useEffect(() => {
-    if (open && currencyCode && tellerId && cashierId) {
-      fetchFineractSummary();
+      if (response.ok) {
+        const data = await response.json();
+        setSessionBalances(data.balances);
+        // Clear form data
+        setFormData({ countedCashAmount: "", comments: "" });
+      } else {
+        console.error("Failed to fetch session balances");
+        setSessionBalances(null);
+      }
+    } catch (error) {
+      console.error("Error fetching session balances:", error);
+      setSessionBalances(null);
+    } finally {
+      setLoadingData(false);
     }
-  }, [open, currencyCode, tellerId, cashierId]);
+  };
 
   const fetchCurrencies = async () => {
     try {
@@ -127,7 +155,7 @@ export function CloseSessionModal({
       } else {
         console.error("Failed to fetch Fineract summary");
         setSummary(null);
-    }
+      }
     } catch (error) {
       console.error("Error fetching Fineract summary:", error);
       setSummary(null);
@@ -136,10 +164,32 @@ export function CloseSessionModal({
     }
   };
 
+  // Fetch currencies on mount and fetch session balances for TWO_STEP
+  /* eslint-disable react-hooks/set-state-in-effect -- load data when the dialog opens */
+  useEffect(() => {
+    if (!open) return;
+    if (workflow === "TWO_STEP") {
+      fetchSessionBalances();
+    } else {
+      fetchCurrencies();
+    }
+  }, [open, workflow, tellerId, cashierId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Fetch Fineract summary when currency changes (LEGACY flow)
+  /* eslint-disable react-hooks/set-state-in-effect -- load data when the dialog opens */
+  useEffect(() => {
+    if (open && workflow === "LEGACY" && currencyCode && tellerId && cashierId) {
+      fetchFineractSummary();
+    }
+  }, [open, workflow, currencyCode, tellerId, cashierId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   const handleClose = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccess(null);
 
     if (
       !formData.countedCashAmount ||
@@ -151,33 +201,69 @@ export function CloseSessionModal({
     }
 
     try {
+      const payload =
+        workflow === "TWO_STEP"
+          ? {
+              action: "initiate-close",
+              declaredAmount: parseFloat(formData.countedCashAmount),
+              comments: formData.comments,
+            }
+          : {
+              action: "close",
+              countedCashAmount: parseFloat(formData.countedCashAmount),
+              comments: formData.comments,
+              currencyCode,
+              sessionDate,
+            };
+
       const response = await fetch(
         `/api/tellers/${tellerId}/cashiers/${cashierId}/session`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "close",
-            countedCashAmount: parseFloat(formData.countedCashAmount),
-            comments: formData.comments,
-            currencyCode,
-            sessionDate,
-          }),
+          body: JSON.stringify(payload),
         }
       );
 
       if (response.ok) {
-        onOpenChange(false);
-        router.refresh();
-        setFormData({ countedCashAmount: "", comments: "" });
-        setSummary(null);
+        if (workflow === "TWO_STEP") {
+          setSuccess("Closure submitted for branch manager review");
+          setTimeout(() => {
+            onOpenChange(false);
+            router.refresh();
+            if (onSuccess) {
+              onSuccess();
+            }
+            setFormData({ countedCashAmount: "", comments: "" });
+            setSummary(null);
+            setSessionBalances(null);
+          }, 1000);
+        } else {
+          // LEGACY: close immediately without success message
+          onOpenChange(false);
+          router.refresh();
+          if (onSuccess) {
+            onSuccess();
+          }
+          setFormData({ countedCashAmount: "", comments: "" });
+          setSummary(null);
+        }
       } else {
         const errorData = await response.json().catch(() => ({}));
-        const errorMessage =
-          errorData.fineractError?.errors?.[0]?.defaultUserMessage ||
-          errorData.error ||
-          errorData.details ||
-          `Failed to close session (${response.status})`;
+        let errorMessage: string;
+        if (workflow === "TWO_STEP") {
+          errorMessage =
+            errorData.details ||
+            errorData.error ||
+            `Failed to close session (${response.status})`;
+        } else {
+          // LEGACY: fineractError takes precedence
+          errorMessage =
+            errorData.fineractError?.errors?.[0]?.defaultUserMessage ||
+            errorData.error ||
+            errorData.details ||
+            `Failed to close session (${response.status})`;
+        }
         setError(errorMessage);
         console.error("Error closing session:", errorData);
       }
@@ -205,7 +291,6 @@ export function CloseSessionModal({
   };
 
   // Calculate values from Fineract data
-  const openingFloat = summary?.sumCashAllocation || 0;
   const cashIn = summary?.sumCashAllocation || 0; // Total allocated
   const cashOut =
     (summary?.sumCashSettlement || 0) + (summary?.sumOutwardCash ?? 0);
@@ -215,6 +300,168 @@ export function CloseSessionModal({
     parseFloat(formData.countedCashAmount || "0") - expectedBalance;
   const isBalanced = Math.abs(difference) < 0.01;
 
+  if (workflow === "TWO_STEP") {
+    const expectedCash =
+      sessionBalances?.balanceSource === "NO_BASELINE"
+        ? null
+        : sessionBalances?.balanceSource === "UNAVAILABLE"
+          ? "error"
+          : sessionBalances?.expectedBalance;
+
+    const difference =
+      typeof expectedCash === "number"
+        ? parseFloat(formData.countedCashAmount || "0") - expectedCash
+        : null;
+    const isBalanced = difference !== null && Math.abs(difference) < 0.01;
+
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Initiate Session Closure</DialogTitle>
+            <DialogDescription>
+              Count the cash in your drawer. A branch manager will recount and
+              close the session.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleClose}>
+            <div className="space-y-4 py-4">
+              {/* Expected Cash */}
+              <div className="p-4 border rounded-lg bg-muted/50">
+                <Label className="text-xs text-muted-foreground">
+                  Expected Cash
+                </Label>
+                {loadingData ? (
+                  <div className="flex items-center justify-center mt-2">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <span className="text-sm">Loading...</span>
+                  </div>
+                ) : expectedCash === null ? (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Expected cash isn&apos;t available for this cashier&apos;s first
+                    close.
+                  </p>
+                ) : expectedCash === "error" ? (
+                  <p className="text-sm text-destructive mt-2">
+                    Expected cash couldn&apos;t be loaded from Fineract.
+                  </p>
+                ) : (
+                  <p className="text-2xl font-bold mt-2">
+                    {formatAmount(expectedCash as number)}
+                  </p>
+                )}
+              </div>
+
+              {/* Counted Cash Input */}
+              <div className="space-y-2">
+                <Label htmlFor="countedCashAmount">
+                  Counted Cash <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="countedCashAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.countedCashAmount}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      countedCashAmount: e.target.value,
+                    })
+                  }
+                  required
+                  placeholder="0.00"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter the actual cash amount counted in your drawer
+                </p>
+              </div>
+
+              {/* Variance Preview */}
+              {formData.countedCashAmount !== "" &&
+                difference !== null && (
+                  <Alert
+                    variant={
+                      isBalanced
+                        ? "default"
+                        : difference! > 0
+                          ? "default"
+                          : "destructive"
+                    }
+                  >
+                    <AlertDescription>
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">
+                          {isBalanced
+                            ? "✓ Balanced"
+                            : difference! > 0
+                              ? "↑ Over"
+                              : "↓ Short"}
+                        </span>
+                        <span className="text-lg font-bold">
+                          {difference! > 0 ? "+" : ""}
+                          {formatAmount(difference!)}
+                        </span>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+              {/* Comments */}
+              <div className="space-y-2">
+                <Label htmlFor="comments">Comments (Optional)</Label>
+                <Textarea
+                  id="comments"
+                  value={formData.comments}
+                  onChange={(e) =>
+                    setFormData({ ...formData, comments: e.target.value })
+                  }
+                  placeholder="Add any notes about the session closure..."
+                  rows={2}
+                />
+              </div>
+
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {success && (
+                <Alert variant="default" className="bg-green-50 text-green-800">
+                  <AlertDescription>{success}</AlertDescription>
+                </Alert>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit for Review"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // LEGACY workflow (original behavior)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
@@ -278,36 +525,36 @@ export function CloseSessionModal({
                 <span>Loading session data from Fineract...</span>
               </div>
             ) : summary ? (
-            <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/50">
-              <div>
-                <Label className="text-xs text-muted-foreground">
+              <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/50">
+                <div>
+                  <Label className="text-xs text-muted-foreground">
                     Cash In (Allocated)
-                </Label>
-                <p className="text-lg font-semibold text-green-600">
+                  </Label>
+                  <p className="text-lg font-semibold text-green-600">
                     {formatAmount(cashIn)}
-                </p>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">
                     Cash Out (Settled)
-                </Label>
-                <p className="text-lg font-semibold text-red-600">
+                  </Label>
+                  <p className="text-lg font-semibold text-red-600">
                     {formatAmount(cashOut)}
-                </p>
-              </div>
+                  </p>
+                </div>
                 <div className="col-span-2">
-                <Label className="text-xs text-muted-foreground">
+                  <Label className="text-xs text-muted-foreground">
                     Expected Balance (Net Cash)
-                </Label>
+                  </Label>
                   <p className="text-2xl font-bold">
                     {formatAmount(expectedBalance)}
-                </p>
+                  </p>
                 </div>
               </div>
             ) : (
               <div className="p-4 border rounded-lg bg-muted/50 text-center text-muted-foreground">
                 No session data available. Select a currency to load data.
-            </div>
+              </div>
             )}
 
             <div className="space-y-2">
@@ -334,14 +581,14 @@ export function CloseSessionModal({
               </p>
             </div>
 
-            {formData.countedCashAmount && summary && (
+            {formData.countedCashAmount !== "" && summary && (
               <Alert
                 variant={
                   isBalanced
                     ? "default"
                     : difference > 0
-                    ? "default"
-                    : "destructive"
+                      ? "default"
+                      : "destructive"
                 }
               >
                 <AlertDescription>
@@ -350,8 +597,8 @@ export function CloseSessionModal({
                       {isBalanced
                         ? "✓ Balanced"
                         : difference > 0
-                        ? "↑ Over"
-                        : "↓ Short"}
+                          ? "↑ Over"
+                          : "↓ Short"}
                     </span>
                     <span className="text-lg font-bold">
                       {difference > 0 ? "+" : ""}

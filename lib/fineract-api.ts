@@ -1713,6 +1713,18 @@ export class FineractAPIService {
     }
   }
 
+  /**
+   * Staff id linked to a Fineract user, or null when the user has no staff link.
+   * Unlike getStaffByUserId, transport/auth errors are thrown so callers can
+   * fail closed instead of treating an outage as "no staff".
+   */
+  async getUserStaffIdStrict(userId: number): Promise<number | null> {
+    const response: AxiosResponse<{ staff?: { id?: number }; staffId?: number }> =
+      await this.client.get(`/users/${userId}`);
+    const staffId = Number(response.data?.staff?.id ?? response.data?.staffId);
+    return Number.isFinite(staffId) && staffId > 0 ? staffId : null;
+  }
+
   // Get staff member by user ID
   async getStaffByUserId(userId: number): Promise<any | null> {
     try {

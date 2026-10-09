@@ -179,6 +179,8 @@ export function SidebarNav({
         subMenuItems={[
           { label: "Banks", href: "/banks" },
           { label: "Tellers", href: "/tellers" },
+          { label: "Variance events", href: "/tellers/variance-events" },
+          { label: "Reconciliation report", href: "/tellers/reports/session-reconciliation" },
           { label: "Mobile Money", href: "/mobile-money" },
           ...(isEnabled("receiptRanges")
             ? [{ label: "Receipt Ranges", href: "/banks/receipts" }]

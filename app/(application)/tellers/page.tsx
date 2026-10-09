@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { Plus, Download } from "lucide-react";
+import { Plus, Download, AlertCircle } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -30,6 +30,12 @@ export default function TellersPage() {
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
+          <Link href="/tellers/variance-events">
+            <Button variant="outline" size="sm">
+              <AlertCircle className="h-4 w-4 mr-2" />
+              Variance Events
+            </Button>
+          </Link>
           <Link href="/tellers/new">
             <Button size="sm">
               <Plus className="h-4 w-4 mr-2" />
