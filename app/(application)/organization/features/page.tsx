@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -120,6 +120,13 @@ const FEATURE_CONFIGS: FeatureConfig[] = [
       "On the loan repayment modal, restrict non-exempt users to cash repayments and auto-fill their teller/cashier from their cashier session, blocking submission if they aren't linked to a cashier. Individual users can be exempted from this restriction on the Users page.",
     tag: "New",
   },
+  {
+    key: "restrictSensitiveClientEditFieldsToSuperAdmin",
+    label: "Restrict Sensitive Client Fields",
+    description:
+      "When enabled, only SUPER_ADMIN users can edit sensitive client fields such as staff assignment, mobile number, submitted date, and activation date.",
+    tag: "New",
+  },
 ];
 
 export default function FeaturesSettingsPage() {
@@ -138,23 +145,64 @@ export default function FeaturesSettingsPage() {
   const [recoveryReportsError, setRecoveryReportsError] = useState<string | null>(null);
   const [collectionReportsStatus, setCollectionReportsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [collectionReportsError, setCollectionReportsError] = useState<string | null>(null);
-
-  const fetchFeatures = useCallback(async () => {
-    try {
-      const res = await fetch("/api/tenant/features");
-      if (!res.ok) throw new Error("Failed to load features");
-      const data = await res.json();
-      setFeatures(data.features);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [sessionClosureSettings, setSessionClosureSettings] = useState<{
+    isTellerManagementModuleOn: boolean;
+    enforceSessionClosureByDefault: boolean;
+    sessionClosureEnforcedFrom: string | null;
+    cashVarianceTolerance: number;
+    updatedBy?: string | null;
+    updatedAt?: string | null;
+    canEdit: boolean;
+  } | null>(null);
+  const [sessionClosureSaving, setSessionClosureSaving] = useState(false);
+  const [sessionClosureError, setSessionClosureError] = useState<string | null>(null);
+  const [sessionClosureSettingsError, setSessionClosureSettingsError] = useState<string | null>(null);
+  const [varianceToleranceDraft, setVarianceToleranceDraft] = useState<string>("");
 
   useEffect(() => {
-    fetchFeatures();
-  }, [fetchFeatures]);
+    let isActive = true;
+
+    async function loadFeatures() {
+      try {
+        const res = await fetch("/api/tenant/features");
+        if (!res.ok) throw new Error("Failed to load features");
+        const data = await res.json();
+        if (!isActive) return;
+        setFeatures(data.features);
+      } catch (err) {
+        if (!isActive) return;
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+    }
+
+    async function loadSessionClosureSettings() {
+      try {
+        const res = await fetch("/api/tenant/teller-session-settings");
+        if (!res.ok) throw new Error("Failed to load teller session settings");
+        const data = await res.json();
+        if (!isActive) return;
+        setSessionClosureSettings(data);
+        setVarianceToleranceDraft(String(data.cashVarianceTolerance ?? 0));
+        setSessionClosureSettingsError(null);
+      } catch (err) {
+        if (!isActive) return;
+        console.error("Error loading teller session settings:", err);
+        const errorMessage = err instanceof Error ? err.message : "Failed to load teller session settings";
+        setSessionClosureSettingsError(errorMessage);
+      }
+    }
+
+    void loadFeatures();
+    void loadSessionClosureSettings();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const handleToggle = async (key: keyof TenantFeatures, value: boolean) => {
     if (!features) return;
@@ -248,6 +296,38 @@ export default function FeaturesSettingsPage() {
     } else {
       setCollectionReportsStatus("error");
       setCollectionReportsError(result.error ?? "Setup failed");
+    }
+  };
+
+  const handleSessionClosureSetting = async (
+    key: "isTellerManagementModuleOn" | "enforceSessionClosureByDefault" | "cashVarianceTolerance",
+    value: boolean | number
+  ) => {
+    if (!sessionClosureSettings) return;
+    setSessionClosureSaving(true);
+    setSessionClosureError(null);
+
+    const optimistic = { ...sessionClosureSettings, [key]: value };
+    setSessionClosureSettings(optimistic);
+
+    try {
+      const res = await fetch("/api/tenant/teller-session-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to save");
+      }
+      const data = await res.json();
+      setSessionClosureSettings(data);
+    } catch (err) {
+      setSessionClosureSettings({ ...sessionClosureSettings });
+      setVarianceToleranceDraft(String(sessionClosureSettings.cashVarianceTolerance ?? 0));
+      setSessionClosureError(err instanceof Error ? err.message : "Failed to save teller session settings");
+    } finally {
+      setSessionClosureSaving(false);
     }
   };
 
@@ -393,6 +473,140 @@ export default function FeaturesSettingsPage() {
               {collectionReportsStatus === "success" ? "Done" : "Run Setup"}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Teller Session Closure</CardTitle>
+          <CardDescription className="text-xs">
+            Configure cashier session closure enforcement settings for the tenant.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {sessionClosureError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{sessionClosureError}</AlertDescription>
+            </Alert>
+          )}
+
+          {sessionClosureSettingsError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{sessionClosureSettingsError}</AlertDescription>
+            </Alert>
+          )}
+
+          {sessionClosureSettings ? (
+            <>
+              <div className="flex items-start justify-between gap-4 py-2 border-b">
+                <div className="flex-1">
+                  <Label className="text-sm font-medium cursor-pointer">
+                    Enforce teller session closure (module)
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Turns on two-step session closure and blocks cash disbursement for enrolled cashiers
+                    who haven&apos;t closed an earlier day&apos;s session. Doesn&apos;t hide any menus.
+                  </p>
+                </div>
+                <Switch
+                  checked={sessionClosureSettings.isTellerManagementModuleOn}
+                  onCheckedChange={(checked) =>
+                    handleSessionClosureSetting("isTellerManagementModuleOn", checked)
+                  }
+                  disabled={sessionClosureSaving || !sessionClosureSettings.canEdit}
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-4 py-2 border-b">
+                <div className="flex-1">
+                  <Label className="text-sm font-medium cursor-pointer">
+                    Enforce for all cashiers by default
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Cashiers set to &apos;Use default&apos; follow this. Turn on after the phased rollout.
+                  </p>
+                </div>
+                <Switch
+                  checked={sessionClosureSettings.enforceSessionClosureByDefault}
+                  onCheckedChange={(checked) =>
+                    handleSessionClosureSetting("enforceSessionClosureByDefault", checked)
+                  }
+                  disabled={sessionClosureSaving || !sessionClosureSettings.canEdit}
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-4 py-2">
+                <div className="flex-1">
+                  <Label htmlFor="varianceTolerance" className="text-sm font-medium">
+                    Variance tolerance
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Shortages/overages larger than this raise a reconciliation event. 0 = any difference.
+                  </p>
+                  {sessionClosureSettings.sessionClosureEnforcedFrom && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Enforced since{" "}
+                      {new Date(sessionClosureSettings.sessionClosureEnforcedFrom).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    id="varianceTolerance"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={varianceToleranceDraft}
+                    onChange={(e) => {
+                      setVarianceToleranceDraft(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const val = parseFloat(varianceToleranceDraft);
+                        if (!isNaN(val) && val >= 0) {
+                          handleSessionClosureSetting("cashVarianceTolerance", val);
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      const val = parseFloat(varianceToleranceDraft);
+                      if (!varianceToleranceDraft.trim()) {
+                        // Empty, revert to saved value
+                        if (sessionClosureSettings) {
+                          setVarianceToleranceDraft(String(sessionClosureSettings.cashVarianceTolerance ?? 0));
+                        }
+                      } else if (isNaN(val) || val < 0) {
+                        // Invalid, revert to saved value
+                        if (sessionClosureSettings) {
+                          setVarianceToleranceDraft(String(sessionClosureSettings.cashVarianceTolerance ?? 0));
+                        }
+                      } else if (sessionClosureSettings && val !== sessionClosureSettings.cashVarianceTolerance) {
+                        // Valid and different, save it
+                        handleSessionClosureSetting("cashVarianceTolerance", val);
+                      }
+                    }}
+                    disabled={sessionClosureSaving || !sessionClosureSettings.canEdit}
+                    className="w-24 px-2 py-1 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+              </div>
+
+              {!sessionClosureSettings.canEdit && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Only super admins can modify teller session closure settings.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
         </CardContent>
       </Card>
 

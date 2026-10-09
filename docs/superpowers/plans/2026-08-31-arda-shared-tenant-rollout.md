@@ -74,6 +74,13 @@
 6. Shared production route is added and acceptance tests pass.
 7. Dedicated deployment is retired in a separate, reversible change.
 
+## Execution Record
+
+- 2026-08-31: Created and migrated the isolated `fineract_tenant_arda` database, registered Fineract tenant identifier `arda`, and confirmed the Fineract offices API responds successfully for that tenant.
+- 2026-08-31: Created fresh Loan Matrix tenant `arda` with the ARDA hostname and the New Lead, Approval, Disburse, and Rejected workflow. Verified it starts with zero leads, inventory items, stock balances, movements, and contract templates.
+- 2026-08-31: Created the ARDA catalogue through the Fineract API only: three ARDA stock-input products, plus two empty Loan Matrix inventory catalogue items. No opening stock, clients, loans, or Omama operational data was copied.
+- Pending release: deploy the hostname-to-ARDA tenant resolver with the shared production image, then add the shared production route and retire the duplicate dedicated ARDA runtime after acceptance testing.
+
 ---
 
 ## Task 1: Prevent Cross-Tenant Fineract Fallback

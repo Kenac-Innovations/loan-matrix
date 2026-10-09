@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,16 +16,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('GET /api/fineract/glclosures error:', error);
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    return NextResponse.json(
-      {
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'load',
+      resource: 'GL closures',
+    });
   }
 }
 
@@ -39,15 +34,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('POST /api/fineract/glclosures error:', error);
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    return NextResponse.json(
-      {
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'create',
+      resource: 'GL closure',
+    });
   }
-} 
+}

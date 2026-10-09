@@ -5,57 +5,65 @@ import { z } from "zod";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { getSession } from "@/lib/auth";
 import {
-  getTenantFromHeaders,
   getTenantBySlug,
-  extractTenantSlug,
+  extractTenantSlugFromRequest,
 } from "@/lib/tenant-service";
+import {
+  createLeadTenantContext,
+  type LeadTenantContext,
+} from "@/lib/lead-tenant-context";
 import { formatMobileForFineract } from "@/lib/phone-utils";
 import { getOriginatorDesignatedDisburserData } from "@/lib/lead-policy";
 import {
   assertExistingClientBranchTransferCompleted,
   ensureExistingClientInCreatorOffice,
 } from "@/lib/fineract-client-office-transfer";
+import { getFineractBusinessToday } from "@/lib/fineract-business-date";
+import {
+  getClientSubmittedOnDate,
+  withClientSubmittedOnDate,
+} from "@/lib/lead-client-submitted-date";
+import {
+  assertClientCanCreateLoanLead,
+  ClientServicingLeadRestrictionError,
+} from "@/lib/client-servicing-lead-guard";
 
-// Helper to resolve the current tenant, optionally using the raw request
-// so we can read middleware-set and proxy-set headers directly.
-async function resolveCurrentTenant(tx?: any, req?: Request) {
-  if (req) {
-    const origin = req.headers.get("origin");
-    const referer = req.headers.get("referer");
-    const host = req.headers.get("host");
-    console.log("[resolveCurrentTenant] headers:", { origin, referer, host, hasReq: !!req });
-
-    if (origin) {
-      try {
-        const t = await getTenantBySlug(extractTenantSlug(new URL(origin).hostname));
-        if (t) return t;
-      } catch {}
-    }
-    if (referer) {
-      try {
-        const t = await getTenantBySlug(extractTenantSlug(new URL(referer).hostname));
-        if (t) return t;
-      } catch {}
-    }
-  }
-
-  try {
-    const tenant = await getTenantFromHeaders();
-    if (tenant) return tenant;
-  } catch {}
-
-  const fallbackSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
-  const db = tx || prisma;
-  const fallbackTenant = await db.tenant.findFirst({
-    where: { slug: fallbackSlug, isActive: true },
-    select: { id: true, name: true, slug: true, domain: true, settings: true },
-  });
-  if (!fallbackTenant) {
+// Resolve the hostname tenant from this request only. It must never be stored
+// in module state because overlapping requests can otherwise share tenants.
+async function resolveCurrentTenant(req: Request) {
+  const tenantSlug = extractTenantSlugFromRequest(req);
+  const tenant = await getTenantBySlug(tenantSlug);
+  if (!tenant) {
     throw new Error(
-      `Tenant '${fallbackSlug}' not found. Please ensure the tenant exists in the database.`
+      `Tenant '${tenantSlug}' not found. Please ensure the tenant exists in the database.`
     );
   }
-  return fallbackTenant;
+  return tenant;
+}
+
+async function resolveLeadRequestContext(
+  request: Request
+): Promise<LeadTenantContext> {
+  const session = await getSession();
+  if (!session?.user?.id) {
+    throw new Error("User not authenticated");
+  }
+
+  const [requestTenant, sessionTenant] = await Promise.all([
+    resolveCurrentTenant(request),
+    session.user.tenantId
+      ? prisma.tenant.findFirst({
+          where: { id: session.user.tenantId, isActive: true },
+          select: { id: true, slug: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  return createLeadTenantContext({
+    sessionTenantId: session.user.tenantId,
+    requestTenant,
+    sessionTenant,
+  });
 }
 
 // Resolve the initial pipeline stage for a tenant so newly created leads enter
@@ -151,34 +159,30 @@ const clientFormSchema = z.object({
   facilityType: z.enum(["TERM_LOAN", "INVOICE_DISCOUNTING", "REVOLVING_CREDIT"]).optional(),
 });
 
-// Holds the current request so resolveCurrentTenant can read headers
-// without changing every handler's signature.
-let _currentRequest: Request | undefined;
-
 const ENTITY_LEGAL_FORM_ID = 2;
 
 async function resolveLeadIdForEntityOps(
   leadId: string | undefined,
   data: any,
-  req?: Request
+  tenantId: string
 ): Promise<string> {
-  if (leadId) return leadId;
-  const fromBody = data?.leadId as string | undefined;
-  if (fromBody) return fromBody;
-  const fineractClientId = data?.fineractClientId;
-  if (fineractClientId == null) {
-    throw new Error("leadId or fineractClientId is required");
-  }
-  const tenant = await resolveCurrentTenant(undefined, req);
-  const lead = await prisma.lead.findFirst({
-    where: {
-      fineractClientId: Number(fineractClientId),
-      tenantId: tenant.id,
-    },
-    select: { id: true },
-  });
+  const directLeadId = leadId ?? (data?.leadId as string | undefined);
+  const lead = directLeadId
+    ? await prisma.lead.findFirst({
+        where: { id: directLeadId, tenantId },
+        select: { id: true },
+      })
+    : data?.fineractClientId != null
+      ? await prisma.lead.findFirst({
+          where: {
+            fineractClientId: Number(data.fineractClientId),
+            tenantId,
+          },
+          select: { id: true },
+        })
+      : null;
   if (!lead) {
-    throw new Error("No lead found for this Fineract client in your tenant");
+    throw new Error("No lead found in your tenant");
   }
   return lead.id;
 }
@@ -375,10 +379,10 @@ async function persistEntityStructureDraftForLead(
  * Handles lead operations like save draft, submit, etc.
  */
 export async function POST(request: Request) {
-  _currentRequest = request;
   try {
     const body = await request.json();
     const { operation, data, leadId } = body;
+    const tenantContext = await resolveLeadRequestContext(request);
 
     console.log("==========> API Route: Received request");
     console.log("==========> Operation:", operation);
@@ -387,15 +391,15 @@ export async function POST(request: Request) {
 
     switch (operation) {
       case "saveDraft":
-        return await handleSaveDraft(data, leadId);
+        return await handleSaveDraft(data, leadId, tenantContext);
       case "createLeadWithClient":
-        return await handleCreateLeadWithClient(data);
+        return await handleCreateLeadWithClient(data, tenantContext);
       case "createLeadForExistingClient":
-        return await handleCreateLeadForExistingClient(data);
+        return await handleCreateLeadForExistingClient(data, tenantContext);
       case "updateClient":
-        return await handleUpdateClient(data, data.leadId);
+        return await handleUpdateClient(data, data.leadId, tenantContext);
       case "createClientInFineract":
-        return await handleCreateClientInFineract(leadId);
+        return await handleCreateClientInFineract(leadId, tenantContext);
       case "submitLead":
         return await handleSubmitLead(leadId);
       case "closeLead":
@@ -406,22 +410,22 @@ export async function POST(request: Request) {
         return await handleRemoveFamilyMember(data.id);
       case "upsertEntityStakeholder":
         return await handleUpsertEntityStakeholder(
-          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          await resolveLeadIdForEntityOps(leadId, data, tenantContext.tenantId),
           data
         );
       case "removeEntityStakeholder":
         return await handleRemoveEntityStakeholder(
-          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          await resolveLeadIdForEntityOps(leadId, data, tenantContext.tenantId),
           data.id
         );
       case "reorderEntityStakeholders":
         return await handleReorderEntityStakeholders(
-          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          await resolveLeadIdForEntityOps(leadId, data, tenantContext.tenantId),
           data
         );
       case "replaceEntityBankAccounts":
         return await handleReplaceEntityBankAccounts(
-          await resolveLeadIdForEntityOps(leadId, data, _currentRequest),
+          await resolveLeadIdForEntityOps(leadId, data, tenantContext.tenantId),
           data
         );
       default:
@@ -442,11 +446,18 @@ export async function POST(request: Request) {
 
     console.error("==========> Returning error response:", errorResponse);
 
-    return NextResponse.json(errorResponse, { status: 500 });
+    return NextResponse.json(errorResponse, {
+      status:
+        error instanceof ClientServicingLeadRestrictionError ? 409 : 500,
+    });
   }
 }
 
-async function handleSaveDraft(data: any, leadId?: string) {
+async function handleSaveDraft(
+  data: any,
+  leadId: string | undefined,
+  tenantContext: LeadTenantContext
+) {
   try {
     // Convert data types before validation
     const processedData = {
@@ -494,12 +505,19 @@ async function handleSaveDraft(data: any, leadId?: string) {
       assignedByFineractUserId: session.user.userId ?? userId,
     });
 
-    // Resolve current tenant from subdomain/headers
-    const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
-    const tenantId = currentTenant.id;
+    const tenantId = tenantContext.tenantId;
     const initialStageId = await getInitialStageId(tenantId);
+    const existingLead = leadId
+      ? await prisma.lead.findFirst({
+          where: { id: leadId, tenantId },
+          select: { stateMetadata: true },
+        })
+      : null;
 
     if (leadId) {
+      if (!existingLead) {
+        throw new Error("Lead not found in your tenant");
+      }
       // Update existing lead
       await prisma.lead.update({
         where: { id: leadId },
@@ -530,7 +548,12 @@ async function handleSaveDraft(data: any, leadId?: string) {
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          // Client Details stores the registration date separately and must
+          // not overwrite an already-selected loan submitted-on date.
+          stateMetadata: withClientSubmittedOnDate(
+            existingLead?.stateMetadata,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,
@@ -588,7 +611,11 @@ async function handleSaveDraft(data: any, leadId?: string) {
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          submittedOnDate: getFineractBusinessToday(),
+          stateMetadata: withClientSubmittedOnDate(
+            undefined,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,
@@ -953,9 +980,13 @@ async function handleReplaceEntityBankAccounts(leadId: string, data: any) {
   }
 }
 
-async function handleCreateLeadWithClient(data: any) {
+async function handleCreateLeadWithClient(
+  data: any,
+  tenantContext: LeadTenantContext
+) {
   let leadId: string | null = null;
   let fineractClientId: number | null = null;
+  let createdFineractClient = false;
 
   try {
     // Step 1: Convert and validate data
@@ -991,7 +1022,9 @@ async function handleCreateLeadWithClient(data: any) {
     const validatedData = clientFormSchema.parse(processedData);
 
     // Step 2: Create client in Fineract FIRST (outside transaction)
-    const fineractService = await getFineractServiceWithSession();
+    const fineractService = await getFineractServiceWithSession(
+      tenantContext.fineractTenantId
+    );
 
     // Validate required fields for Fineract
     if (!validatedData.officeId) {
@@ -1046,6 +1079,9 @@ async function handleCreateLeadWithClient(data: any) {
             originatorUserName: createdByUserName,
             assignedByFineractUserId: session.user.userId ?? userId,
           });
+        await assertClientCanCreateLoanLead(existingClient.id, (clientId) =>
+          fineractService.getClientServicingStatus(clientId)
+        );
         const clientOfficeTransfer = await ensureExistingClientInCreatorOffice({
           client: await fineractService.getClient(existingClient.id),
           creatorOfficeId: session.user.officeId,
@@ -1056,9 +1092,7 @@ async function handleCreateLeadWithClient(data: any) {
 
         // Skip to creating the lead with the existing client data
         const result = await prisma.$transaction(async (tx) => {
-            // Resolve current tenant from subdomain/headers
-            const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
-            const tenantId = currentTenant.id;
+            const tenantId = tenantContext.tenantId;
             const initialStageId = await getInitialStageId(tenantId, tx);
 
             // Create lead in database with existing Fineract client data
@@ -1091,7 +1125,13 @@ async function handleCreateLeadWithClient(data: any) {
                 clientTypeName: validatedData.clientTypeName,
                 clientClassificationId: validatedData.clientClassificationId || undefined,
                 clientClassificationName: validatedData.clientClassificationName,
-                submittedOnDate: validatedData.submittedOnDate,
+                // This is a new loan application, not the client's original
+                // registration. Do not inherit a historical client date.
+                submittedOnDate: getFineractBusinessToday(),
+                stateMetadata: withClientSubmittedOnDate(
+                  undefined,
+                  validatedData.submittedOnDate,
+                ),
                 active: validatedData.active,
                 activationDate: validatedData.activationDate || undefined,
                 openSavingsAccount: validatedData.openSavingsAccount,
@@ -1188,6 +1228,7 @@ async function handleCreateLeadWithClient(data: any) {
     const createdFineractClientId =
       fineractClient.clientId ?? fineractClient.resourceId ?? fineractClient.id;
     fineractClientId = createdFineractClientId;
+    createdFineractClient = true;
 
     console.log("==========> Fineract client created successfully:");
     console.log("==========> Fineract response:", fineractClient);
@@ -1212,9 +1253,7 @@ async function handleCreateLeadWithClient(data: any) {
         }
       );
 
-      // Resolve current tenant from subdomain/headers
-      const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
-      const tenantId = currentTenant.id;
+      const tenantId = tenantContext.tenantId;
       const initialStageId = await getInitialStageId(tenantId, tx);
 
       // Create lead in database with Fineract data
@@ -1251,7 +1290,11 @@ async function handleCreateLeadWithClient(data: any) {
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          submittedOnDate: getFineractBusinessToday(),
+          stateMetadata: withClientSubmittedOnDate(
+            undefined,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,
@@ -1325,13 +1368,19 @@ async function handleCreateLeadWithClient(data: any) {
   } catch (error: any) {
     console.error("Error in transactional lead creation:", error);
 
+    if (error instanceof ClientServicingLeadRestrictionError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+
     // If we have a Fineract client but lead creation failed, delete the Fineract client
-    if (fineractClientId && !leadId) {
+    if (createdFineractClient && fineractClientId && !leadId) {
       try {
         console.log(
           `Cleaning up Fineract client ${fineractClientId} after lead creation failure`
         );
-        const fineractService = await getFineractServiceWithSession();
+        const fineractService = await getFineractServiceWithSession(
+          tenantContext.fineractTenantId
+        );
         await fineractService.deleteClient(fineractClientId);
         console.log(
           `Successfully cleaned up Fineract client ${fineractClientId}`
@@ -1420,11 +1469,14 @@ async function handleCreateLeadWithClient(data: any) {
   }
 }
 
-async function handleCreateClientInFineract(leadId: string) {
+async function handleCreateClientInFineract(
+  leadId: string,
+  tenantContext: LeadTenantContext
+) {
   try {
     // Get the lead data
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
+    const lead = await prisma.lead.findFirst({
+      where: { id: leadId, tenantId: tenantContext.tenantId },
     });
 
     if (!lead) {
@@ -1443,6 +1495,8 @@ async function handleCreateClientInFineract(leadId: string) {
 
     // Prepare client data for Fineract (entity vs individual)
     const isEntitySubmit = lead.legalFormId === 2;
+    const clientSubmittedOnDate =
+      getClientSubmittedOnDate(lead.stateMetadata) ?? lead.submittedOnDate;
     const clientData: Record<string, any> = {
       officeId: lead.officeId,
       legalFormId: lead.legalFormId,
@@ -1460,8 +1514,8 @@ async function handleCreateClientInFineract(leadId: string) {
       }),
       dateFormat: "yyyy-MM-dd",
       locale: "en",
-      submittedOnDate: lead.submittedOnDate
-        ? formatDateForFineract(lead.submittedOnDate)
+      submittedOnDate: clientSubmittedOnDate
+        ? formatDateForFineract(clientSubmittedOnDate)
         : undefined,
     };
 
@@ -1477,7 +1531,9 @@ async function handleCreateClientInFineract(leadId: string) {
     }
 
     // Create client in Fineract
-    const fineractService = await getFineractServiceWithSession();
+    const fineractService = await getFineractServiceWithSession(
+      tenantContext.fineractTenantId
+    );
     const fineractClient = await fineractService.createClient(clientData);
 
     // Update lead with Fineract client information
@@ -1511,7 +1567,10 @@ async function handleCreateClientInFineract(leadId: string) {
 }
 
 // Create a local lead record for an existing Fineract client (e.g. refinance flow)
-async function handleCreateLeadForExistingClient(data: any) {
+async function handleCreateLeadForExistingClient(
+  data: any,
+  tenantContext: LeadTenantContext
+) {
   const { fineractClientId } = data;
 
   if (!fineractClientId) {
@@ -1522,7 +1581,12 @@ async function handleCreateLeadForExistingClient(data: any) {
   }
 
   try {
-    const fineractService = await getFineractServiceWithSession();
+    const fineractService = await getFineractServiceWithSession(
+      tenantContext.fineractTenantId
+    );
+    await assertClientCanCreateLoanLead(Number(fineractClientId), (clientId) =>
+      fineractService.getClientServicingStatus(clientId)
+    );
     const client = await fineractService.getClient(Number(fineractClientId));
 
     const session = await getSession();
@@ -1544,8 +1608,7 @@ async function handleCreateLeadForExistingClient(data: any) {
     assertExistingClientBranchTransferCompleted(clientOfficeTransfer);
     const clientForLead = clientOfficeTransfer.client;
 
-    const currentTenant = await resolveCurrentTenant(undefined, _currentRequest);
-    const initialStageId = await getInitialStageId(currentTenant.id);
+    const initialStageId = await getInitialStageId(tenantContext.tenantId);
 
     // Parse activation date from Fineract's array format [yyyy, mm, dd]
     const parseDate = (d: string | number[] | undefined): Date | undefined => {
@@ -1559,7 +1622,7 @@ async function handleCreateLeadForExistingClient(data: any) {
         userId: session.user.id,
         createdByUserName,
         ...(designatedDisburserDefaults ?? {}),
-        tenantId: currentTenant.id,
+        tenantId: tenantContext.tenantId,
         currentStageId: initialStageId,
         officeId: clientOfficeTransfer.leadOfficeId,
         officeName:
@@ -1579,7 +1642,13 @@ async function handleCreateLeadForExistingClient(data: any) {
         clientTypeName: clientForLead.clientType?.name,
         clientClassificationId: clientForLead.clientClassification?.id,
         clientClassificationName: clientForLead.clientClassification?.name,
-        submittedOnDate: parseDate(clientForLead.timeline?.submittedOnDate) ?? new Date(),
+        // A new lead must use the current business date. The client timeline
+        // date is the original registration date and can be years old.
+        submittedOnDate: getFineractBusinessToday(),
+        stateMetadata: withClientSubmittedOnDate(
+          undefined,
+          parseDate(clientForLead.timeline?.submittedOnDate) ?? new Date(),
+        ),
         active: clientForLead.active,
         activationDate: parseDate(clientForLead.activationDate),
         fineractClientId: clientForLead.id,
@@ -1601,13 +1670,20 @@ async function handleCreateLeadForExistingClient(data: any) {
     console.error("Error creating lead for existing client:", error);
     return NextResponse.json(
       { error: error.message || "Failed to create lead" },
-      { status: 500 }
+      {
+        status:
+          error instanceof ClientServicingLeadRestrictionError ? 409 : 500,
+      }
     );
   }
 }
 
 // Handle updating an existing client in both Fineract and local database
-async function handleUpdateClient(data: any, leadId?: string) {
+async function handleUpdateClient(
+  data: any,
+  leadId: string | undefined,
+  tenantContext: LeadTenantContext
+) {
   try {
     console.log("==========> Starting transactional client update");
     console.log("Update data:", data);
@@ -1645,10 +1721,29 @@ async function handleUpdateClient(data: any, leadId?: string) {
 
     console.log("==========> All required fields validated successfully");
 
+    if (leadId) {
+      const existingLead = await prisma.lead.findFirst({
+        where: { id: leadId, tenantId: tenantContext.tenantId },
+        select: { id: true },
+      });
+      if (!existingLead) {
+        throw new Error("Lead not found in your tenant");
+      }
+    }
+
     // Step 1: Update client in Fineract
     console.log("==========> Getting Fineract service...");
-    const fineractService = await getFineractServiceWithSession();
+    const fineractService = await getFineractServiceWithSession(
+      tenantContext.fineractTenantId
+    );
     console.log("==========> Fineract service obtained successfully");
+
+    if (!leadId) {
+      await assertClientCanCreateLoanLead(
+        Number(data.fineractClientId),
+        (clientId) => fineractService.getClientServicingStatus(clientId)
+      );
+    }
 
     const session = await getSession();
     if (!session?.user?.id) {
@@ -1791,6 +1886,11 @@ async function handleUpdateClient(data: any, leadId?: string) {
         // UPDATE existing lead
         console.log("==========> Updating existing lead with ID:", leadId);
         result = await prisma.$transaction(async (tx) => {
+          const existingLead = await tx.lead.findUnique({
+            where: { id: leadId },
+            select: { stateMetadata: true },
+          });
+
           // Update the existing lead record
           const updatedLead = await tx.lead.update({
             where: { id: leadId },
@@ -1841,10 +1941,14 @@ async function handleUpdateClient(data: any, leadId?: string) {
               clientClassificationId: data.clientClassificationId,
               clientClassificationName: data.clientClassificationName,
 
-              // Dates
-              submittedOnDate: data.submittedOnDate
-                ? new Date(data.submittedOnDate)
-                : undefined,
+              // The form date belongs to the Fineract client. Keep the
+              // lead's submitted-on date for the loan application.
+              stateMetadata: withClientSubmittedOnDate(
+                existingLead?.stateMetadata,
+                data.submittedOnDate
+                  ? new Date(data.submittedOnDate)
+                  : new Date(),
+              ),
               activationDate: data.activationDate
                 ? new Date(data.activationDate)
                 : undefined,
@@ -1868,18 +1972,15 @@ async function handleUpdateClient(data: any, leadId?: string) {
         // CREATE new lead (fallback for backward compatibility)
         console.log("==========> No leadId provided, creating new lead...");
         result = await prisma.$transaction(async (tx) => {
-          // Resolve current tenant from subdomain/headers
-          const currentTenant = await resolveCurrentTenant(tx, _currentRequest);
-
           const userId = authenticatedUserId;
-          const initialStageId = await getInitialStageId(currentTenant.id, tx);
+          const initialStageId = await getInitialStageId(tenantContext.tenantId, tx);
 
           // Create a new lead record
           const newLead = await tx.lead.create({
             data: {
               // User and tenant identification
               userId: userId,
-              tenantId: currentTenant.id,
+              tenantId: tenantContext.tenantId,
               currentStageId: initialStageId,
 
               // Client identification
@@ -1928,10 +2029,15 @@ async function handleUpdateClient(data: any, leadId?: string) {
               clientClassificationId: data.clientClassificationId,
               clientClassificationName: data.clientClassificationName,
 
-              // Dates
-              submittedOnDate: data.submittedOnDate
-                ? new Date(data.submittedOnDate)
-                : new Date(),
+              // A new lead starts a new loan application today. Retain the
+              // Fineract client registration date separately.
+              submittedOnDate: getFineractBusinessToday(),
+              stateMetadata: withClientSubmittedOnDate(
+                undefined,
+                data.submittedOnDate
+                  ? new Date(data.submittedOnDate)
+                  : new Date(),
+              ),
               activationDate: data.activationDate
                 ? new Date(data.activationDate)
                 : new Date(),
@@ -1979,6 +2085,10 @@ async function handleUpdateClient(data: any, leadId?: string) {
     });
   } catch (error: any) {
     console.error("Error in transactional client update:", error);
+
+    if (error instanceof ClientServicingLeadRestrictionError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
 
     // Parse Fineract-specific errors
     if (error.response?.data) {

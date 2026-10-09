@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 /**
@@ -21,12 +22,6 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error recovering from guarantor:", error);
-    if (error.status && error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status });
-    }
-    return NextResponse.json(
-      { error: error.message || "Failed to recover from guarantor" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

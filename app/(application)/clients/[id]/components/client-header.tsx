@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ArrowLeft, Edit, Users, Plus, FileText } from "lucide-react";
+import { ArrowLeft, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ClientServicingStatusActions } from "./client-servicing-status-actions";
 
 interface FineractClient {
   id: number;
@@ -31,7 +32,9 @@ interface ClientHeaderProps {
   client: FineractClient | null;
   clientImage: string | null;
   canEditClient: boolean;
-  hasLoans: boolean;
+  canOriginateNewLoan: boolean;
+  canChangeServicingStatus: boolean;
+  servicingStatusName?: string;
 }
 
 export function ClientHeader({
@@ -39,7 +42,9 @@ export function ClientHeader({
   client,
   clientImage,
   canEditClient,
-  hasLoans,
+  canOriginateNewLoan,
+  canChangeServicingStatus,
+  servicingStatusName,
 }: ClientHeaderProps) {
   const getStatusBadgeColor = (status: string | null, active: boolean) => {
     if (active) return "bg-green-500";
@@ -144,6 +149,12 @@ export function ClientHeader({
                       ? "Active"
                       : client.status?.value || "Unknown"}
                   </Badge>
+                  <Badge
+                    variant="outline"
+                    className="border-primary/30 bg-primary/5 text-primary"
+                  >
+                    Servicing: {servicingStatusName ?? "Not set"}
+                  </Badge>
                 </div>
                 <p className="text-muted-foreground">
                   <span className="mr-3">
@@ -179,40 +190,14 @@ export function ClientHeader({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {hasLoans && (
-                <Button asChild size="sm" variant="outline">
-                  <Link
-                    href={`/api/fineract/clients/${clientId}/statement?format=html`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Consolidated Statement
-                  </Link>
-                </Button>
-              )}
-              {client.active && client.externalId && (
-                <Link
-                  href={`/leads/new/loan?clientId=${clientId}&externalId=${encodeURIComponent(
-                    client.externalId
-                  )}`}
-                >
-                  <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Apply for Loan
-                  </Button>
-                </Link>
-              )}
-              {canEditClient && (
-                <Link href={`/clients/${clientId}/edit`}>
-                  <Button size="sm" variant="outline">
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Client
-                  </Button>
-                </Link>
-              )}
-            </div>
+            <ClientServicingStatusActions
+              clientId={clientId}
+              clientExternalId={client.externalId}
+              clientIsActive={client.active}
+              canEditClient={canEditClient}
+              canOriginateNewLoan={canOriginateNewLoan}
+              canChangeStatus={canChangeServicingStatus}
+            />
           </div>
         </div>
       </div>

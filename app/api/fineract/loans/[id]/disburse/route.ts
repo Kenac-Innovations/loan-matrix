@@ -7,9 +7,16 @@ import {
   getDisbursementBlockReason,
   getLeadViewerAccessContext,
 } from '@/lib/lead-policy';
+import {
+  buildPaymentServiceCallbackUrl,
+  getRequiredPaymentServiceCallbackUrl,
+} from '@/lib/payment-service-callback-url';
 import { applyTopupDisbursementCharges } from '@/lib/topup-disbursement-charge-service';
 import { extractTenantSlugFromRequest, getTenantBySlug } from '@/lib/tenant-service';
 import { resolveYangoUssdDisbursementDetailsForLead } from '@/lib/yango-ussd-disbursement';
+import { checkCashDisbursementSessionGate } from '@/lib/cashier-session-disbursement-gate';
+import { getCashierSessionTenantSettings } from '@/lib/cashier-session-settings';
+import { getPaymentTypeInfo } from '@/lib/cash-repayment-teller';
 import { getArdaStockDetails } from '@/lib/inventory/arda-stock-workflow-service';
 import { runArdaStockDisbursementGuard } from '@/lib/arda-stock-disbursement-guard';
 import type { Prisma } from '@/app/generated/prisma';
@@ -139,11 +146,6 @@ export async function POST(
       }
     }
 
-    // Build callback URL to be used by payment gateway
-    //const callbackUrl = `https://webhook.site/45f26e26-5c80-4290-9a1a-87b60be151a4`;
-    // Use specific callback URL for payment gateway
-    const callbackUrl = `http://loan-matrix-dev.loan-matrix-dev.svc.cluster.local:3000/api/ussd-leads/payment-callback`;
-
     const augmentedPayload: Record<string, unknown> = {
       ...payload,
     };
@@ -162,6 +164,10 @@ export async function POST(
       : null;
 
     if (yangoUssdDetails) {
+      const callbackUrl = buildPaymentServiceCallbackUrl(
+        getRequiredPaymentServiceCallbackUrl(),
+        tenant?.ussdServiceTenantId
+      );
       augmentedPayload.externalId = yangoUssdDetails.externalId;
       augmentedPayload.accountNumber = yangoUssdDetails.accountNumber;
       if (yangoUssdDetails.paymentTypeId) {
@@ -169,14 +175,14 @@ export async function POST(
       }
       if (!coercePositiveNumber(augmentedPayload.transactionAmount)) {
         const fineractLoan = await fetchFineractAPI(`/loans/${id}`, {
-          authMode: "service",
+          authMode: 'service',
         });
         augmentedPayload.transactionAmount =
           coercePositiveNumber(fineractLoan?.netDisbursalAmount) ??
           coercePositiveNumber(fineractLoan?.approvedPrincipal) ??
           coercePositiveNumber(fineractLoan?.principal);
       }
-      augmentedPayload.note = payload?.note || callbackUrl;
+      augmentedPayload.note = callbackUrl;
     }
 
     // Log the payload being sent to Fineract
@@ -185,6 +191,44 @@ export async function POST(
     console.log('Yango USSD disbursement:', Boolean(yangoUssdDetails));
     console.log('Payload sent to Fineract:', JSON.stringify(augmentedPayload, null, 2));
     console.log('=== END DISBURSEMENT PAYLOAD ===');
+
+    // Check if this is a cash disbursement and verify session closure compliance
+    // Use the payment type actually sent to Fineract (Yango may override it).
+    // Fail closed: if module is on and we need to verify payment type, error if lookup fails.
+    let isCash = false;
+    if (tenant) {
+      const settings = await getCashierSessionTenantSettings(tenant.id);
+      if (settings.isTellerManagementModuleOn && augmentedPayload.paymentTypeId) {
+        const paymentTypeInfo = await getPaymentTypeInfo(Number(augmentedPayload.paymentTypeId));
+        if (paymentTypeInfo === null) {
+          return NextResponse.json(
+            {
+              error: "Could not verify the payment type. Please try again.",
+              code: "PAYMENT_TYPE_LOOKUP_FAILED",
+            },
+            { status: 503 }
+          );
+        }
+        isCash = paymentTypeInfo.isCashPayment ?? false;
+      }
+    }
+    if (tenant) {
+      const gate = await checkCashDisbursementSessionGate({
+        tenantId: tenant.id,
+        isCash,
+        fineractUserId: session.user.userId,
+      });
+      if (!gate.allowed) {
+        return NextResponse.json(
+          {
+            error: gate.message,
+            code: gate.code,
+            blockingSessions: gate.blockingSessions,
+          },
+          { status: gate.status }
+        );
+      }
+    }
 
     // POST to /loans/{id}?command=disburse with payload
     const data = await runArdaStockDisbursementGuard({

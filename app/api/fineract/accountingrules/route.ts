@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
 
 export async function GET(request: NextRequest) {
@@ -26,10 +27,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(accountingRules);
   } catch (error: any) {
     console.error('Error fetching accounting rules:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch accounting rules' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -43,9 +41,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(accountingRule, { status: 201 });
   } catch (error: any) {
     console.error('Error creating accounting rule:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to create accounting rule' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 } 

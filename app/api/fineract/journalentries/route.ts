@@ -1,37 +1,17 @@
 // File: app/api/fineract/journalentries/route.ts
 import { NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
+import { getJournalEntriesData } from '@/lib/journalentries-route';
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const transactionId = searchParams.get('transactionId');
-    const transactionDetails = searchParams.get('transactionDetails');
-
-    if (!transactionId) {
-      return NextResponse.json(
-        { error: 'Transaction ID is required' },
-        { status: 400 }
-      );
-    }
-
-    const queryParams = new URLSearchParams({
-      transactionId,
-    });
-
-    if (transactionDetails) {
-      queryParams.append('transactionDetails', transactionDetails);
-    }
-
-    const data = await fetchFineractAPI(`/journalentries?${queryParams}`);
+    const data = await getJournalEntriesData(request, fetchFineractAPI);
     
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching journal entries:', error);
-    return NextResponse.json(
-      { error: error.message || 'Unknown error' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -44,11 +24,8 @@ export async function POST(request: Request) {
       body: JSON.stringify(payload),
     });
     return NextResponse.json(data, { status: 201 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating journal entry:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to create journal entry' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

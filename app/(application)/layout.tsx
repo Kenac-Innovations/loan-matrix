@@ -16,17 +16,19 @@ import { MobileMenuProvider } from "./components/mobile-menu-context";
 import { hasPermissionServer } from "@/lib/authorization";
 import { SpecificPermission } from "@/shared/types/auth";
 import { canResetUssdPinServer } from "@/lib/ussd-pin-reset-access";
+import { canAccessUssdDetailsServer } from "@/lib/ussd-client-details-access";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [userProfileData, tenant, canReadUsers, canResetUssdPin] = await Promise.all([
+  const [userProfileData, tenant, canReadUsers, canResetUssdPin, canAccessUssdDetails] = await Promise.all([
     getUserProfileData(),
     getTenantFromHeaders(),
     hasPermissionServer(SpecificPermission.READ_USER),
     canResetUssdPinServer(),
+    canAccessUssdDetailsServer(),
   ]);
   const tenantLogoUrl = tenant?.logoFileUrl ?? null;
 
@@ -73,6 +75,7 @@ export default async function DashboardLayout({
               <SidebarNav
                 canReadUsers={canReadUsers}
                 canResetUssdPin={canResetUssdPin}
+                canAccessUssdDetails={canAccessUssdDetails}
               />
             </div>
           </div>
@@ -82,6 +85,7 @@ export default async function DashboardLayout({
             tenantLogoUrl={tenantLogoUrl}
             canReadUsers={canReadUsers}
             canResetUssdPin={canResetUssdPin}
+            canAccessUssdDetails={canAccessUssdDetails}
           />
 
           {/* Main Content */}

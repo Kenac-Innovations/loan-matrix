@@ -9,18 +9,21 @@ function readRepoFile(relativePath: string): string {
   return readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
-test("ussd submit route triggers CDE evaluation after loan creation", () => {
-  const source = readRepoFile("app/api/ussd-leads/[id]/submit/route.ts");
+test("ussd submit delegates to processing that evaluates CDE after loan creation", () => {
+  const routeSource = readRepoFile("app/api/ussd-leads/[id]/submit/route.ts");
+  const serviceSource = readRepoFile("lib/ussd-loan-processing-service.ts");
 
   assert.match(
-    source,
-    /import\s+\{\s*callCDEAndStore\s*\}\s+from\s+['"]@\/lib\/cde-utils['"];/
+    routeSource,
+    /processUssdApplicationToDisbursement/
   );
-  assert.match(source, /fetchLoansByExternalId/);
-  assert.match(source, /resolveReusableUssdLoanId/);
-  assert.match(source, /void \(async \(\) => \{/);
-  assert.match(source, /const cdeResult = await callCDEAndStore\(leadId\);/);
-  assert.match(source, /coreResponse: result \?\? \(loanId \? \{ resourceId: loanId \} : null\)/);
+  const loanResolutionIndex = serviceSource.indexOf(
+    '"Failed to resolve or create Fineract loan for USSD application"'
+  );
+  const cdeIndex = serviceSource.indexOf("await callCDEAndStore(leadId)");
+  assert.ok(loanResolutionIndex >= 0);
+  assert.ok(cdeIndex > loanResolutionIndex);
+  assert.match(serviceSource, /autoProgressToDisbursementFromCdeResult/);
 });
 
 test("ussd view details redirects to the preparing screen after lead creation", () => {

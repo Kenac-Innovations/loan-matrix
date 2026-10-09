@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { getCashierSessionTenantSettings } from "@/lib/cashier-session-settings";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/session/verify
@@ -23,6 +24,19 @@ export async function POST(
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Check if two-step closure is enabled
+    const { isTellerManagementModuleOn } = await getCashierSessionTenantSettings(tenant.id);
+    if (isTellerManagementModuleOn) {
+      return NextResponse.json(
+        {
+          error: "Two-step closure is enabled",
+          details: "Verification is not used in two-step closure mode.",
+          code: "TWO_STEP_CLOSURE",
+        },
+        { status: 409 }
+      );
     }
 
     const body = await request.json();

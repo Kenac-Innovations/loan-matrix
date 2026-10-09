@@ -1,6 +1,7 @@
 import https from "https";
 import { getFineractTenantId as getFineractTenantIdFromService } from "./fineract-tenant-service";
 import { getFineractBaseUrl } from "./fineract-base-url";
+import { normalizeFineractErrorPayload } from "./fineract-error";
 
 // Re-export for convenience
 export { getFineractTenantIdFromService as getFineractTenantId };
@@ -132,44 +133,24 @@ async function readFineractResponse(response: Response, url: string) {
       };
     }
 
-    if (!errorData || Object.keys(errorData).length === 0) {
-      errorData = {
-        defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-        developerMessage: `HTTP ${response.status}: ${response.statusText}`,
-      };
-    }
+    const normalizedErrorData = normalizeFineractErrorPayload(errorData, {
+      status: response.status,
+      statusText: response.statusText,
+    });
+    const specificErrorMessage =
+      normalizedErrorData.defaultUserMessage ||
+      `HTTP ${response.status}: ${response.statusText}`;
 
-    let specificErrorMessage =
-      errorData.defaultUserMessage || errorData.developerMessage;
-
-    if (
-      errorData.errors &&
-      Array.isArray(errorData.errors) &&
-      errorData.errors.length > 0
-    ) {
-      const firstError = errorData.errors[0];
-      specificErrorMessage =
-        firstError.defaultUserMessage ||
-        firstError.developerMessage ||
-        specificErrorMessage;
-    }
-
-    const error = new Error(
-      `API error: ${response.status} ${response.statusText}`
-    );
+    const error = new Error(specificErrorMessage);
     const fineractError = error as FineractError;
     fineractError.status = response.status;
-    fineractError.errorData = {
-      ...errorData,
-      defaultUserMessage: specificErrorMessage,
-      developerMessage: specificErrorMessage,
-    };
+    fineractError.errorData = normalizedErrorData;
 
     console.error("API Error Details:", {
       status: response.status,
       statusText: response.statusText,
       url,
-      errorData: JSON.stringify(errorData, null, 2),
+      errorData: JSON.stringify(normalizedErrorData, null, 2),
       specificErrorMessage,
     });
 
@@ -439,34 +420,18 @@ export function createClientFineractAPI(accessToken?: string) {
           };
         }
 
-        // Extract the most specific error message from the errors array
-        let specificErrorMessage =
-          errorData.defaultUserMessage || errorData.developerMessage;
+        const normalizedErrorData = normalizeFineractErrorPayload(errorData, {
+          status: response.status,
+          statusText: response.statusText,
+        });
 
-        if (
-          errorData.errors &&
-          Array.isArray(errorData.errors) &&
-          errorData.errors.length > 0
-        ) {
-          // Use the first error's defaultUserMessage if available, otherwise developerMessage
-          const firstError = errorData.errors[0];
-          specificErrorMessage =
-            firstError.defaultUserMessage ||
-            firstError.developerMessage ||
-            specificErrorMessage;
-        }
-
-        // Create a custom error that includes the backend error data
         const error = new Error(
-          `API error: ${response.status} ${response.statusText}`
+          normalizedErrorData.defaultUserMessage ||
+            `HTTP ${response.status}: ${response.statusText}`
         );
         const fineractError = error as FineractError;
         fineractError.status = response.status;
-        fineractError.errorData = {
-          ...errorData,
-          defaultUserMessage: specificErrorMessage,
-          developerMessage: specificErrorMessage,
-        };
+        fineractError.errorData = normalizedErrorData;
         throw error;
       }
 

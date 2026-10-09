@@ -91,6 +91,7 @@ test("USSD admin client sends the configured service tenant id in headers", asyn
       JSON.stringify({
         userId: "42",
         fullName: "Mary Banda",
+        externalId: "9911",
         nationalIdMask: "123456****",
         phoneNumber: "260977123456",
       }),
@@ -128,6 +129,7 @@ test("USSD admin client normalizes string lookup user ids from USSD", async () =
       JSON.stringify({
         userId: "42",
         fullName: "Mary Banda",
+        externalId: "9911",
         nationalIdMask: "123456****",
         phoneNumber: "260977123456",
         accountNumber: "ACC-123",
@@ -150,6 +152,7 @@ test("USSD admin client normalizes string lookup user ids from USSD", async () =
 
     assert.equal(result?.userId, 42);
     assert.equal(typeof result?.userId, "number");
+    assert.equal(result?.externalId, 9911);
   } finally {
     globalThis.fetch = originalFetch;
   }

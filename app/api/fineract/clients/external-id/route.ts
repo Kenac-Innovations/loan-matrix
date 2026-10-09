@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 /**
@@ -164,9 +165,6 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json(
-      { error: error.message || "Unknown error" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

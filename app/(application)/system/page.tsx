@@ -4,8 +4,11 @@ import {
   ClipboardList,
   History,
   ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { hasPermissionServer } from "@/lib/authorization";
+import { SpecificPermission } from "@/shared/types/auth";
 
 const systemAreas = [
   {
@@ -34,7 +37,23 @@ const systemAreas = [
   },
 ];
 
-export default function SystemPage() {
+export default async function SystemPage() {
+  const canConfigureClientServicingStatuses = await hasPermissionServer(
+    SpecificPermission.UPDATE_CLIENT_SERVICING_STATUS_POLICY
+  );
+  const visibleSystemAreas = canConfigureClientServicingStatuses
+    ? [
+        ...systemAreas,
+        {
+          title: "Client Servicing Statuses",
+          description:
+            "Configure which client actions each operational servicing status allows.",
+          href: "/system/client-servicing-statuses",
+          icon: SlidersHorizontal,
+        },
+      ]
+    : systemAreas;
+
   return (
     <div className="space-y-6">
       <div>
@@ -45,7 +64,7 @@ export default function SystemPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {systemAreas.map((area) => {
+        {visibleSystemAreas.map((area) => {
           const Icon = area.icon;
 
           return (

@@ -36,6 +36,8 @@ export interface TenantFeatures {
   autoResolveRepaymentCashier: boolean;
   /** Enable ARDA-only Fineract stock metadata synchronization and reports */
   ardaStockReports: boolean;
+  /** When true, only SUPER_ADMIN users may edit sensitive client fields on the client edit form. */
+  restrictSensitiveClientEditFieldsToSuperAdmin: boolean;
   /** When true, MFA is required for tenant logins. Missing or false disables MFA. */
   usesMFA?: boolean;
   /** Enabled MFA delivery channels for the tenant. */
@@ -86,16 +88,64 @@ export interface TenantMobileMoneySettings {
   payoutClearingGlAccountCode?: string;
 }
 
+export interface TenantSupersetSettings {
+  enabled?: boolean;
+  baseUrl?: string;
+  creatorUsernames?: string[];
+}
+
 export interface TenantAutoProgressToDisbursementRule {
   enabled?: boolean;
   loanProductId: number;
   triggerStageId: string;
   allowedCdeDecisions: AutoDisbursementDecision[];
+  /**
+   * Whether CDE should evaluate income for this product. Omitted rules keep
+   * the existing income-based decision path.
+   */
+  incomeEvaluationRequired?: boolean;
+  /**
+   * When enabled, Loan Matrix sends the approved USSD loan through the
+   * Payment Service's GeePay disbursement path and waits for a settled result
+   * before recording the local payout as paid. Omitted rules keep the
+   * existing immediate-payout workflow.
+   */
+  requireGeePaySettlement?: boolean;
+  /**
+   * Routes newly received USSD applications for this product to the dedicated
+   * Loan Matrix Backend Salary Advance worker. This is deliberately opt-in:
+   * existing products and applications already queued keep their current
+   * Next.js processing path.
+   */
+  processInBackend?: boolean;
+  /**
+   * Optional Payment Service tenant identifier. The Loan Matrix tenant slug
+   * is used when this is omitted.
+   */
+  paymentServiceTenantId?: string;
+}
+
+export type TenantUssdLoanChargeAttachmentMode = "NONE" | "SELECTED";
+
+/**
+ * Product-owned Fineract charge selection for a USSD-created loan. Monetary
+ * values and due dates deliberately remain in Fineract; the tenant setting
+ * stores only charge IDs that the backend resolves against the live general
+ * charge pool.
+ */
+export interface TenantUssdLoanChargeAttachment {
+  mode: TenantUssdLoanChargeAttachmentMode;
+  chargeIds?: number[];
 }
 
 export interface TenantUssdAutoLeadRule {
   enabled?: boolean;
   loanProductId: number;
+  /**
+   * Missing on a legacy rule means no charges are attached. Salary Advance's
+   * backend worker requires an explicit SELECTED policy before it can pay.
+   */
+  loanChargeAttachment?: TenantUssdLoanChargeAttachment;
 }
 
 /**
@@ -120,6 +170,8 @@ export interface TenantSettings {
   firstRepaymentDate?: FirstRepaymentDateConfig;
   /** Mobile money pool configuration */
   mobileMoney?: TenantMobileMoneySettings;
+  /** Optional shared analytics configuration */
+  superset?: TenantSupersetSettings;
   /** Product-specific rules for automatic CDE-gated progression through disbursement */
   autoProgressToDisbursementRules?: TenantAutoProgressToDisbursementRule[];
   /** Product-specific rules for automatic USSD lead creation */
@@ -147,6 +199,7 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   topupLoanBalanceExcludeUnrealizedInterests: false,
   autoResolveRepaymentCashier: false,
   ardaStockReports: false,
+  restrictSensitiveClientEditFieldsToSuperAdmin: false,
 };
 
 /**

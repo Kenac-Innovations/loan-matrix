@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 // GET /api/fineract/notifications - Get all notifications
 export async function GET(request: NextRequest) {
@@ -8,14 +9,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(notifications);
   } catch (error: any) {
     console.error("Error fetching notifications:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to fetch notifications",
-        details: error.message,
-        errorData: error.errorData,
-      },
-      { status: error.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "notifications",
+    });
   }
 }
 
@@ -32,13 +29,9 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Error updating notifications:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to update notifications",
-        details: error.message,
-        errorData: error.errorData,
-      },
-      { status: error.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "update",
+      resource: "notifications",
+    });
   }
 }

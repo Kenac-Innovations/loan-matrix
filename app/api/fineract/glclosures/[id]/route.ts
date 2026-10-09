@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 
 export async function GET(
   request: NextRequest,
@@ -11,16 +12,10 @@ export async function GET(
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('GET /api/fineract/glclosures/[id] error:', error);
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    return NextResponse.json(
-      {
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'load',
+      resource: 'GL closure',
+    });
   }
 }
 
@@ -39,16 +34,10 @@ export async function PUT(
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('PUT /api/fineract/glclosures/[id] error:', error);
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    return NextResponse.json(
-      {
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'update',
+      resource: 'GL closure',
+    });
   }
 }
 
@@ -64,15 +53,9 @@ export async function DELETE(
     return NextResponse.json(response);
   } catch (error: any) {
     console.error('DELETE /api/fineract/glclosures/[id] error:', error);
-    if (error.errorData) {
-      return NextResponse.json(error.errorData, { status: error.status || 500 });
-    }
-    return NextResponse.json(
-      {
-        defaultUserMessage: 'An unexpected error occurred',
-        developerMessage: error.message
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'delete',
+      resource: 'GL closure',
+    });
   }
-} 
+}

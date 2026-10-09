@@ -20,6 +20,11 @@ export type TransactionLike = {
   id?: number;
   date?: string | number[];
   amount?: number;
+  /** Fineract's component allocation for this transaction. */
+  principalPortion?: number | null;
+  interestPortion?: number | null;
+  feeChargesPortion?: number | null;
+  penaltyChargesPortion?: number | null;
   outstandingLoanBalance?: number;
   manuallyReversed?: boolean;
   reversed?: boolean;

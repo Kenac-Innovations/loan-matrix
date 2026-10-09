@@ -10,19 +10,118 @@
  */
 
 import { fetchFineractAPI } from "./api";
+import { getFineractTenantId } from "./fineract-tenant-service";
+import { parseOrgCurrencyForWrite } from "./currency-contract";
+import type { OrgCurrencyForWrite } from "./currency-contract";
 
-let cachedCurrencyCode: string | null = null;
-let cachedRawCurrencyCode: string | null = null;
-let cacheExpiry = 0;
+export { parseOrgCurrencyForWrite } from "./currency-contract";
+export type { OrgCurrencyForWrite } from "./currency-contract";
+
+type CurrencyCacheEntry = { code: string; rawCode: string; expiresAt: number };
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Org currency cache keyed by Fineract tenant ID. One server process serves
+ * many tenants, so a single shared entry leaked one tenant's currency into
+ * another tenant's requests (e.g. Rulethu cashier balances queried in ZMK).
+ */
+export function createOrgCurrencyResolver(deps: {
+  getTenantKey: () => Promise<string>;
+  fetchCurrencies: () => Promise<unknown>;
+  now?: () => number;
+}) {
+  const cache = new Map<string, CurrencyCacheEntry>();
+  const now = deps.now ?? Date.now;
+
+  /** Returns null when Fineract cannot be reached. */
+  async function resolveOrgCurrency(): Promise<CurrencyCacheEntry | null> {
+    let key: string | null = null;
+    try {
+      key = await deps.getTenantKey();
+    } catch {
+      key = null;
+    }
+
+    const cached = key ? cache.get(key) : undefined;
+    if (cached && now() < cached.expiresAt) {
+      return cached;
+    }
+
+    try {
+      const data = (await deps.fetchCurrencies()) as {
+        selectedCurrencyOptions?: Array<{ code?: string }>;
+        currencyOptions?: Array<{ code?: string }>;
+      } | null;
+      const currencies =
+        data?.selectedCurrencyOptions || data?.currencyOptions || [];
+
+      if (currencies.length > 0) {
+        const rawCode = currencies[0].code || "USD";
+        const entry: CurrencyCacheEntry = {
+          code: normalizeCode(rawCode),
+          rawCode,
+          expiresAt: now() + CACHE_TTL_MS,
+        };
+        if (key) cache.set(key, entry);
+        return entry;
+      }
+    } catch (err) {
+      console.error("Failed to fetch org default currency from Fineract:", err);
+    }
+
+    return null;
+  }
+
+  /** Drops the current tenant's entry so the next call refetches. */
+  async function invalidate(): Promise<void> {
+    try {
+      cache.delete(await deps.getTenantKey());
+    } catch {
+      // No tenant resolved, so nothing was cached for it.
+    }
+  }
+
+  return Object.assign(resolveOrgCurrency, { invalidate });
+}
+
+const resolveOrgCurrency = createOrgCurrencyResolver({
+  getTenantKey: getFineractTenantId,
+  fetchCurrencies: () => fetchFineractAPI("/currencies"),
+});
+
+/** Call after the tenant's enabled currencies change in Fineract. */
+export async function invalidateOrgCurrencyCache(): Promise<void> {
+  await resolveOrgCurrency.invalidate();
+}
 
 /**
  * Normalize currency code - converts deprecated ZMK to ZMW.
  * Fineract may return ZMK (old Zambian Kwacha code pre-2013 redenomination).
  */
-function normalizeCode(code: string): string {
+export function normalizeCode(code: string): string {
   if (code.toUpperCase() === "ZMK") return "ZMW";
   return code;
+}
+
+/**
+ * Resolve the selected organization currency for a write operation.
+ *
+ * Unlike the read/display helpers below, this deliberately does not use the
+ * permissive USD fallback or a stale cache. A write must stop if Fineract
+ * cannot identify the tenant's selected currency.
+ */
+export async function getOrgCurrencyForWrite(): Promise<OrgCurrencyForWrite> {
+  let data: unknown;
+
+  try {
+    data = await fetchFineractAPI("/currencies");
+  } catch (error) {
+    throw new Error("Unable to resolve the selected organization currency", {
+      cause: error,
+    });
+  }
+
+  return parseOrgCurrencyForWrite(data);
 }
 
 /**
@@ -31,40 +130,15 @@ function normalizeCode(code: string): string {
  * Falls back to "USD" if the Fineract call fails.
  */
 export async function getOrgDefaultCurrencyCode(): Promise<string> {
-  if (cachedCurrencyCode && Date.now() < cacheExpiry) {
-    return cachedCurrencyCode;
-  }
-
-  try {
-    const data = await fetchFineractAPI("/currencies");
-    const currencies: any[] =
-      data.selectedCurrencyOptions || data.currencyOptions || [];
-
-    if (currencies.length > 0) {
-      const rawCode = currencies[0].code || "USD";
-      const code = normalizeCode(rawCode);
-      cachedRawCurrencyCode = rawCode;
-      cachedCurrencyCode = code;
-      cacheExpiry = Date.now() + CACHE_TTL_MS;
-      return code;
-    }
-  } catch (err) {
-    console.error("Failed to fetch org default currency from Fineract:", err);
-  }
-
-  return "USD";
+  return (await resolveOrgCurrency())?.code || "USD";
 }
 
 /**
  * Get the raw (un-normalized) currency code as returned by Fineract.
  * Fineract APIs expect the raw code (e.g. "ZMK" not "ZMW") in query params.
- * Ensures the cache is populated first by calling getOrgDefaultCurrencyCode.
  */
 export async function getOrgRawCurrencyCode(): Promise<string> {
-  if (!cachedRawCurrencyCode || Date.now() >= cacheExpiry) {
-    await getOrgDefaultCurrencyCode();
-  }
-  return cachedRawCurrencyCode || "USD";
+  return (await resolveOrgCurrency())?.rawCode || "USD";
 }
 
 /**
@@ -91,12 +165,4 @@ export async function toFineractCurrencyCode(
   }
 
   return requestedCode;
-}
-
-/**
- * Synchronous fallback that returns the last cached value.
- * Returns undefined if the cache is empty (call getOrgDefaultCurrencyCode first).
- */
-export function getCachedCurrencyCode(): string | undefined {
-  return cachedCurrencyCode ?? undefined;
 }

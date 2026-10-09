@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,7 @@ type UploadRecord = {
   productExternalId: string;
   productName: string;
   uploadedBy: string;
+  replaceExisting: boolean;
   status: string;
   totalRows: number;
   syncedRows: number;
@@ -110,6 +112,7 @@ export function LoanProductEligibilityManager() {
   const [products, setProducts] = useState<LoanProductOption[]>([]);
   const [uploads, setUploads] = useState<UploadRecord[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>("");
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [parsedItems, setParsedItems] = useState<ParsedItem[]>([]);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -387,6 +390,7 @@ export function LoanProductEligibilityManager() {
           fileName: file.name,
           productExternalId: String(selectedProduct.id),
           productName: selectedProduct.name,
+          replaceExisting,
           items: parsedItems,
         }),
       });
@@ -408,12 +412,16 @@ export function LoanProductEligibilityManager() {
     } finally {
       setUploading(false);
     }
-  }, [fetchUploads, file, parsedItems, selectedProduct]);
+  }, [fetchUploads, file, parsedItems, replaceExisting, selectedProduct]);
 
   const openUploadModal = useCallback(() => {
     setError(null);
     setMessage(null);
     setIsPreviewModalOpen(false);
+    setFile(null);
+    setParsedItems([]);
+    setValidationErrors([]);
+    setReplaceExisting(false);
     setIsUploadModalOpen(true);
   }, []);
 
@@ -421,6 +429,7 @@ export function LoanProductEligibilityManager() {
     setFile(null);
     setParsedItems([]);
     setValidationErrors([]);
+    setReplaceExisting(false);
   }, []);
 
   const closeUploadFlow = useCallback(() => {
@@ -458,7 +467,7 @@ export function LoanProductEligibilityManager() {
               <CardTitle>Loan Product Eligibility Uploads</CardTitle>
               <CardDescription>
                 Upload CSV with mandatory columns: <strong>name</strong>, <strong>NRC</strong>,{" "}
-                <strong>phone</strong>. New synced upload replaces previous whitelist for that product in USSD.
+                <strong>phone</strong>. Choose whether the file appends to, or replaces, the product whitelist in USSD.
               </CardDescription>
             </div>
             <Button onClick={openUploadModal}>
@@ -472,10 +481,8 @@ export function LoanProductEligibilityManager() {
       <Dialog
         open={isUploadModalOpen}
         onOpenChange={(open) => {
-          setIsUploadModalOpen(open);
-          if (!open) {
-            setIsPreviewModalOpen(false);
-          }
+          if (open) setIsUploadModalOpen(true);
+          else closeUploadFlow();
         }}
       >
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -501,8 +508,45 @@ export function LoanProductEligibilityManager() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                This product whitelist will be replaced by the uploaded file after sync.
+                The selected sync mode controls whether existing eligible users stay active.
               </p>
+            </div>
+
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <label htmlFor="replace-existing-eligibility" className="text-sm font-medium">
+                    Deactivate existing eligible users
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Turn this on only when this CSV is the complete approved eligibility list.
+                  </p>
+                </div>
+                <Switch
+                  id="replace-existing-eligibility"
+                  checked={replaceExisting}
+                  onCheckedChange={setReplaceExisting}
+                  aria-label="Deactivate existing eligible users before syncing this upload"
+                />
+              </div>
+              <div
+                className={cn(
+                  "rounded-md px-3 py-2 text-sm",
+                  replaceExisting
+                    ? "border border-amber-200 bg-amber-50 text-amber-900"
+                    : "border border-green-200 bg-green-50 text-green-900"
+                )}
+              >
+                {replaceExisting ? (
+                  <>
+                    <strong>Replace mode.</strong> Existing eligible users who are not in this CSV will be deactivated.
+                  </>
+                ) : (
+                  <>
+                    <strong>Append mode.</strong> Existing eligible users stay active; this CSV adds or reactivates only the listed users.
+                  </>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -544,7 +588,13 @@ export function LoanProductEligibilityManager() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isPreviewModalOpen} onOpenChange={setIsPreviewModalOpen}>
+      <Dialog
+        open={isPreviewModalOpen}
+        onOpenChange={(open) => {
+          if (open) setIsPreviewModalOpen(true);
+          else closeUploadFlow();
+        }}
+      >
         <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Preview Upload Data</DialogTitle>
@@ -561,6 +611,25 @@ export function LoanProductEligibilityManager() {
                   | File: <strong>{file.name}</strong>
                 </>
               ) : null}
+            </div>
+
+            <div
+              className={cn(
+                "rounded-md border px-3 py-2 text-sm",
+                replaceExisting
+                  ? "border-amber-200 bg-amber-50 text-amber-900"
+                  : "border-green-200 bg-green-50 text-green-900"
+              )}
+            >
+              {replaceExisting ? (
+                <>
+                  <strong>Replace mode:</strong> users currently eligible for this product but absent from this CSV will be deactivated.
+                </>
+              ) : (
+                <>
+                  <strong>Append mode:</strong> current eligible users will remain active and this CSV will add or reactivate listed users.
+                </>
+              )}
             </div>
 
             {previewRows.length > 0 && (
@@ -758,6 +827,7 @@ export function LoanProductEligibilityManager() {
                     <TableHead>Uploaded At</TableHead>
                     <TableHead>Product</TableHead>
                     <TableHead>File</TableHead>
+                    <TableHead>Sync Mode</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Rows</TableHead>
                     <TableHead>Uploaded By</TableHead>
@@ -771,6 +841,18 @@ export function LoanProductEligibilityManager() {
                       <TableCell>{format(new Date(upload.createdAt), "dd MMM yyyy HH:mm")}</TableCell>
                       <TableCell>{upload.productName}</TableCell>
                       <TableCell>{upload.fileName}</TableCell>
+                      <TableCell>
+                        <Badge
+                          className={cn(
+                            "text-xs",
+                            upload.replaceExisting
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-green-100 text-green-800"
+                          )}
+                        >
+                          {upload.replaceExisting ? "Replace" : "Append"}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <Badge className={cn("gap-1", STATUS_STYLES[upload.status] || "bg-slate-100 text-slate-800")}>
                           {upload.status === "SYNCED" && <CheckCircle2 className="h-3 w-3" />}

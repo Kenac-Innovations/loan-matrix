@@ -112,14 +112,14 @@ test("disabled, non-ARDA, and missing-detail loans disburse without metadata rea
   }
 });
 
-test("manual create-loan links locally before best-effort stock metadata sync", () => {
+test("manual create-loan reconciles the durable link before best-effort stock metadata sync", () => {
   const source = readRepoFile("app/api/leads/[id]/create-loan/route.ts");
-  const linkIndex = source.indexOf("await prisma.lead.update");
+  const linkIndex = source.indexOf("await reconcileLeadLoan");
   const syncIndex = source.indexOf(
     "await syncArdaStockDetailsForCurrentTenant",
     linkIndex
   );
-  const detailIndex = source.indexOf("getArdaStockDetails(lead)", linkIndex);
+  const detailIndex = source.indexOf("getArdaStockDetails({", linkIndex);
   const guardedTryIndex = source.lastIndexOf("try {", detailIndex);
 
   assert.ok(linkIndex >= 0);

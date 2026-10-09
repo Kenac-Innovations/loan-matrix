@@ -16,15 +16,14 @@ test("manual create-loan keeps Fineract external ID lead-linked", () => {
   assert.doesNotMatch(source, /externalId:\s*String\(loanId\)/);
 });
 
-test("manual create-loan saves local loan link before best-effort side effects", () => {
+test("manual create-loan waits for server reconciliation before success/side effects", () => {
   const source = readRepoFile("app/api/leads/[id]/create-loan/route.ts");
-  const loanIdIndex = source.indexOf("const loanId = result.resourceId");
-  const leadUpdateIndex = source.indexOf("await prisma.lead.update");
-  const smsIndex = source.indexOf("// Send SMS");
-  const cdeIndex = source.indexOf("// Call CDE");
+  const reconcileIndex = source.indexOf("await reconcileLeadLoan");
+  const successIndex = source.indexOf("success: true");
+  const smsIndex = source.indexOf("void sendLoanStatusSms");
 
-  assert.ok(loanIdIndex >= 0);
-  assert.ok(leadUpdateIndex > loanIdIndex);
-  assert.ok(smsIndex > leadUpdateIndex);
-  assert.ok(cdeIndex > leadUpdateIndex);
+  assert.ok(reconcileIndex >= 0);
+  assert.ok(successIndex > reconcileIndex);
+  assert.ok(smsIndex > reconcileIndex);
+  assert.doesNotMatch(source, /callCDEAndStore/);
 });

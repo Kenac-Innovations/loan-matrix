@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
-import { getFineractService } from "@/lib/fineract-api";
+import {
+  getFineractService,
+  getFineractServiceWithSession,
+} from "@/lib/fineract-api";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSession } from "@/lib/auth";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
 import {
@@ -251,19 +255,10 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching clients:", error);
-
-    // Better error handling for different error types
-    const errorMessage =
-      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
-    const statusCode = error?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "clients",
+    });
   }
 }
 
@@ -282,18 +277,9 @@ export async function POST(request: Request) {
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
     console.error("Error creating client:", error);
-
-    // Better error handling for different error types
-    const errorMessage =
-      error?.message || error?.errorData?.defaultUserMessage || "Unknown error";
-    const statusCode = error?.status || 500;
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: statusCode }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "create",
+      resource: "client",
+    });
   }
 }

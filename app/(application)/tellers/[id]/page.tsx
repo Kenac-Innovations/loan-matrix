@@ -7,6 +7,7 @@ import Link from "next/link";
 import { formatDate } from "@/lib/format-date";
 import { formatCurrency } from "@/lib/format-currency";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
+import { getSession } from "@/lib/auth";
 import { TellerActions } from "./components/teller-actions";
 import { getTellerFromFineract } from "@/app/actions/teller-actions";
 
@@ -19,9 +20,10 @@ export default async function TellerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [result, orgCurrency] = await Promise.all([
+  const [result, orgCurrency, session] = await Promise.all([
     getTellerFromFineract(id),
     getOrgDefaultCurrencyCode(),
+    getSession(),
   ]);
 
   if (!result.success || !result.data) {
@@ -29,6 +31,12 @@ export default async function TellerDetailPage({
   }
 
   const teller = result.data;
+  const canOverrideAllocationSourceGl =
+    session?.user.roles?.some(
+      (role) =>
+        !role.disabled &&
+        role.name.replace(/[\s_-]/g, "").toLowerCase() === "superuser"
+    ) ?? false;
 
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
@@ -362,6 +370,7 @@ export default async function TellerDetailPage({
                 tellerId={id}
                 tellerName={teller.name}
                 teller={teller}
+                canOverrideAllocationSourceGl={canOverrideAllocationSourceGl}
               />
             </CardContent>
           </Card>

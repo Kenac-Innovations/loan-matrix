@@ -16,6 +16,10 @@ import {
   extractLoanIdFromCashierTransactionNotes,
   matchLoanPayoutForCashierTransaction,
 } from "@/lib/cashier-transaction-enrichment";
+import { buildSessionContextFields } from "@/lib/cashier-session-balance";
+import { pendingClosureBlockResponse } from "@/lib/cashier-session-guards";
+import { getCashierSessionTenantSettings } from "@/lib/cashier-session-settings";
+import { resolveSessionClosureEnforcement } from "@/lib/cashier-session-enforcement-policy";
 
 type TellerRow = NonNullable<Awaited<ReturnType<typeof prisma.teller.findFirst>>>;
 type CashierRow = NonNullable<Awaited<ReturnType<typeof prisma.cashier.findFirst>>>;
@@ -544,7 +548,15 @@ async function ensureCashierSessionForCounterEntry(
     },
   });
 
-  if (!activeSession) {
+  // Enrolled cashiers (module on) must start sessions explicitly, so skip the
+  // Fineract auto-create; the closed-session fallback below still applies.
+  const sessionSettings = activeSession ? null : await getCashierSessionTenantSettings(tenantId);
+  const skipSessionAutoCreate =
+    sessionSettings !== null &&
+    sessionSettings.isTellerManagementModuleOn &&
+    resolveSessionClosureEnforcement(sessionSettings, cashier).enforced;
+
+  if (!activeSession && !skipSessionAutoCreate) {
     try {
       const fineractService = await getFineractServiceWithSession();
       const fineractCashierData = await fineractService.getCashier(
@@ -566,6 +578,12 @@ async function ensureCashierSessionForCounterEntry(
             cashIn: 0,
             cashOut: 0,
             netCash: 0,
+            ...buildSessionContextFields({
+              teller,
+              now: new Date(),
+              // Sessions track the org till currency, not the transaction's.
+              currency: await getOrgRawCurrencyCode(),
+            }),
           },
         });
       }
@@ -712,6 +730,10 @@ export async function POST(
     if (!cashier) {
       return NextResponse.json({ error: "Cashier not found" }, { status: 404 });
     }
+
+    // Check if session closure is pending
+    const blocked = await pendingClosureBlockResponse(tenant.id, cashier?.id);
+    if (blocked) return blocked;
 
     const sessionErr = await ensureCashierSessionForCounterEntry(
       tenant.id,

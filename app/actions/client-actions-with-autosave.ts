@@ -4,13 +4,16 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
-import { getTenantFromHeaders } from "@/lib/tenant-service";
+import { resolveLeadServerActionTenantContext } from "@/lib/lead-tenant-context";
 import { formatMobileForFineract } from "@/lib/phone-utils";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import {
   assertExistingClientBranchTransferCompleted,
   ensureExistingClientInCreatorOffice,
 } from "@/lib/fineract-client-office-transfer";
+import { assertClientCanCreateLoanLead } from "@/lib/client-servicing-lead-guard";
+import { getFineractBusinessToday } from "@/lib/fineract-business-date";
+import { withClientSubmittedOnDate } from "@/lib/lead-client-submitted-date";
 
 // Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
@@ -106,21 +109,10 @@ export async function autoSaveField(
     }
     const userId = session.user.id;
 
-    let tenantId: string;
-    const tenant = await getTenantFromHeaders();
-    if (tenant) {
-      tenantId = tenant.id;
-    } else {
-      // Fallback: look up tenant from env or default
-      const fallbackSlug = process.env.FINERACT_TENANT_ID || "goodfellow";
-      const fallbackTenant = await prisma.tenant.findFirst({
-        where: { slug: fallbackSlug, isActive: true },
-      });
-      if (!fallbackTenant) {
-        throw new Error(`Tenant '${fallbackSlug}' not found.`);
-      }
-      tenantId = fallbackTenant.id;
-    }
+    const tenantContext = await resolveLeadServerActionTenantContext({
+      sessionTenantId: session.user.tenantId,
+    });
+    const tenantId = tenantContext.tenantId;
     const initialStageId = await getInitialStageId(tenantId);
 
     // Current timestamp for tracking
@@ -130,7 +122,15 @@ export async function autoSaveField(
     > | null = null;
 
     if (validatedData.fineractClientId !== undefined) {
-      const fineractService = await getFineractServiceWithSession();
+      const fineractService = await getFineractServiceWithSession(
+        tenantContext.fineractTenantId
+      );
+      if (!leadId) {
+        await assertClientCanCreateLoanLead(
+          validatedData.fineractClientId,
+          (clientId) => fineractService.getClientServicingStatus(clientId)
+        );
+      }
       existingClientOfficeTransfer = await ensureExistingClientInCreatorOffice({
         client: await fineractService.getClient(validatedData.fineractClientId),
         creatorOfficeId: session.user.officeId,
@@ -149,10 +149,14 @@ export async function autoSaveField(
 
     if (leadId) {
       console.log("Updating existing lead:", leadId);
-      const existingLead = await prisma.lead.findUnique({
-        where: { id: leadId },
-        select: { currentStageId: true },
+      const existingLead = await prisma.lead.findFirst({
+        where: { id: leadId, tenantId },
+        select: { currentStageId: true, stateMetadata: true },
       });
+
+      if (!existingLead) {
+        throw new Error("Lead not found in your tenant workspace.");
+      }
 
       // Update existing lead
       const updatedLead = await prisma.lead.update({
@@ -239,9 +243,11 @@ export async function autoSaveField(
           ...(validatedData.clientClassificationName !== undefined && {
             clientClassificationName: validatedData.clientClassificationName,
           }),
-          ...(validatedData.submittedOnDate !== undefined && {
-            submittedOnDate: validatedData.submittedOnDate,
-          }),
+          // Client-form autosave must not replace the loan submitted-on date.
+          stateMetadata: withClientSubmittedOnDate(
+            existingLead?.stateMetadata,
+            validatedData.submittedOnDate,
+          ),
           ...(validatedData.active !== undefined && {
             active: validatedData.active,
           }),
@@ -318,7 +324,11 @@ export async function autoSaveField(
               validatedData.clientClassificationId || null,
             clientClassificationName:
               validatedData.clientClassificationName || null,
-            submittedOnDate: validatedData.submittedOnDate || new Date(),
+            submittedOnDate: getFineractBusinessToday(),
+            stateMetadata: withClientSubmittedOnDate(
+              undefined,
+              validatedData.submittedOnDate,
+            ),
             active: validatedData.active || true,
             activationDate: validatedData.activationDate || null,
             openSavingsAccount: validatedData.openSavingsAccount || false,
@@ -387,7 +397,11 @@ export async function autoSaveField(
               validatedData.clientClassificationId || null,
             clientClassificationName:
               validatedData.clientClassificationName || null,
-            submittedOnDate: validatedData.submittedOnDate || new Date(),
+            submittedOnDate: getFineractBusinessToday(),
+            stateMetadata: withClientSubmittedOnDate(
+              undefined,
+              validatedData.submittedOnDate,
+            ),
             active: validatedData.active || true,
             activationDate: validatedData.activationDate || null,
             openSavingsAccount: validatedData.openSavingsAccount || false,

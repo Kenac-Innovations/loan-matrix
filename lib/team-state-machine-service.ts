@@ -5,6 +5,8 @@ import { getFineractServiceWithSession } from "./fineract-api";
 import { applyTopupDisbursementCharges } from "./topup-disbursement-charge-service";
 import { getPaymentTypeInfo, isPaymentTypeCash } from "./cash-repayment-teller";
 import { resolveCurrentUserCashierContext } from "./current-user-cashier";
+import { assertCashierNotPendingClosure } from "./cashier-session-guards";
+import { assertCashDisbursementAllowed, assertCashPaymentGate } from "./cashier-session-disbursement-gate";
 import {
   shouldBypassCashierRestrictionsForLoanDisbursement,
   shouldSkipManualFineractCashierSettleForLoanDisbursement,
@@ -40,15 +42,25 @@ import {
   isAutoDisbursementDecisionAllowed,
   resolveAutoProgressTriggeredBy,
 } from "./lead-auto-disbursement-policy";
+import { getRequiredPaymentServiceCallbackUrl } from "./payment-service-callback-url";
 import { getTenantAutoDisbursementRules } from "./tenant-auto-disbursement-rules";
 import { resolvePaymentTypeForPreferredMethod } from "./payment-method-resolution";
 import { resolveYangoUssdDisbursementDetailsForLead } from "./yango-ussd-disbursement";
+import {
+  initiateSalaryAdvanceGeePaySettlement,
+  requiresGeePaySettlement,
+} from "./salary-advance-geepay-settlement";
 import {
   applyArdaInventoryWorkflowOperation,
   getArdaStockDetails,
   validateArdaInventoryWorkflowOperation,
 } from "./inventory/arda-stock-workflow-service";
 import { runArdaStockDisbursementGuard } from "./arda-stock-disbursement-guard";
+import {
+  getLeadFineractGuardActions,
+  validateLeadFineractTransition,
+} from "./lead-transition-guard";
+import type { LeadTransitionGuardLoan } from "./lead-transition-guard";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -352,6 +364,29 @@ export class TeamAwareStateMachineService {
         throw new Error("Cash payout requires a cash disbursement payment type");
       }
 
+      // Resolve explicit cashier DB id and check session closure compliance
+      let explicitCashierId: string | undefined;
+      if (overrides.cashierId) {
+        const rawId = String(overrides.cashierId);
+        const cashierRecord = await prisma.cashier.findFirst({
+          where: {
+            tenantId: lead.tenantId,
+            OR: [
+              { id: rawId },
+              ...(Number.isFinite(Number(rawId)) ? [{ fineractCashierId: Number(rawId) }] : []),
+            ],
+          },
+          select: { id: true },
+        });
+        explicitCashierId = cashierRecord?.id;
+      }
+      await assertCashDisbursementAllowed({
+        tenantId: lead.tenantId,
+        isCash: true,
+        fineractUserId: triggeredBy,
+        cashierIds: explicitCashierId ? [explicitCashierId] : undefined,
+      });
+
       if (!overrides.tellerId || !overrides.cashierId) {
         const cashierContext = await resolveCurrentUserCashierContext(
           lead.tenantId,
@@ -622,6 +657,8 @@ export class TeamAwareStateMachineService {
       return `Auto disbursement stopped: ${paymentResolution.error}`;
     }
 
+    const requiresSettlement = requiresGeePaySettlement(rule);
+
     let currentLead = lead;
     const attemptedStages: Array<Record<string, unknown>> = [];
 
@@ -661,11 +698,16 @@ export class TeamAwareStateMachineService {
         triggeredBy: effectiveTriggeredBy,
         reason: `Auto-progressed after CDE ${cdeResult.decision}`,
         fineractOverrides: isDisbursementHop
-          ? {
-              ...paymentResolution.fineractOverrides,
-              note: `Auto-progressed after CDE ${cdeResult.decision}`,
-              payoutNote: `Auto-progressed after CDE ${cdeResult.decision}`,
-            }
+          ? requiresSettlement
+            ? {
+                paymentTypeId: paymentResolution.fineractOverrides.paymentTypeId,
+                accountNumber: paymentResolution.fineractOverrides.accountNumber,
+                note: `Auto-progressed after CDE ${cdeResult.decision}; awaiting GeePay settlement`,
+              }
+            : {
+                ...paymentResolution.fineractOverrides,
+                payoutNote: `Auto-progressed after CDE ${cdeResult.decision}`,
+              }
           : {
               note: `Auto-progressed after CDE ${cdeResult.decision}`,
         },
@@ -702,6 +744,33 @@ export class TeamAwareStateMachineService {
       currentLead = reloadedLead;
 
       if (isDisbursementHop) {
+        if (requiresSettlement) {
+          const settlement = await initiateSalaryAdvanceGeePaySettlement({
+            leadId: currentLead.id,
+            rule,
+          });
+
+          await this.updateLeadAutoDisbursementMetadata(currentLead.id, {
+            status:
+              settlement.outcome === "settled"
+                ? "completed"
+                : settlement.outcome === "pending"
+                  ? "payment_pending"
+                  : "stopped",
+            cdeDecision: cdeResult.decision,
+            attemptedStages,
+            lastCompletedStageId: currentLead.currentStageId,
+            lastCompletedStageName: currentLead.currentStage?.name || null,
+            stopReason:
+              settlement.outcome === "manual_review" ? settlement.message : null,
+            ...(settlement.outcome === "settled"
+              ? { completedAt: new Date().toISOString() }
+              : {}),
+          });
+
+          return settlement.message;
+        }
+
         await this.updateLeadAutoDisbursementMetadata(currentLead.id, {
           status: "completed",
           cdeDecision: cdeResult.decision,
@@ -836,15 +905,86 @@ export class TeamAwareStateMachineService {
       // Update request to use the resolved target
       request.targetStageId = resolvedTargetStageId;
 
-      // 1d. Execute Fineract actions from skipped stages in pipeline order
+      // Resolve the effective stage before doing anything that can mutate
+      // assignment state. Fineract lifecycle guards below must run before
+      // assignment, inventory, external actions, or the local commit.
+      const targetStage = await prisma.pipelineStage.findUnique({
+        where: { id: request.targetStageId },
+      });
+      const currentFineractAction = lead.currentStage?.fineractAction;
+      const isBackward = targetStage && lead.currentStage
+        && (targetStage.order ?? 999) < (lead.currentStage.order ?? 0);
+      const combinedPayoutWithDisbursement =
+        targetStage?.fineractAction === "disburse" &&
+        !isBackward &&
+        Boolean(request.fineractOverrides?.payoutMethod);
+
+      // Load skipped stages even when the local loan link is absent so an
+      // action on a skipped stage cannot silently become a local-only move.
       const skippedActionResults: string[] = [];
       let skippedStageRecords: any[] = [];
-      if (skippedStages.length > 0 && lead.fineractLoanId) {
+      if (skippedStages.length > 0) {
         skippedStageRecords = await prisma.pipelineStage.findMany({
           where: { id: { in: skippedStages } },
           orderBy: { order: "asc" },
         });
+      }
 
+      const effectiveStageActions = !isBackward
+        ? [
+            ...skippedStageRecords.map((stage) => stage.fineractAction),
+            targetStage?.fineractAction,
+            ...(combinedPayoutWithDisbursement ? ["payout"] : []),
+          ]
+        : [];
+      const guardedActions = getLeadFineractGuardActions(
+        lead,
+        effectiveStageActions
+      );
+
+      if (guardedActions.length > 0) {
+        let remoteLoan: unknown = null;
+        if (lead.fineractLoanId != null) {
+          try {
+            const fineract = await getFineractServiceWithSession();
+            remoteLoan = await fineract.getLoan(lead.fineractLoanId);
+          } catch (guardError) {
+            console.warn(
+              `[StateTransition] Could not verify Fineract loan lifecycle for lead ${lead.id}:`,
+              guardError
+            );
+          }
+        }
+
+        const transitionGuard = validateLeadFineractTransition({
+          lead,
+          actions: guardedActions,
+          remoteLoan: remoteLoan as LeadTransitionGuardLoan | null,
+        });
+        if (!transitionGuard.allowed) {
+          return {
+            success: false,
+            message: transitionGuard.message || "Fineract transition blocked",
+          };
+        }
+      }
+
+      // Gate cash disbursements/payouts before any skipped-stage Fineract actions (e.g.
+      // approve/disburse), so a blocked cashier can't leave the loan half-progressed.
+      if (
+        !isBackward &&
+        (targetStage?.fineractAction === "disburse" || targetStage?.fineractAction === "payout")
+      ) {
+        await assertCashPaymentGate({
+          tenantId: lead.tenantId,
+          payoutMethod: request.fineractOverrides?.payoutMethod,
+          paymentTypeId: request.fineractOverrides?.paymentTypeId,
+          fineractUserId: request.triggeredBy,
+        });
+      }
+
+      // 1d. Execute Fineract actions from skipped stages in pipeline order
+      if (skippedStages.length > 0 && lead.fineractLoanId && !isBackward) {
         for (const skipped of skippedStageRecords) {
           if (skipped.fineractAction && skipped.fineractAction !== "payout") {
             console.log(
@@ -898,12 +1038,6 @@ export class TeamAwareStateMachineService {
       // 3. Determine if moving backward from a stage that had a Fineract action.
       //    If the CURRENT stage executed an action (approve/disburse/payout),
       //    undo it before proceeding.
-      const targetStage = await prisma.pipelineStage.findUnique({
-        where: { id: request.targetStageId },
-      });
-      const currentFineractAction = lead.currentStage?.fineractAction;
-      const isBackward = targetStage && lead.currentStage
-        && (targetStage.order ?? 999) < (lead.currentStage.order ?? 0);
       const disbursementBlockReason =
         !isBackward && isDisbursementActionStage(targetStage)
           ? getDisbursementBlockReason({
@@ -923,11 +1057,6 @@ export class TeamAwareStateMachineService {
           message: disbursementBlockReason,
         };
       }
-
-      const combinedPayoutWithDisbursement =
-        targetStage?.fineractAction === "disburse" &&
-        !isBackward &&
-        Boolean(request.fineractOverrides?.payoutMethod);
 
       // ARDA stock must be available before Fineract is asked to approve or
       // disburse the loan. The matching ledger operation is recorded only
@@ -1769,6 +1898,15 @@ export class TeamAwareStateMachineService {
             ? loanDisbursementAmount
             : undefined);
 
+        // Gate cash disbursements (module-off tenants make no extra calls).
+        if (lead?.tenantId && disbursementPaymentTypeId) {
+          await assertCashPaymentGate({
+            tenantId: lead.tenantId,
+            paymentTypeId: disbursementPaymentTypeId,
+            fineractUserId: triggeredBy,
+          });
+        }
+
         await runArdaStockDisbursementGuard({
           appTenantSlug: lead?.tenant?.slug || lead?.tenantSlug || "",
           tenantSettings: lead?.tenant?.settings,
@@ -1784,7 +1922,9 @@ export class TeamAwareStateMachineService {
             bankNumber: overrides?.bankNumber,
             externalId: yangoUssdDetails?.externalId ?? overrides?.externalId,
             transactionAmount: yangoUssdDetails ? transactionAmount : overrides?.transactionAmount,
-            note: overrides?.note,
+            note: yangoUssdDetails
+              ? getRequiredPaymentServiceCallbackUrl()
+              : overrides?.note,
           }),
         });
 
@@ -2264,6 +2404,17 @@ export class TeamAwareStateMachineService {
       const fineractCashierId =
         cashier?.fineractCashierId ??
         (Number.isNaN(rawCashierId) ? null : rawCashierId);
+
+      // Ensure cashier is not in PENDING_CLOSURE state (freeze gap for session closure)
+      await assertCashierNotPendingClosure(lead.tenantId, cashier?.id);
+
+      // Check session closure compliance for cash disbursements
+      await assertCashDisbursementAllowed({
+        tenantId: lead.tenantId,
+        isCash: true,
+        fineractUserId: triggeredBy,
+        cashierIds: cashier?.id ? [cashier.id] : undefined,
+      });
 
       // Format date for Fineract
       const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];

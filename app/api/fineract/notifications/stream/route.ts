@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
+import { createFineractErrorResponsePayload } from "@/lib/fineract-route-error";
 
 const POLLING_INTERVAL = 30000; // 30 seconds
 
@@ -50,7 +51,20 @@ export async function GET(request: NextRequest) {
           });
 
           if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            const errorBody = await response.text().catch(() => "");
+            const errorResponse = createFineractErrorResponsePayload(
+              {
+                status: response.status,
+                errorData: errorBody,
+                response: { statusText: response.statusText },
+              },
+              {
+                action: "load",
+                resource: "notifications",
+              }
+            );
+
+            throw new Error(errorResponse.body.error);
           }
 
           const data = await response.json();

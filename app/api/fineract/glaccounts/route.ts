@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 
 /**
  * GET    /api/fineract/glaccounts         - list all GL accounts (optional)
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
     console.error('Error creating GL account:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -26,6 +27,6 @@ export async function GET() {
     return NextResponse.json({ chartAccounts: data });
   } catch (error: any) {
     console.error('Error listing GL accounts:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return buildFineractErrorResponse(error);
   }
 }

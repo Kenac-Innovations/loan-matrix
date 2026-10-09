@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import {
   extractTenantSlugFromRequest,
   getTenantBySlug,
@@ -69,44 +70,11 @@ export async function GET(
       uploadRecords.map((record) => [record.documentId, record])
     );
 
-    // Try different possible Fineract endpoints for client documents
-    let data;
-
-    // First try the standard documents endpoint with client filter
-    try {
-      const endpoint = `/documents?entityType=clients&entityId=${clientId}&offset=${offset}&limit=${limit}`;
-      data = await fetchFineractAPI(endpoint, { authMode: "service" });
-    } catch (e) {
-      console.log("First endpoint failed, trying alternative...", e);
-
-      // Try alternative endpoint
-      try {
-        const endpoint = `/clients/${clientId}/documents?offset=${offset}&limit=${limit}`;
-        data = await fetchFineractAPI(endpoint, { authMode: "service" });
-      } catch (e2) {
-        console.log("Second endpoint failed, trying documents endpoint...", e2);
-
-        // Try the general documents endpoint
-        try {
-          const endpoint = `/documents?offset=${offset}&limit=${limit}`;
-          data = await fetchFineractAPI(endpoint, { authMode: "service" });
-
-          // Filter by client ID if we get all documents
-          if (data && Array.isArray(data.pageItems)) {
-            data.pageItems = data.pageItems.filter(
-              (doc: {
-                parentEntityType?: string;
-                parentEntityId?: string | number;
-              }) =>
-                doc.parentEntityType === "clients" &&
-                doc.parentEntityId == clientId
-            );
-          }
-        } catch (e3) {
-          throw e3;
-        }
-      }
-    }
+    // Fineract exposes client attachments at the client-scoped endpoint.
+    // The generic `/documents?entityType=...` route is not available in the
+    // deployed Fineract version and generated a noisy 404 before every load.
+    const endpoint = `/clients/${clientId}/documents?offset=${offset}&limit=${limit}`;
+    let data = await fetchFineractAPI(endpoint, { authMode: "service" });
 
     if (data && Array.isArray(data)) {
       data = enrichDocuments(data as FineractDocumentWithUpload[], uploadRecordMap);
@@ -129,12 +97,11 @@ export async function GET(
 
     return NextResponse.json(data);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Error fetching client documents:", error);
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "client documents",
+    });
   }
 }
 
@@ -243,25 +210,9 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error) {
     console.error("Error uploading client document:", error);
-
-    // If it's a Fineract API error with status code, preserve it
-    const fineractError = error as {
-      status?: number;
-      errorData?: unknown;
-    };
-
-    if (fineractError.status && fineractError.errorData) {
-      return NextResponse.json(fineractError.errorData, {
-        status: fineractError.status,
-      });
-    }
-
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Failed to upload document",
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "upload",
+      resource: "document",
+    });
   }
 }

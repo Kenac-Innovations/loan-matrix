@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 /**
  * GET /api/fineract/clients/[id]/addresses
@@ -22,16 +23,10 @@ export async function GET(
     if (error?.status === 404) {
       return NextResponse.json([]);
     }
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to fetch client addresses",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "client addresses",
+    });
   }
 }
 
@@ -47,8 +42,9 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
 
-    // Get addressType - required for the query parameter
-    let addressType = body.addressType;
+    // Accept the legacy browser field, but Fineract requires `addressType` in
+    // the request body. The `type` query parameter selects the address type.
+    let addressType = body.addressType ?? body.addressTypeId;
     if (typeof addressType === "string") {
       addressType = parseInt(addressType);
     }
@@ -59,11 +55,10 @@ export async function POST(
       );
     }
 
-    // Build payload matching the working curl format exactly
-    // Body uses: {"addressType":17,"addressLine1":"...","addressLine2":"...","addressLine3":"...","city":"...","stateProvinceId":100,"countryId":99,"postalCode":"..."}
+    // Fineract rejects `addressTypeId` in this payload; it expects
+    // `addressType` alongside the `type` query parameter.
     const payload: any = {};
 
-    // Add addressType as number
     payload.addressType = addressType;
 
     // Add string fields
@@ -109,15 +104,9 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error creating client address:", error);
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to create client address",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "create",
+      resource: "address",
+    });
   }
 }

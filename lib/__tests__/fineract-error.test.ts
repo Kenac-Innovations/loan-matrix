@@ -29,3 +29,89 @@ test("prefers the nested Fineract validation error over the generic domain-rule 
     "error msg cannot transfer client as loan transaction present on or after transfer date"
   );
 });
+
+test("masks technical document storage failures with a safe upload message", async () => {
+  const { parseFineractErrorResponse } = await import("../fineract-error");
+
+  const message = parseFineractErrorResponse({
+    developerMessage: "Request was understood but caused a domain rule violation.",
+    httpStatusCode: "403",
+    defaultUserMessage: "Errors contain reason for domain rule violation.",
+    userMessageGlobalisationCode: "validation.msg.domain.rule.violation",
+    errors: [
+      {
+        developerMessage:
+          "Error while manipulating file payslip.pdf due to a ContentRepository issue Storage backend has reached its minimum free drive threshold.",
+        defaultUserMessage:
+          "Error while manipulating file payslip.pdf due to a ContentRepository issue Storage backend has reached its minimum free drive threshold.",
+        userMessageGlobalisationCode: "error.msg.document.save",
+      },
+    ],
+  });
+
+  assert.equal(
+    message,
+    "Document upload is temporarily unavailable. Please try again later or contact support."
+  );
+});
+
+test("maps datatable not-found responses to a user-friendly empty-data message", async () => {
+  const { parseFineractErrorResponse } = await import("../fineract-error");
+
+  const message = parseFineractErrorResponse({
+    developerMessage: "The requested resource is not available.",
+    httpStatusCode: "404",
+    defaultUserMessage: "The requested resource is not available.",
+    userMessageGlobalisationCode: "error.msg.resource.not.found",
+    errors: [
+      {
+        developerMessage: "Data not found for datatable: ",
+        defaultUserMessage: "Data not found for datatable: ",
+        userMessageGlobalisationCode: "error.msg.datatable.data.not.found",
+      },
+    ],
+  });
+
+  assert.equal(message, "No information is available for this section yet.");
+});
+
+test("masks generic internal server errors with a safe default fallback", async () => {
+  const { parseFineractErrorResponse } = await import("../fineract-error");
+
+  const message = parseFineractErrorResponse({
+    timestamp: "2026-08-05T21:17:14.338Z",
+    status: 500,
+    error: "Internal Server Error",
+    httpStatusCode: "500",
+    defaultUserMessage: "Internal Server Error",
+    developerMessage: "Internal Server Error",
+    errors: [],
+  });
+
+  assert.equal(message, "The operation failed. Please try again.");
+});
+
+test("uses action context to make generic server errors user friendly", async () => {
+  const { getFineractErrorMessage } = await import("../fineract-error");
+
+  const message = getFineractErrorMessage(
+    {
+      status: 500,
+      errorData: {
+        timestamp: "2026-08-05T21:17:14.338Z",
+        status: 500,
+        error: "Internal Server Error",
+        httpStatusCode: "500",
+        defaultUserMessage: "Internal Server Error",
+        developerMessage: "Internal Server Error",
+        errors: [],
+      },
+    },
+    {
+      action: "update",
+      resource: "address",
+    }
+  );
+
+  assert.equal(message, "We couldn't update the address. Please try again.");
+});

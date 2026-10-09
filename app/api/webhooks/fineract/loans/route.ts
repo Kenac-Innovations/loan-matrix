@@ -6,6 +6,10 @@ import {
   getTenantLeadPolicyFlags,
 } from "@/lib/lead-policy";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
+import {
+  LeadLoanLinkingError,
+  reconcileLeadLoan,
+} from "@/lib/lead-loan-linking";
 
 /**
  * Fineract Loan Webhook Handler
@@ -66,6 +70,85 @@ function isValidSystemExternalId(externalId: string | undefined | null): boolean
   return externalId.startsWith("c") && externalId.length >= 20;
 }
 
+type AlertCreateInput = {
+  data: {
+    tenantId: string;
+    mifosUserId: number;
+    type: string;
+    title: string;
+    message: string;
+    actionUrl?: string;
+    actionLabel?: string;
+    metadata?: Record<string, unknown>;
+    createdBy?: string;
+  };
+};
+
+const inFlightAlertCreates = new Map<string, Promise<unknown>>();
+
+function sameAlertEvent(
+  metadata: unknown,
+  expected: Record<string, unknown>
+): boolean {
+  if (!metadata || typeof metadata !== "object") return false;
+  const value = metadata as Record<string, unknown>;
+  return (
+    String(value.loanId ?? "") === String(expected.loanId ?? "") &&
+    String(value.externalId ?? "") === String(expected.externalId ?? "") &&
+    String(value.action ?? "") === String(expected.action ?? "")
+  );
+}
+
+/**
+ * Alert has no event-key column in the existing schema.  Use the stable
+ * tenant/user/title/event tuple as an idempotency key and inspect metadata
+ * before creating it; the in-flight map also closes the common same-process
+ * concurrent replay race.
+ */
+async function createAlertOnce(input: AlertCreateInput) {
+  const metadata = input.data.metadata || {};
+  const key = [
+    input.data.tenantId,
+    input.data.mifosUserId,
+    input.data.title,
+    metadata.loanId,
+    metadata.externalId,
+    metadata.action,
+  ].join(":");
+
+  const existingInFlight = inFlightAlertCreates.get(key);
+  if (existingInFlight) return existingInFlight;
+
+  const operation = (async () => {
+    const existing = await prisma.alert.findMany({
+      where: {
+        tenantId: input.data.tenantId,
+        mifosUserId: input.data.mifosUserId,
+        title: input.data.title,
+      },
+      select: { metadata: true },
+      take: 100,
+    });
+
+    if (
+      existing.some((alert: { metadata: unknown }) =>
+        sameAlertEvent(alert.metadata, metadata)
+      )
+    ) {
+      return null;
+    }
+
+    return prisma.alert.create(input as any);
+  })();
+
+  inFlightAlertCreates.set(key, operation);
+  try {
+    return await operation;
+  } finally {
+    inFlightAlertCreates.delete(key);
+  }
+}
+
 // POST /api/webhooks/fineract/loans
 export async function POST(request: NextRequest) {
   try {
@@ -97,9 +180,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle different loan actions
+    let terminal = false;
     switch (payload.actionName) {
       case "CREATE":
-        await handleLoanCreated(payload, tenant.id);
+        terminal = (await handleLoanCreated(payload, tenant.id)).terminal;
         break;
       case "APPROVE":
         await handleLoanApproved(payload, tenant.id);
@@ -114,12 +198,35 @@ export async function POST(request: NextRequest) {
         console.log("Unhandled action:", payload.actionName);
     }
 
+    if (terminal) {
+      return NextResponse.json(
+        {
+          success: false,
+          terminal: true,
+          message:
+            "The exact Fineract loan was linked, but it is already rejected or withdrawn.",
+        },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json({ 
       success: true, 
       message: `Webhook processed for action: ${payload.actionName}` 
     });
   } catch (error) {
     console.error("Error processing Fineract loan webhook:", error);
+    if (error instanceof LeadLoanLinkingError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          code: error.code,
+          details: error.details,
+        },
+        { status: error.status }
+      );
+    }
     return NextResponse.json(
       { error: "Failed to process webhook" },
       { status: 500 }
@@ -130,37 +237,86 @@ export async function POST(request: NextRequest) {
 /**
  * Handle new loan created - notify authorizers and the applicant
  */
-async function handleLoanCreated(payload: FineractLoanWebhookPayload, tenantId: string) {
+async function handleLoanCreated(
+  payload: FineractLoanWebhookPayload,
+  tenantId: string
+): Promise<{ terminal: boolean }> {
   const { response, request, createdBy, createdByFullName } = payload;
   const loanId = response.loanId;
   const externalId = response.resourceExternalId || request.externalId;
   const principal = request.principal;
-  
-  // Try to find client name from lead
-  let clientName = "Unknown Client";
-  let leadId = externalId;
-  
-  if (externalId) {
-    const lead = await prisma.lead.findFirst({
-      where: { 
-        OR: [
-          { id: externalId },
-          { externalId: externalId }
-        ]
-      },
-      select: { id: true, firstname: true, lastname: true },
-    });
-    
-    if (lead) {
-      clientName = [lead.firstname, lead.lastname].filter(Boolean).join(" ") || "Unknown Client";
-      leadId = lead.id;
-    }
+
+  if (!externalId || !loanId) {
+    throw new LeadLoanLinkingError(
+      "The Fineract CREATE webhook is missing the lead external ID or loan ID",
+      { status: 400, code: "WEBHOOK_LOAN_IDENTITY_MISSING" }
+    );
   }
+
+  if (
+    response.resourceExternalId &&
+    request.externalId &&
+    response.resourceExternalId !== request.externalId
+  ) {
+    throw new LeadLoanLinkingError(
+      "The Fineract CREATE webhook contains conflicting external IDs",
+      {
+        status: 409,
+        code: "WEBHOOK_EXTERNAL_ID_CONFLICT",
+        details: {
+          responseExternalId: response.resourceExternalId,
+          requestExternalId: request.externalId,
+        },
+      }
+    );
+  }
+
+  const expectedClientId = Number(
+    response.clientId || request.clientId || payload.clientId
+  );
+  const reconciliation = await reconcileLeadLoan({
+    tenantId,
+    leadId: externalId,
+    expectedClientId,
+    allowCreate: false,
+    remoteLoan: {
+      id: loanId,
+      resourceId: response.resourceId,
+      externalId,
+      resourceExternalId: externalId,
+      clientId: expectedClientId,
+      status: response.changes?.status,
+    },
+  });
+
+  // Find only the exact tenant-scoped Lead.  In particular, never fall back to
+  // a same-NRC/sibling Lead when Fineract sends a reused external ID.
+  const lead = await prisma.lead.findFirst({
+    where: { id: externalId, tenantId },
+    select: { id: true, firstname: true, lastname: true },
+  });
+
+  if (!lead) {
+    throw new LeadLoanLinkingError("Lead not found in webhook tenant", {
+      status: 404,
+      code: "LEAD_NOT_FOUND",
+      details: { leadId: externalId, tenantId },
+    });
+  }
+
+  if (reconciliation.terminal) {
+    return { terminal: true };
+  }
+
+  const clientName =
+    [lead.firstname, lead.lastname].filter(Boolean).join(" ") ||
+    "Unknown Client";
+  const leadId = lead.id;
 
   const loanAmount = principal ? `$${principal.toLocaleString()}` : "N/A";
 
   // 1. Create alert for the user who submitted (createdBy)
-  await prisma.alert.create({
+  await createAlertOnce({
     data: {
       tenantId,
       mifosUserId: createdBy,
@@ -172,7 +328,7 @@ async function handleLoanCreated(payload: FineractLoanWebhookPayload, tenantId: 
       metadata: {
         loanId,
         externalId,
-        clientId: response.clientId,
+      clientId: reconciliation.clientId,
         principal,
         action: "CREATE",
       },
@@ -192,7 +348,7 @@ async function handleLoanCreated(payload: FineractLoanWebhookPayload, tenantId: 
   });
 
   if (authorizerRoles.length > 0) {
-    const roleIds = authorizerRoles.map((r) => r.id);
+    const roleIds = authorizerRoles.map((r: { id: string }) => r.id);
     
     // Find all users with these roles
     const authorizers = await prisma.userRole.findMany({
@@ -205,8 +361,8 @@ async function handleLoanCreated(payload: FineractLoanWebhookPayload, tenantId: 
     });
 
     // Create alerts for each authorizer
-    const alertPromises = authorizers.map((authorizer) =>
-      prisma.alert.create({
+    const alertPromises = authorizers.map((authorizer: { mifosUserId: number }) =>
+      createAlertOnce({
         data: {
           tenantId,
           mifosUserId: authorizer.mifosUserId,
@@ -218,7 +374,7 @@ async function handleLoanCreated(payload: FineractLoanWebhookPayload, tenantId: 
           metadata: {
             loanId,
             externalId,
-            clientId: response.clientId,
+            clientId: reconciliation.clientId,
             principal,
             submittedBy: createdByFullName,
             action: "CREATE",
@@ -233,6 +389,7 @@ async function handleLoanCreated(payload: FineractLoanWebhookPayload, tenantId: 
   }
 
   console.log("Loan CREATE alerts created successfully");
+  return { terminal: reconciliation.terminal };
 }
 
 /**
@@ -258,7 +415,6 @@ async function handleLoanApproved(payload: FineractLoanWebhookPayload, tenantId:
   const queryConditions: any[] = [];
   if (externalId) {
     queryConditions.push({ id: externalId });
-    queryConditions.push({ externalId: externalId });
   }
   if (loanId) {
     queryConditions.push({ fineractLoanId: loanId });
@@ -269,7 +425,7 @@ async function handleLoanApproved(payload: FineractLoanWebhookPayload, tenantId:
   // Get the loan record to find the originator
   const loanRecord = queryConditions.length > 0 
     ? await prisma.lead.findFirst({
-        where: { OR: queryConditions },
+        where: { tenantId, OR: queryConditions },
         select: {
           id: true,
           firstname: true,
@@ -418,9 +574,9 @@ async function handleLoanRejected(payload: FineractLoanWebhookPayload, tenantId:
   if (externalId) {
     const lead = await prisma.lead.findFirst({
       where: { 
+        tenantId,
         OR: [
           { id: externalId },
-          { externalId: externalId },
           { fineractLoanId: loanId }
         ]
       },
@@ -499,9 +655,9 @@ async function handleLoanDisbursed(payload: FineractLoanWebhookPayload, tenantId
   if (externalId) {
     const lead = await prisma.lead.findFirst({
       where: { 
+        tenantId,
         OR: [
           { id: externalId },
-          { externalId: externalId },
           { fineractLoanId: loanId }
         ]
       },

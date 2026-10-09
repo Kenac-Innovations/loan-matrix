@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
-import { hasSuperAdminServer } from "@/lib/authorization";
+import {
+  hasPermissionServer,
+  hasSuperAdminServer,
+} from "@/lib/authorization";
+import {
+  isSensitiveClientEditRestrictionEnabled,
+  stripRestrictedClientEditFields,
+} from "@/lib/client-edit-restrictions";
 import {
   formatMobileForFineract,
   resolveCountryDialCodeForPhone,
 } from "@/lib/phone-utils";
+import { SpecificPermission } from "@/shared/types/auth";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
-import { normalizeUssdPhoneNumber } from "@/lib/ussd-admin-client";
-import {
-  updateUssdClientPhone,
-  USSD_PHONE_UPDATE_NON_BLOCKING_STATUSES,
-} from "@/lib/ussd-client-sync";
 
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) {
@@ -91,7 +94,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await hasSuperAdminServer())) {
+    if (!(await hasPermissionServer(SpecificPermission.UPDATE_CLIENT))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -102,12 +105,21 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid client ID" }, { status: 400 });
     }
 
+    const [tenant, isSuperAdmin] = await Promise.all([
+      getTenantFromHeaders(),
+      hasSuperAdminServer(),
+    ]);
+    const restrictSensitiveFields =
+      isSensitiveClientEditRestrictionEnabled(tenant?.settings) &&
+      !isSuperAdmin;
+
     const body = await request.json();
-    const outboundBody =
+    let outboundBody =
       typeof body === "object" && body !== null ? { ...body } : body;
 
-    let ussdPhoneSyncWarning: { status: string; message: string } | null =
-      null;
+    if (restrictSensitiveFields) {
+      outboundBody = stripRestrictedClientEditFields(outboundBody);
+    }
 
     if (
       typeof outboundBody === "object" &&
@@ -135,51 +147,6 @@ export async function PUT(
       );
       outboundBody.mobileNo = formattedMobileNo;
 
-      const phoneNumberChanged =
-        !!existingMobileNo &&
-        normalizeUssdPhoneNumber(existingMobileNo) !==
-          normalizeUssdPhoneNumber(formattedMobileNo);
-
-      if (phoneNumberChanged) {
-        const tenant = await getTenantFromHeaders();
-        const ussdServiceTenantId = tenant?.ussdServiceTenantId?.trim();
-
-        if (ussdServiceTenantId) {
-          try {
-            const ussdResult = await updateUssdClientPhone({
-              ussdServiceTenantId,
-              externalId: clientId,
-              currentPhoneNumber: existingMobileNo as string,
-              newPhoneNumber: formattedMobileNo,
-            });
-
-            if (
-              !ussdResult.success &&
-              !USSD_PHONE_UPDATE_NON_BLOCKING_STATUSES.has(ussdResult.status)
-            ) {
-              console.warn(
-                `USSD phone sync failed for client ${clientId} (status=${ussdResult.status}); leaving phone number unchanged in Fineract.`
-              );
-              delete outboundBody.mobileNo;
-              ussdPhoneSyncWarning = {
-                status: ussdResult.status,
-                message: ussdResult.message,
-              };
-            }
-          } catch (ussdError) {
-            console.error(
-              `USSD phone sync failed for client ${clientId}:`,
-              ussdError
-            );
-            delete outboundBody.mobileNo;
-            ussdPhoneSyncWarning = {
-              status: "USSD_UNAVAILABLE",
-              message:
-                "Could not reach the USSD service to sync the phone number",
-            };
-          }
-        }
-      }
     }
 
     const data = await fetchFineractAPI(`/clients/${clientId}`, {
@@ -187,14 +154,6 @@ export async function PUT(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(outboundBody),
     });
-
-    if (ussdPhoneSyncWarning) {
-      const responseBody =
-        typeof data === "object" && data !== null
-          ? { ...data, ussdPhoneSync: { success: false, ...ussdPhoneSyncWarning } }
-          : { data, ussdPhoneSync: { success: false, ...ussdPhoneSyncWarning } };
-      return NextResponse.json(responseBody);
-    }
 
     return NextResponse.json(data);
   } catch (error: unknown) {

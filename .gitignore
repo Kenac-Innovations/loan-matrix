@@ -16,6 +16,7 @@
 # next.js
 /.next/
 /out/
+/public/html2pdf.bundle.min.js
 
 # production
 /build

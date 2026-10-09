@@ -222,7 +222,7 @@ test("maps ARDA workflow stages to reserve, release, and issue stock actions", (
 
   // This is the same shape used by the state-transition service, which loads
   // tenant as a relation instead of projecting a tenantSlug field.
-  const { tenantSlug: _tenantSlug, ...leadWithTenantRelation } = lead;
+  const leadWithTenantRelation = { ...lead, tenantSlug: undefined };
   assert.equal(
     getArdaInventoryWorkflowOperation(
       { ...leadWithTenantRelation, tenant: { slug: "arda" } },

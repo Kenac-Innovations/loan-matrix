@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
 
 /**
@@ -17,9 +18,6 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching guarantors template:', error);
-    return NextResponse.json(
-      { error: error.message || 'Unknown error' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

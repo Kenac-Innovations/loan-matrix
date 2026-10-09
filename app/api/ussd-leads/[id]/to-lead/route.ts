@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getSession } from '@/lib/auth';
 import { createOrReuseLeadFromUssdApplication } from '@/lib/ussd-lead-creation-service';
+import { ClientServicingLeadRestrictionError } from '@/lib/client-servicing-lead-guard';
 
 /**
  * POST /api/ussd-leads/[id]/to-lead
@@ -39,6 +40,12 @@ export async function POST(
     });
   } catch (error: any) {
     console.error('Error creating Lead from USSD application:', error);
-    return NextResponse.json({ error: error.message || 'Unknown error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || 'Unknown error' },
+      {
+        status:
+          error instanceof ClientServicingLeadRestrictionError ? 409 : 500,
+      }
+    );
   }
 }

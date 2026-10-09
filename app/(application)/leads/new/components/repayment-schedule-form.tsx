@@ -22,6 +22,10 @@ import {
 } from "@/components/ui/table";
 import { format } from "date-fns";
 import {
+  formatFineractBusinessDate,
+  isFineractBusinessDateAfter,
+} from "@/lib/fineract-business-date";
+import {
   recomputeTopupAwareDisbursementChargeAmounts,
   type EditableLoanChargeRow,
 } from "@/lib/topup-charge-base";
@@ -105,6 +109,20 @@ function resolveLoanScheduleTypeCode(
   return loanScheduleType;
 }
 
+function getTemplateExpectedDisbursementDate(
+  template: { expectedDisbursementDate?: unknown } | null | undefined,
+): string | undefined {
+  const value = template?.expectedDisbursementDate;
+  if (!Array.isArray(value) || value.length < 3) return undefined;
+
+  const [year, month, day] = value.map(Number);
+  if (![year, month, day].every(Number.isFinite)) return undefined;
+
+  return new Date(
+    `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00+02:00`,
+  ).toISOString();
+}
+
 interface RepaymentScheduleFormProps {
   leadId?: string;
   clientId?: number;
@@ -139,6 +157,7 @@ export function RepaymentScheduleForm({
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dateCorrectionNotice, setDateCorrectionNotice] = useState<string | null>(null);
   const [loanTerms, setLoanTerms] = useState<any>(null);
   const [loanDetails, setLoanDetails] = useState<any>(null);
   const [loanTemplate, setLoanTemplate] = useState<any>(null);
@@ -149,6 +168,7 @@ export function RepaymentScheduleForm({
 
     setRepaymentSchedule(null);
     setError(null);
+    setDateCorrectionNotice(null);
     setLoanTerms(null);
     setLoanDetails(null);
     setLoanTemplate(null);
@@ -305,28 +325,85 @@ export function RepaymentScheduleForm({
     setError(null);
 
     try {
-      // Format dates
-      const submittedDate = loanDetails.submittedOn
-        ? format(
-            new Date(
-              typeof loanDetails.submittedOn === "string"
-                ? loanDetails.submittedOn
-                : loanDetails.submittedOn,
-            ),
-            "dd MMMM yyyy",
-          )
-        : format(new Date(), "dd MMMM yyyy");
+      if (!loanDetails.submittedOn || !loanDetails.disbursementOn) {
+        throw new Error(
+          "Submitted On and Expected Disbursement Date are required. Return to Loan Details and save both dates.",
+        );
+      }
 
-      const disbursementDate = loanDetails.disbursementOn
-        ? format(
-            new Date(
-              typeof loanDetails.disbursementOn === "string"
-                ? loanDetails.disbursementOn
-                : loanDetails.disbursementOn,
-            ),
-            "dd MMMM yyyy",
-          )
-        : format(new Date(), "dd MMMM yyyy");
+      const templateExpectedDisbursementDate =
+        getTemplateExpectedDisbursementDate(loanTemplate);
+      const submittedAfterExpectedDisbursement =
+        isFineractBusinessDateAfter(
+          loanDetails.submittedOn,
+          loanDetails.disbursementOn,
+        );
+      const submittedAfterTemplateBusinessDate =
+        templateExpectedDisbursementDate &&
+        isFineractBusinessDateAfter(
+          loanDetails.submittedOn,
+          templateExpectedDisbursementDate,
+        );
+      let scheduleLoanDetails = loanDetails;
+
+      if (submittedAfterExpectedDisbursement || submittedAfterTemplateBusinessDate) {
+        if (!leadId) {
+          throw new Error(
+            "Submitted On cannot be after the Fineract business date. Return to Loan Details, correct the dates, and save before generating the schedule.",
+          );
+        }
+
+        const correctionResponse = await fetch(
+          `/api/leads/${leadId}/normalize-schedule-dates`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ templateExpectedDisbursementDate }),
+          },
+        );
+        const correctionResult = await correctionResponse
+          .json()
+          .catch(() => ({}));
+
+        if (
+          !correctionResponse.ok ||
+          !correctionResult?.success ||
+          !correctionResult?.data?.submittedOn ||
+          !correctionResult?.data?.disbursementOn
+        ) {
+          throw new Error(
+            correctionResult?.error ||
+              "Unable to correct the lead dates before generating the schedule.",
+          );
+        }
+
+        scheduleLoanDetails = {
+          ...loanDetails,
+          submittedOn: correctionResult.data.submittedOn,
+          disbursementOn: correctionResult.data.disbursementOn,
+        };
+        setLoanDetails(scheduleLoanDetails);
+
+        if (correctionResult.corrected) {
+          setDateCorrectionNotice(
+            "Submitted On was aligned to Fineract's available business date before generating the schedule.",
+          );
+        }
+      }
+
+      // Format dates
+      const submittedDate = formatFineractBusinessDate(
+        scheduleLoanDetails.submittedOn,
+      );
+      const disbursementDate = formatFineractBusinessDate(
+        scheduleLoanDetails.disbursementOn,
+      );
+
+      if (!submittedDate || !disbursementDate) {
+        throw new Error(
+          "Loan dates are invalid. Return to Loan Details, choose valid dates, and save before generating the schedule.",
+        );
+      }
 
       // editableCharges are already rebased on load — no need to recompute again.
       // Fineract's calculateLoanSchedule treats `amount` as a percentage for % charges and
@@ -370,14 +447,14 @@ export function RepaymentScheduleForm({
       // Build payload for schedule calculation matching Fineract API structure
       const payload = {
         productId: productId,
-        loanOfficerId: loanDetails.loanOfficer || "",
-        loanPurposeId: loanDetails.loanPurpose || "",
-        fundId: loanDetails.fund || "",
+        loanOfficerId: scheduleLoanDetails.loanOfficer || "",
+        loanPurposeId: scheduleLoanDetails.loanPurpose || "",
+        fundId: scheduleLoanDetails.fund || "",
         submittedOnDate: submittedDate,
         expectedDisbursementDate: disbursementDate,
         externalId: "",
         createStandingInstructionAtDisbursement:
-          loanDetails.createStandingInstructions ? "true" : "",
+          scheduleLoanDetails.createStandingInstructions ? "true" : "",
         loanTermFrequency: loanTerms.loanTerm || 1,
         loanTermFrequencyType: loanTerms.termFrequency
           ? parseInt(loanTerms.termFrequency)
@@ -549,7 +626,7 @@ export function RepaymentScheduleForm({
       if (onComplete) {
         onComplete({
           repaymentSchedule: scheduleData,
-          loanDetails,
+          loanDetails: scheduleLoanDetails,
           loanTerms: loanTerms ? { ...loanTerms, charges: editableCharges } : loanTerms,
           loanTemplate,
         });
@@ -610,7 +687,32 @@ export function RepaymentScheduleForm({
                 e.developerMessage ||
                 e.message;
               const arg =
-                e.args && e.args.length > 0 ? ` (${e.args.join(", ")})` : "";
+                e.args && e.args.length > 0
+                  ? ` (${e.args
+                      .map((argument: unknown) => {
+                        if (
+                          typeof argument === "string" ||
+                          typeof argument === "number" ||
+                          typeof argument === "boolean"
+                        ) {
+                          return String(argument);
+                        }
+
+                        if (argument && typeof argument === "object") {
+                          const record = argument as Record<string, unknown>;
+                          return String(
+                            record.value ??
+                              record.code ??
+                              record.name ??
+                              "",
+                          );
+                        }
+
+                        return "";
+                      })
+                      .filter(Boolean)
+                      .join(", ")})`
+                  : "";
               return msg ? `${msg}${arg}` : null;
             })
             .filter(Boolean);
@@ -643,6 +745,7 @@ export function RepaymentScheduleForm({
     loanTemplate,
     editableCharges,
     clientId,
+    leadId,
     onComplete,
   ]);
 
@@ -679,6 +782,11 @@ export function RepaymentScheduleForm({
         <CardContent className="space-y-6">
           {!repaymentSchedule ? (
             <div className="space-y-4">
+              {dateCorrectionNotice && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-100">
+                  {dateCorrectionNotice}
+                </div>
+              )}
               {error && (
                 <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg space-y-2">
                   <div className="flex items-start gap-2">

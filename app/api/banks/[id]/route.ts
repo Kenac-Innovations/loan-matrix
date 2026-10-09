@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
-import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
-import { getTellerVaultDisplay } from "@/lib/gl-balance";
+import { getGlAccountBalance, getTellerVaultDisplay } from "@/lib/gl-balance";
+import { computeBankBalances } from "@/lib/bank-balance";
 import {
   canAccessOfficeId,
   resolveVisibleOfficeIdsForUser,
@@ -74,119 +74,56 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Only count vault allocations that actually drew from the bank (same logic as allocate route)
-    const isFromBank = (alloc: { notes?: string | null; allocatedBy?: string | null }) => {
-      const n = (alloc.notes ?? "").toLowerCase();
-      if (n.includes("opening balance") || alloc.allocatedBy === "SYSTEM-IMPORT") return false;
-      if (alloc.allocatedBy === "SYSTEM-REVERSAL") return false;
-      if (n.includes("return from") || n.includes("session close") || n.includes("returned to vault")) return false;
-      return true;
-    };
-
-    // Sum of bank → teller allocations is still tracked from the local ledger
-    // (it represents what the bank has shipped out, regardless of GL config).
     // Per-teller `vaultBalance` is sourced *only* from Fineract GL — `null`
     // when not configured or Fineract is unreachable.
-    let allocatedToTellers = 0;
-    const tellersWithBalances = await Promise.all(
-      bank.tellers.map(async (teller) => {
-        const vaultDisplay = await getTellerVaultDisplay(teller);
-
-        const bankAllocationsOnly = teller.cashAllocations
-          .filter(isFromBank)
-          .reduce((sum, alloc) => sum + alloc.amount, 0);
-
-        allocatedToTellers += bankAllocationsOnly;
-
-        return {
-          id: teller.id,
-          name: teller.name,
-          fineractTellerId: teller.fineractTellerId,
-          officeName: teller.officeName,
-          status: teller.status,
-          glAccountId: teller.glAccountId,
-          glAccountName: teller.glAccountName,
-          glAccountCode: teller.glAccountCode,
-          vaultBalance: vaultDisplay.vaultBalance,
-          vaultBalanceSource: vaultDisplay.vaultBalanceSource,
-          activeCashiers: teller.cashiers.length,
-        };
-      })
+    const tellerVaults = await Promise.all(
+      bank.tellers.map((teller) => getTellerVaultDisplay(teller))
     );
+    const tellersWithBalances = bank.tellers.map((teller, i) => ({
+      id: teller.id,
+      name: teller.name,
+      fineractTellerId: teller.fineractTellerId,
+      officeName: teller.officeName,
+      status: teller.status,
+      glAccountId: teller.glAccountId,
+      glAccountName: teller.glAccountName,
+      glAccountCode: teller.glAccountCode,
+      vaultBalance: tellerVaults[i].vaultBalance,
+      vaultBalanceSource: tellerVaults[i].vaultBalanceSource,
+      activeCashiers: teller.cashiers.length,
+    }));
 
-    // Get bank balance from Fineract GL account if configured, otherwise use local allocations
-    let totalAllocated = 0;
-    let currency = orgCurrency;
+    let bankGl: Parameters<typeof computeBankBalances>[0]["bankGl"] = null;
     let glAccountBalance = null;
-
     if (bank.glAccountId) {
-      try {
-        // Fetch ALL journal entries for this GL account and calculate balance manually
-        // For ASSET accounts: DEBIT increases balance, CREDIT decreases balance
-        const journalData = await fetchFineractAPI(
-          `/journalentries?glAccountId=${bank.glAccountId}&limit=500&orderBy=id&sortOrder=DESC`
-        );
-
-        if (journalData?.pageItems && journalData.pageItems.length > 0) {
-          // Calculate balance from all entries
-          let calculatedBalance = 0;
-          for (const entry of journalData.pageItems) {
-            if (entry.entryType?.value === "DEBIT") {
-              calculatedBalance += entry.amount || 0;
-            } else if (entry.entryType?.value === "CREDIT") {
-              calculatedBalance -= entry.amount || 0;
-            }
-          }
-          
-          const latestEntry = journalData.pageItems[0];
-          totalAllocated = calculatedBalance;
-          currency = latestEntry.currency?.code || orgCurrency;
-          glAccountBalance = {
-            balance: totalAllocated,
-            currency,
-            source: "fineract_calculated",
-            entryCount: journalData.pageItems.length,
-            lastEntry: {
-              id: latestEntry.id,
-              date: latestEntry.transactionDate,
-              amount: latestEntry.amount,
-              type: latestEntry.entryType?.value,
-            },
-          };
-        } else {
-          // No journal entries yet, balance is 0
-          glAccountBalance = {
-            balance: 0,
-            currency: orgCurrency,
-            source: "fineract",
-            lastEntry: null,
-          };
-        }
-      } catch (error) {
-        console.error("Failed to fetch GL balance from Fineract, falling back to local:", error);
-        // Fallback to local allocations if Fineract fails
-        totalAllocated = bank.allocations.reduce(
-          (sum, alloc) => sum + alloc.amount,
-          0
-        );
-        currency = bank.allocations[0]?.currency || orgCurrency;
+      const r = await getGlAccountBalance(bank.glAccountId);
+      if (r.source === "fineract_calculated" || r.source === "fineract_empty") {
+        bankGl = { balance: r.balance, currency: r.currency, source: r.source };
         glAccountBalance = {
-          balance: totalAllocated,
-          currency,
+          balance: r.balance,
+          currency: r.currency || orgCurrency,
+          source: r.source,
+          entryCount: r.entryCount,
+        };
+      } else {
+        console.error("Failed to fetch GL balance from Fineract, falling back to local:", r.error);
+        glAccountBalance = {
           source: "local_fallback",
           error: "Failed to fetch from Fineract",
         };
       }
-    } else {
-      // No GL account configured, use local allocations
-      totalAllocated = bank.allocations.reduce(
-        (sum, alloc) => sum + alloc.amount,
-        0
-      );
-      currency = bank.allocations[0]?.currency || orgCurrency;
     }
 
-    const availableBalance = totalAllocated - allocatedToTellers;
+    const balances = computeBankBalances({
+      bankGl,
+      hasGlAccount: !!bank.glAccountId,
+      tellerVaultBalances: tellerVaults.map((v) => v.vaultBalance),
+      localBankAllocations: bank.allocations,
+      localTellerAllocations: bank.tellers.flatMap((t) => t.cashAllocations),
+    });
+    const { totalAllocated, allocatedToTellers, availableBalance } = balances;
+    const currency =
+      balances.currency || bank.allocations[0]?.currency || orgCurrency;
 
     return NextResponse.json({
       ...bank,
