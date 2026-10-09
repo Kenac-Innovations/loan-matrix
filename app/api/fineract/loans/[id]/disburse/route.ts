@@ -12,6 +12,23 @@ import { extractTenantSlugFromRequest, getTenantBySlug } from '@/lib/tenant-serv
 import { resolveYangoUssdDisbursementDetailsForLead } from '@/lib/yango-ussd-disbursement';
 import { getArdaStockDetails } from '@/lib/inventory/arda-stock-workflow-service';
 import { runArdaStockDisbursementGuard } from '@/lib/arda-stock-disbursement-guard';
+import type { Prisma } from '@/app/generated/prisma';
+
+type LinkedLead = {
+  id: string;
+  tenantId: string;
+  stateMetadata: Prisma.JsonValue;
+  externalId: string | null;
+  loanProductId: number | null;
+  loanProductName: string | null;
+  mobileNo: string | null;
+  accountNumber: string | null;
+  preferredPaymentMethod: string | null;
+  assignedToUserId: number | null;
+  assignedToUserName: string | null;
+  designatedDisburserUserId: number | null;
+  designatedDisburserUserName: string | null;
+};
 
 function coercePositiveNumber(value: unknown): number | undefined {
   const numericValue = typeof value === 'number' ? value : Number(value);
@@ -39,7 +56,7 @@ export async function POST(
 
     const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
-    let linkedLead: any = null;
+    let linkedLead: LinkedLead | null = null;
 
     if (tenant) {
       const leadAccess = await getLeadViewerAccessContext(

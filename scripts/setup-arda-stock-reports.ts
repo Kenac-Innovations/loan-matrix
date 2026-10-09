@@ -75,7 +75,8 @@ function createFineractClient(tenantId: string): FineractRequester {
   const authorization = Buffer.from(`${username}:${password}`).toString("base64");
 
   return async (endpoint, options = {}) => {
-    const { authMode: _authMode, ...requestOptions } = options;
+    const requestOptions = { ...options };
+    delete requestOptions.authMode;
     const response = await fetch(
       `${baseUrl}/fineract-provider/api/v1${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`,
       {

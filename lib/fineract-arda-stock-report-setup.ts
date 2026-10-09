@@ -41,7 +41,7 @@ export type ArdaStockReportSetupResult = {
   mode: "preview" | "applied";
   tenantSlug: "arda";
   fineractDatabaseName: "fineract_tenant_arda";
-  tenantSettings: Record<string, any>;
+  tenantSettings: ArdaMergedSettings;
   dataTable: typeof ARDA_STOCK_DETAILS_TABLE;
   selectorReport: typeof ARDA_STOCK_ITEM_OPTIONS_REPORT;
   parameter: {
@@ -59,8 +59,12 @@ export type ArdaStockReportSetupResult = {
 
 type FineractReportSummary = { id: number; reportName: string };
 type PermissionUsage = { code?: string; selected?: boolean };
+type JsonObject = Record<string, unknown>;
+type ArdaMergedSettings = JsonObject & {
+  features: JsonObject & { ardaStockReports: true };
+};
 
-function objectValue(value: unknown): Record<string, any> {
+function objectValue(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
     : {};
@@ -68,13 +72,13 @@ function objectValue(value: unknown): Record<string, any> {
 
 export function mergeArdaStockReportSetting(
   settings: unknown
-): Record<string, any> {
+): ArdaMergedSettings {
   const merged = objectValue(settings);
   merged.features = {
     ...objectValue(merged.features),
     ardaStockReports: true,
   };
-  return merged;
+  return merged as ArdaMergedSettings;
 }
 
 function validateApplyTarget(options: ArdaStockReportSetupOptions): void {
@@ -224,7 +228,7 @@ async function verifyAppliedSetup(input: {
   options: ArdaStockReportSetupOptions;
   parameterId: number;
   reportPermissions: string[];
-}): Promise<Record<string, any>> {
+}): Promise<ArdaMergedSettings> {
   const { options } = input;
   const tenant = await options.loanMatrix.getTenantBySlug("arda");
   const settings = objectValue(tenant?.settings);
@@ -296,7 +300,7 @@ async function verifyAppliedSetup(input: {
   if (catalogParameterId !== input.parameterId) {
     throw new Error("The Stock Item parameter ID did not survive read-back.");
   }
-  return settings;
+  return settings as ArdaMergedSettings;
 }
 
 export async function setupArdaStockReports(

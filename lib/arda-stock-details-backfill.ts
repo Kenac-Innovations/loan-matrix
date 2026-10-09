@@ -48,7 +48,7 @@ function text(value: unknown): string {
 
 function positiveDecimal(value: unknown): Prisma.Decimal | null {
   try {
-    const decimal = new Prisma.Decimal(value as any);
+    const decimal = new Prisma.Decimal(String(value ?? ""));
     return decimal.isFinite() && decimal.gt(0) ? decimal : null;
   } catch {
     return null;
