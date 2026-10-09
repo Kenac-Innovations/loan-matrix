@@ -14,6 +14,9 @@ import {
 import { applyTopupDisbursementCharges } from '@/lib/topup-disbursement-charge-service';
 import { extractTenantSlugFromRequest, getTenantBySlug } from '@/lib/tenant-service';
 import { resolveYangoUssdDisbursementDetailsForLead } from '@/lib/yango-ussd-disbursement';
+import { checkCashDisbursementSessionGate } from '@/lib/cashier-session-disbursement-gate';
+import { getCashierSessionTenantSettings } from '@/lib/cashier-session-settings';
+import { getPaymentTypeInfo } from '@/lib/cash-repayment-teller';
 
 function coercePositiveNumber(value: unknown): number | undefined {
   const numericValue = typeof value === 'number' ? value : Number(value);
@@ -188,6 +191,44 @@ export async function POST(
     console.log('Yango USSD disbursement:', Boolean(yangoUssdDetails));
     console.log('Payload sent to Fineract:', JSON.stringify(augmentedPayload, null, 2));
     console.log('=== END DISBURSEMENT PAYLOAD ===');
+
+    // Check if this is a cash disbursement and verify session closure compliance
+    // Use the payment type actually sent to Fineract (Yango may override it).
+    // Fail closed: if module is on and we need to verify payment type, error if lookup fails.
+    let isCash = false;
+    if (tenant) {
+      const settings = await getCashierSessionTenantSettings(tenant.id);
+      if (settings.isTellerManagementModuleOn && augmentedPayload.paymentTypeId) {
+        const paymentTypeInfo = await getPaymentTypeInfo(Number(augmentedPayload.paymentTypeId));
+        if (paymentTypeInfo === null) {
+          return NextResponse.json(
+            {
+              error: "Could not verify the payment type. Please try again.",
+              code: "PAYMENT_TYPE_LOOKUP_FAILED",
+            },
+            { status: 503 }
+          );
+        }
+        isCash = paymentTypeInfo.isCashPayment ?? false;
+      }
+    }
+    if (tenant) {
+      const gate = await checkCashDisbursementSessionGate({
+        tenantId: tenant.id,
+        isCash,
+        fineractUserId: session.user.userId,
+      });
+      if (!gate.allowed) {
+        return NextResponse.json(
+          {
+            error: gate.message,
+            code: gate.code,
+            blockingSessions: gate.blockingSessions,
+          },
+          { status: gate.status }
+        );
+      }
+    }
 
     // POST to /loans/{id}?command=disburse with payload
     const data = await fetchFineractAPI(`/loans/${id}?command=disburse`, {

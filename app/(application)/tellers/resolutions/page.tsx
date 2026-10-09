@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Card,
   CardContent,
@@ -240,11 +241,18 @@ export default function ResolutionsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Variance Resolutions</h1>
-        <p className="text-muted-foreground mt-1">
-          Review and resolve pending variances from reconciled settlements
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Variance Resolutions</h1>
+          <p className="text-muted-foreground mt-1">
+            Review and resolve pending variances from reconciled settlements
+          </p>
+        </div>
+        <Link href="/tellers/variance-events">
+          <Button variant="outline" size="sm">
+            Variance Events
+          </Button>
+        </Link>
       </div>
 
       {/* Pending Resolutions Table */}
