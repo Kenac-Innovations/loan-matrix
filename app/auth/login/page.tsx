@@ -11,6 +11,8 @@ import {
   ServerIcon,
   AlertCircle,
   Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Globe } from "@/components/magicui/globe";
 import { useEffect, useState } from "react";
@@ -25,6 +27,7 @@ import { ThemeAwareLogo } from "@/components/ui/theme-aware-logo";
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const { login, status } = useAuth();
@@ -249,13 +252,25 @@ export default function LoginPage() {
                   <div className="relative">
                     <Input
                       id="password"
-                      type="password"
-                      className="pl-10 py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground"
+                      type={showPassword ? "text" : "password"}
+                      className="pl-10 pr-10 py-6 bg-background border-border focus:border-blue-500 focus:ring-blue-500 transition-all duration-200 text-foreground"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                     />
                     <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-blue-500" />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
                   </div>
                 </div>
 
