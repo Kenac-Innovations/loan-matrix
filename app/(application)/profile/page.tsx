@@ -2,63 +2,127 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import {
-  User,
-  Mail,
-  Building2,
-  Shield,
-  Key,
-  Eye,
-  EyeOff,
-  Check,
-  X,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
-  PenLine,
-} from "lucide-react";
+import { AlertCircle, Check, Circle, Eye, EyeOff, Loader2, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getMySignature } from "@/app/actions/user-signature-actions";
+import { useAuth } from "@/contexts/auth-context";
+import { PASSWORD_RULES, validateNewPassword } from "@/lib/password-policy";
+import { cn } from "@/lib/utils";
 
-interface SystemRole {
-  id: string;
-  name: string;
-  displayName: string;
-  description: string | null;
-  permissions: string[];
-  assignedAt: string;
-  assignedBy: string | null;
+const CURRENT_PASSWORD_REQUIRED = "Enter your current password.";
+
+function getInitials(name: string | null | undefined) {
+  const initials = (name ?? "")
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  return initials || "U";
 }
 
-interface PasswordRequirement {
+function Section({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="grid gap-6 border-t py-6 md:grid-cols-[200px_1fr]">
+      <div>
+        <h2 className="text-sm font-medium">{title}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+      </div>
+      <div>{children}</div>
+    </section>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+  mono = false,
+}: {
   label: string;
-  test: (password: string) => boolean;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between py-2.5 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("text-right", mono && "font-mono text-xs")}>{value}</span>
+    </div>
+  );
 }
 
-const passwordRequirements: PasswordRequirement[] = [
-  { label: "At least 8 characters", test: (p) => p.length >= 8 },
-  { label: "One uppercase letter (A-Z)", test: (p) => /[A-Z]/.test(p) },
-  { label: "One lowercase letter (a-z)", test: (p) => /[a-z]/.test(p) },
-  { label: "One number (0-9)", test: (p) => /[0-9]/.test(p) },
-  { label: "One special character (!@#$%^&*)", test: (p) => /[!@#$%^&*(),.?":{}|<>]/.test(p) },
-];
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  visible,
+  onToggleVisible,
+  autoComplete,
+  error,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggleVisible: () => void;
+  autoComplete: string;
+  error?: string | null;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-sm font-normal">
+        {label}
+      </Label>
+      <div className="relative">
+        <Input
+          id={id}
+          type={visible ? "text" : "password"}
+          autoComplete={autoComplete}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-invalid={error ? true : undefined}
+          className="pr-10"
+        />
+        <button
+          type="button"
+          onClick={onToggleVisible}
+          aria-label={visible ? "Hide password" : "Show password"}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        >
+          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
-  const [localRoles, setLocalRoles] = useState<SystemRole[]>([]);
-  const [rolesLoading, setRolesLoading] = useState(true);
-  const [rolesError, setRolesError] = useState<string | null>(null);
+  const { logout } = useAuth();
 
   // Password change state
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showRepeatPassword, setShowRepeatPassword] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [currentPasswordError, setCurrentPasswordError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
@@ -67,69 +131,67 @@ export default function ProfilePage() {
   const [signatureLoading, setSignatureLoading] = useState(true);
   const [signatureError, setSignatureError] = useState<string | null>(null);
 
-  // Fetch local roles
-  useEffect(() => {
-    async function fetchLocalRoles() {
-      try {
-        setRolesLoading(true);
-        setRolesError(null);
-        const response = await fetch("/api/users/roles");
-        
-        if (!response.ok) {
-          if (response.status === 401) {
-            setRolesError("Please login to view your roles");
-          } else {
-            const data = await response.json();
-            setRolesError(data.error || "Failed to fetch roles");
-          }
-          return;
-        }
-
-        const data = await response.json();
-        setLocalRoles(data.roles || []);
-      } catch (error) {
-        console.error("Error fetching roles:", error);
-        setRolesError("Failed to fetch roles");
-      } finally {
-        setRolesLoading(false);
-      }
-    }
-
-    if (status === "authenticated") {
-      fetchLocalRoles();
-    }
-  }, [status]);
-
   // Load saved signature
   useEffect(() => {
     if (status !== "authenticated") return;
-    setSignatureLoading(true);
-    setSignatureError(null);
     getMySignature()
       .then(({ signatureData }) => setSignatureData(signatureData))
       .catch(() => setSignatureError("Failed to load signature"))
       .finally(() => setSignatureLoading(false));
   }, [status]);
 
-  // Handle password change
+  const resetPasswordForm = () => {
+    setCurrentPassword("");
+    setPassword("");
+    setRepeatPassword("");
+    setShowCurrentPassword(false);
+    setShowPassword(false);
+    setShowRepeatPassword(false);
+    setCurrentPasswordError(null);
+    setPasswordError(null);
+  };
+
+  const handleCancel = () => {
+    resetPasswordForm();
+    setPasswordOpen(false);
+  };
+
+  const passwordChecks = [
+    ...PASSWORD_RULES.map((rule) => ({
+      id: rule.id,
+      label: rule.label,
+      met: password.length > 0 && rule.test(password),
+    })),
+    {
+      id: "match",
+      label: "Passwords match",
+      met: repeatPassword.length > 0 && password === repeatPassword,
+    },
+    {
+      id: "different",
+      label: "Different from current",
+      met: password.length > 0 && password !== currentPassword,
+    },
+  ];
+  const passedChecks = passwordChecks.filter((check) => check.met).length;
+  const progressPercent = Math.round((passedChecks / passwordChecks.length) * 100);
+
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (password !== repeatPassword) {
-      setPasswordError("Passwords do not match");
-      return;
-    }
+    setCurrentPasswordError(null);
+    setPasswordError(null);
 
-    // Check all requirements
-    const failedRequirements = passwordRequirements.filter((req) => !req.test(password));
-    if (failedRequirements.length > 0) {
-      setPasswordError("Password does not meet all requirements");
+    const validation = validateNewPassword({ currentPassword, password, repeatPassword });
+    if (!validation.valid) {
+      if (validation.errors[0] === CURRENT_PASSWORD_REQUIRED) {
+        setCurrentPasswordError(validation.errors[0]);
+      } else {
+        setPasswordError(validation.errors[0]);
+      }
       return;
     }
 
     setPasswordLoading(true);
-    setPasswordError(null);
-    setPasswordSuccess(false);
 
     try {
       const response = await fetch("/api/users/change-password", {
@@ -137,25 +199,31 @@ export default function ProfilePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ password, repeatPassword }),
+        body: JSON.stringify({ currentPassword, password, repeatPassword }),
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setPasswordError(data.error || "Failed to change password");
+        if (data.field === "currentPassword") {
+          setCurrentPasswordError(data.error);
+        } else {
+          setPasswordError(data.error || "Failed to change password");
+        }
         return;
       }
 
+      resetPasswordForm();
+      setPasswordOpen(false);
       setPasswordSuccess(true);
-      setPassword("");
-      setRepeatPassword("");
-      
-      // Clear success message after 5 seconds
-      setTimeout(() => setPasswordSuccess(false), 5000);
+      // Not cancelled on unmount: the session still holds the old password, so the
+      // user must sign in again even if they navigate away.
+      setTimeout(() => {
+        void logout();
+      }, 2500);
     } catch (error) {
       console.error("Error changing password:", error);
-      setPasswordError("Failed to change password. Please try again.");
+      setPasswordError("Couldn't update your password. Try again.");
     } finally {
       setPasswordLoading(false);
     }
@@ -179,342 +247,207 @@ export default function ProfilePage() {
   }
 
   const user = session?.user;
+  const roles = (user?.roles ?? []).filter((role) => !role.disabled);
+  const email = user?.email ?? user?.name;
+  const subline = [email, user?.officeName].filter(Boolean).join(" · ");
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">My Profile</h1>
-        <p className="text-muted-foreground">
-          View your account details and manage your password
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-3xl">
+      {/* Header */}
+      <header className="flex items-center gap-4">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-medium">
+          {getInitials(user?.name)}
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold">{user?.name || "Your profile"}</h1>
+          {subline && <p className="text-sm text-muted-foreground">{subline}</p>}
+        </div>
+      </header>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* User Information Card */}
-        <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Account Information
-          </h2>
-          
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <User className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">Full Name</p>
-                <p className="font-medium">{user?.name || "N/A"}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <Mail className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">Email / Username</p>
-                <p className="font-medium">{user?.email || "N/A"}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <Building2 className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">Office</p>
-                <p className="font-medium">{user?.officeName || "N/A"}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
-              <Shield className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="text-xs text-muted-foreground">User ID (Mifos)</p>
-                <p className="font-medium">{user?.userId || "N/A"}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Mifos Roles (from session) */}
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-2">
-              Mifos Roles
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {user?.roles?.length ? (
-                user.roles.map((role) => (
-                  <Badge
-                    key={role.id}
-                    variant="secondary"
-                    className="bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                  >
-                    {role.name}
-                  </Badge>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">No Mifos roles assigned</p>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        {/* System Roles Card */}
-        <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Shield className="h-5 w-5" />
-            System Roles
-          </h2>
-
-          {rolesLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : rolesError ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground">{rolesError}</p>
-            </div>
-          ) : localRoles.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Shield className="h-8 w-8 text-muted-foreground/50 mb-2" />
-              <p className="text-sm text-muted-foreground">
-                No system roles assigned
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Contact your administrator to assign roles
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {localRoles.map((role) => (
-                <div
-                  key={role.id}
-                  className="p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{role.displayName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {role.description || role.name}
-                      </p>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {role.name}
-                    </Badge>
-                  </div>
-                  {role.assignedAt && (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Assigned: {new Date(role.assignedAt).toLocaleDateString()}
-                      {role.assignedBy && ` by ${role.assignedBy}`}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+      {/* Account */}
+      <Section title="Account" hint="Managed by your administrator.">
+        <div className="divide-y">
+          <InfoRow label="Username" value={user?.name || "N/A"} />
+          {user?.email && user.email !== user.name && (
+            <InfoRow label="Email" value={user.email} />
           )}
-        </Card>
+          <InfoRow label="Office" value={user?.officeName || "N/A"} />
+          <InfoRow label="User ID" value={user?.userId ? `#${user.userId}` : "N/A"} mono />
+        </div>
+      </Section>
 
-        {/* Change Password Card */}
-        <Card className="p-6 md:col-span-2">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Key className="h-5 w-5" />
-            Change Password
-          </h2>
+      {/* Roles */}
+      <Section title="Roles" hint="Assigned by your administrator.">
+        {roles.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {roles.map((role) => (
+              <span
+                key={role.id}
+                title={role.description}
+                className="rounded-full border px-2.5 py-0.5 text-xs"
+              >
+                {role.name}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No roles assigned.</p>
+        )}
+      </Section>
 
-          <form onSubmit={handlePasswordChange} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              {/* New Password */}
-              <div className="space-y-2">
-                <Label htmlFor="password">New Password</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter new password"
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Repeat Password */}
-              <div className="space-y-2">
-                <Label htmlFor="repeatPassword">Confirm Password</Label>
-                <div className="relative">
-                  <Input
-                    id="repeatPassword"
-                    type={showRepeatPassword ? "text" : "password"}
-                    value={repeatPassword}
-                    onChange={(e) => setRepeatPassword(e.target.value)}
-                    placeholder="Confirm new password"
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowRepeatPassword(!showRepeatPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showRepeatPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Password Requirements */}
-            <div className="p-4 bg-muted/50 rounded-lg">
-              <p className="text-sm font-medium mb-2">Password Requirements:</p>
-              <div className="grid gap-1 text-sm">
-                {passwordRequirements.map((req, index) => {
-                  const passed = password.length > 0 && req.test(password);
-                  return (
-                    <div
-                      key={index}
-                      className={`flex items-center gap-2 ${
-                        password.length > 0
-                          ? passed
-                            ? "text-green-600 dark:text-green-400"
-                            : "text-red-600 dark:text-red-400"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {password.length > 0 ? (
-                        passed ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <X className="h-3 w-3" />
-                        )
-                      ) : (
-                        <div className="h-3 w-3 rounded-full border" />
-                      )}
-                      {req.label}
-                    </div>
-                  );
-                })}
-              </div>
-              
-              {/* Password match indicator */}
-              {repeatPassword.length > 0 && (
-                <div
-                  className={`flex items-center gap-2 mt-2 ${
-                    password === repeatPassword
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-red-600 dark:text-red-400"
-                  }`}
-                >
-                  {password === repeatPassword ? (
-                    <Check className="h-3 w-3" />
-                  ) : (
-                    <X className="h-3 w-3" />
-                  )}
-                  Passwords match
-                </div>
-              )}
-            </div>
-
-            {/* Error Message */}
-            {passwordError && (
-              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-600 dark:text-red-400">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                <p className="text-sm">{passwordError}</p>
-              </div>
-            )}
-
-            {/* Success Message */}
-            {passwordSuccess && (
-              <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-600 dark:text-green-400">
-                <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-                <p className="text-sm">Password changed successfully!</p>
-              </div>
-            )}
-
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              disabled={
-                passwordLoading ||
-                !password ||
-                !repeatPassword ||
-                password !== repeatPassword ||
-                passwordRequirements.some((req) => !req.test(password))
-              }
-              className="w-full md:w-auto"
-            >
-              {passwordLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Changing Password...
-                </>
-              ) : (
-                <>
-                  <Key className="h-4 w-4 mr-2" />
-                  Change Password
-                </>
-              )}
-            </Button>
-          </form>
-        </Card>
-
-        {/* Signature Card */}
-        <Card className="p-6 md:col-span-2">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <PenLine className="h-5 w-5" />
-            My Signature
-          </h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Your saved signature is automatically used as the loan officer signature when creating contracts.
+      {/* Password */}
+      <Section
+        title="Password"
+        hint="You'll need your current password to set a new one."
+      >
+        {passwordSuccess ? (
+          <p className="text-sm text-green-600 dark:text-green-400">
+            Password updated. Signing you out so you can sign in with your new password.
           </p>
+        ) : !passwordOpen ? (
+          <div className="flex items-center justify-between">
+            <span className="text-sm tracking-widest text-muted-foreground">••••••••••</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPasswordOpen(true)}
+            >
+              Change password
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={handlePasswordChange} className="space-y-4">
+            <PasswordField
+              id="current-password"
+              label="Current password"
+              value={currentPassword}
+              onChange={(value) => {
+                setCurrentPassword(value);
+                setCurrentPasswordError(null);
+              }}
+              visible={showCurrentPassword}
+              onToggleVisible={() => setShowCurrentPassword(!showCurrentPassword)}
+              autoComplete="current-password"
+              error={currentPasswordError}
+            />
 
-          {signatureLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="border-t" />
+
+            <PasswordField
+              id="new-password"
+              label="New password"
+              value={password}
+              onChange={setPassword}
+              visible={showPassword}
+              onToggleVisible={() => setShowPassword(!showPassword)}
+              autoComplete="new-password"
+            />
+
+            <PasswordField
+              id="confirm-password"
+              label="Confirm new password"
+              value={repeatPassword}
+              onChange={setRepeatPassword}
+              visible={showRepeatPassword}
+              onToggleVisible={() => setShowRepeatPassword(!showRepeatPassword)}
+              autoComplete="new-password"
+            />
+
+            {/* Strength progress */}
+            <div className="h-[3px] w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-green-500 transition-all"
+                style={{ width: `${progressPercent}%` }}
+              />
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                {signatureData ? (
-                  <div className="space-y-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={signatureData}
-                      alt="Your signature"
-                      className="max-h-32 mx-auto border rounded bg-white p-2"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Contact an administrator if this signature needs to be updated.
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <PenLine className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      No signature has been added for your account yet.
-                    </p>
-                  </div>
-                )}
-              </div>
 
-              {signatureError && (
-                <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-600 dark:text-red-400">
-                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  <p className="text-sm">{signatureError}</p>
+            {/* Checklist */}
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {passwordChecks.map((check) => (
+                <li
+                  key={check.id}
+                  className={cn(
+                    "flex items-center gap-1.5 text-xs",
+                    check.met
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {check.met ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Circle className="h-3.5 w-3.5" />
+                  )}
+                  {check.label}
+                </li>
+              ))}
+            </ul>
+
+            {passwordError && (
+              <p className="text-sm text-destructive">{passwordError}</p>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleCancel}
+                disabled={passwordLoading}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={passwordLoading}>
+                {passwordLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Updating…
+                  </>
+                ) : (
+                  "Update password"
+                )}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Section>
+
+      {/* Signature */}
+      <Section
+        title="Signature"
+        hint="Used as the loan officer signature on contracts."
+      >
+        {signatureLoading ? (
+          <div className="flex h-32 items-center justify-center rounded-xl border bg-muted/30">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            <div className="flex h-32 items-center justify-center rounded-xl border bg-muted/30">
+              {signatureData ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={signatureData}
+                  alt="Your signature"
+                  className="max-h-24 rounded bg-white p-2"
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <PenLine className="h-5 w-5 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No signature added yet.</p>
                 </div>
               )}
             </div>
-          )}
-        </Card>
-      </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Need a change? Ask an administrator to update it.
+            </p>
+            {signatureError && (
+              <p className="mt-2 text-sm text-destructive">{signatureError}</p>
+            )}
+          </>
+        )}
+      </Section>
     </div>
   );
 }
