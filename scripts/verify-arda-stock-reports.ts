@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 
 import { prisma } from "../lib/prisma";
 import {
+  extractReportParameterVariables,
   validateArdaReportFixtures,
   verifyArdaStockReportIsolation,
   verifyReportColumns,
@@ -111,27 +112,6 @@ function featureEnabled(settings: unknown): boolean {
   );
 }
 
-function parameterNames(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((parameter) => {
-        const item = record(parameter);
-        const row = Array.isArray(item.row) ? item.row : [];
-        return String(item.parameter_variable || row[2] || "");
-      })
-      .filter(Boolean);
-  }
-  const data = (value as { data?: unknown } | null)?.data;
-  return Array.isArray(data)
-    ? data
-        .map((parameter) => {
-          const row = record(parameter).row;
-          return String((Array.isArray(row) ? row[2] : "") || "");
-        })
-        .filter(Boolean)
-    : [];
-}
-
 function parseReportRows(value: unknown): ReportRow[] {
   if (Array.isArray(value)) return value as ReportRow[];
   if (!value || typeof value !== "object") return [];
@@ -176,7 +156,7 @@ async function artifactSnapshot(input: {
     const parameters = await input.api(
       `/runreports/FullParameterList?R_reportListing=${encodeURIComponent(`'${name}'`)}&parameterType=true`
     );
-    reportParameters[name] = parameterNames(parameters);
+    reportParameters[name] = extractReportParameterVariables(parameters);
   }
   const permissions = await input.api("/permissions");
   return {
@@ -279,6 +259,12 @@ SELECT ml.id, ml.account_no
 FROM m_loan ml
 WHERE EXISTS (
   SELECT 1 FROM m_loan_transaction t
+  WHERE t.loan_id = ml.id AND t.transaction_type_enum = 1
+    AND COALESCE(t.is_reversed, false) = false
+    AND t.transaction_date::date BETWEEN ${sqlLiteral(input.startDate)}::date AND ${sqlLiteral(input.endDate)}::date
+)
+AND 1 = (
+  SELECT COUNT(*) FROM m_loan_transaction t
   WHERE t.loan_id = ml.id AND t.transaction_type_enum = 1
     AND COALESCE(t.is_reversed, false) = false
     AND t.transaction_date::date BETWEEN ${sqlLiteral(input.startDate)}::date AND ${sqlLiteral(input.endDate)}::date
@@ -399,6 +385,7 @@ async function main() {
       postTransactionBalance: Number(fixture.repayments[0]?.["Post Transaction Balance"]),
       averageQuantity: 4,
       averageUnitValue: 12.5,
+      averageStockValue: 50,
       rank: 1,
     },
   });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  extractReportParameterVariables,
   validateArdaReportFixtures,
   verifyArdaStockReportIsolation,
   verifyReportColumns,
@@ -11,6 +12,25 @@ import {
   ARDA_STOCK_ITEM_OPTIONS_REPORT,
   ARDA_STOCK_REPORT_NAMES,
 } from "../fineract-arda-stock-reports";
+
+test("extracts parameter variables from Fineract generic and plain responses", () => {
+  assert.deepEqual(
+    extractReportParameterVariables({
+      data: [
+        { row: ["startDateSelect", "startDate", "Start Date"] },
+        { row: [ARDA_STOCK_ITEM_OPTIONS_REPORT, "stockItemId", "Stock Item"] },
+      ],
+    }),
+    ["startDate", "stockItemId"]
+  );
+  assert.deepEqual(
+    extractReportParameterVariables([
+      { parameter_variable: "officeId" },
+      { parameter_variable: "currencyId" },
+    ]),
+    ["officeId", "currencyId"]
+  );
+});
 
 const visibleParameters = [
   "startDate",
@@ -66,11 +86,13 @@ test("validates the required result columns for all three reports", () => {
         "Disbursed Amount": 50,
         "Principal Repaid": 15,
         "Outstanding Amount": 35,
+        "Loan Status": "Active",
       },
     ],
     [ARDA_STOCK_REPORT_NAMES[1]]: [
       {
         "Loan Account": "00081",
+        "Transaction ID": 991,
         "Repayment Date": "2026-10-05",
         "Stock Item": "Seed Maize",
         "Repayment Amount": 20,
@@ -93,6 +115,7 @@ test("validates the required result columns for all three reports", () => {
         "Stock Value Disbursed": 50,
         "Average Quantity per Disbursement": 4,
         "Average Unit Value": 12.5,
+        "Average Stock Value per Disbursement": 50,
         "Monthly Sales Rank": 1,
       },
     ],
@@ -138,6 +161,7 @@ test("compares known counts, amounts, averages, and monthly rank", () => {
           "Stock Value Disbursed": 50,
           "Average Quantity per Disbursement": 4,
           "Average Unit Value": 12.5,
+          "Average Stock Value per Disbursement": 50,
           "Monthly Sales Rank": 1,
         },
       ],
@@ -153,6 +177,7 @@ test("compares known counts, amounts, averages, and monthly rank", () => {
         postTransactionBalance: 35,
         averageQuantity: 4,
         averageUnitValue: 12.5,
+        averageStockValue: 50,
         rank: 1,
       },
     })
@@ -176,6 +201,7 @@ test("compares known counts, amounts, averages, and monthly rank", () => {
           postTransactionBalance: 35,
           averageQuantity: 4,
           averageUnitValue: 12.5,
+          averageStockValue: 50,
           rank: 1,
         },
       }),

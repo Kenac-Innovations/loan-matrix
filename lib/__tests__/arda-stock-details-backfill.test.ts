@@ -6,6 +6,7 @@ import {
   toArdaStockDetailsFromIssue,
   type BackfillStockIssue,
 } from "../arda-stock-details-backfill";
+import type { FineractRequester } from "../fineract-arda-stock-details";
 
 function issue(overrides: Partial<BackfillStockIssue> = {}): BackfillStockIssue {
   return {
@@ -105,7 +106,7 @@ test("preview reports eligibility without calling Fineract", async () => {
 test("apply upserts each eligible loan and repeated apply updates the same row", async () => {
   let exists = false;
   const methods: string[] = [];
-  const request = async (_endpoint: string, options: any = {}) => {
+  const request: FineractRequester = async (_endpoint, options = {}) => {
     const method = options.method || "GET";
     methods.push(method);
     if (method === "GET") return exists ? { stock_item_id: "item-1" } : [];
@@ -138,7 +139,7 @@ test("apply continues after a per-loan error and reports it", async () => {
     appTenantSlug: "arda",
     tenantSettings: { features: { ardaStockReports: true } },
     fineractTenantId: "arda",
-    request: async (endpoint, options: any = {}) => {
+    request: async (endpoint, options = {}) => {
       if (endpoint.endsWith("/81") && options.method === "GET") {
         throw new Error("loan unavailable");
       }

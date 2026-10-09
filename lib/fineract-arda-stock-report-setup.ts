@@ -9,6 +9,7 @@ import {
   buildArdaStockReportDefinitions,
   type FineractReportDefinition,
 } from "@/lib/fineract-arda-stock-reports";
+import { extractReportParameterVariables } from "@/lib/arda-stock-report-verification";
 
 export type ArdaTenantRecord = {
   id: string;
@@ -266,16 +267,20 @@ async function verifyAppliedSetup(input: {
       `/runreports/FullParameterList?R_reportListing=${encodeURIComponent(`'${name}'`)}&parameterType=true`,
       { authMode: "service", cache: "no-store" }
     );
-    if (
-      name !== ARDA_STOCK_ITEM_OPTIONS_REPORT &&
-      (!Array.isArray(parameters) ||
-        !parameters.some(
-          (parameter) =>
-            (parameter as { parameter_variable?: unknown }).parameter_variable ===
-            "stockItemId"
-        ))
-    ) {
-      throw new Error(`${name} is missing its Stock Item parameter.`);
+    if (name !== ARDA_STOCK_ITEM_OPTIONS_REPORT) {
+      const variables = new Set(extractReportParameterVariables(parameters));
+      for (const required of [
+        "startDate",
+        "endDate",
+        "officeId",
+        "currencyId",
+        "loanProductId",
+        "stockItemId",
+      ]) {
+        if (!variables.has(required)) {
+          throw new Error(`${name} is missing its ${required} parameter.`);
+        }
+      }
     }
   }
 

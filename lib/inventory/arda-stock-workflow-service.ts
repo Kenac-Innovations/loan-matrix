@@ -148,9 +148,6 @@ export function getArdaStockDetails(
   // not silently skipped after Fineract has completed its action.
   if (!isArdaTenantSlug(lead.tenantSlug || lead.tenant?.slug)) return null;
 
-  const selection = getStoredStockSelection(lead);
-  if (!selection) return null;
-
   if (
     !isArdaStockInputLoanProduct({
       id: lead.loanProductId,
@@ -158,6 +155,14 @@ export function getArdaStockDetails(
     })
   ) {
     return null;
+  }
+
+  const selection = getStoredStockSelection(lead);
+  if (!selection) {
+    throw new InventoryLedgerServiceError(
+      "INVALID_REQUEST",
+      "The ARDA stock loan is missing its stock selection."
+    );
   }
 
   const inventoryItemId = normalize(selection.inventoryItemId);

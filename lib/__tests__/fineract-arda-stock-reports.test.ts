@@ -70,6 +70,8 @@ test("disbursement report is inclusive, filterable, unreversed, and stock-valued
   assert.match(sql, /COALESCE\(asd\.total_stock_value,\s*lt\.amount\)/i);
   assert.match(sql, /principal_repaid_derived/i);
   assert.match(sql, /total_outstanding_derived/i);
+  assert.match(sql, /loan_status_id/i);
+  assert.match(sql, /AS "Loan Status"/i);
   assert.match(sql, /Not captured/);
 });
 
@@ -78,8 +80,11 @@ test("repayment report exposes payment, cashier, allocation, and balance columns
 
   assert.match(sql, /transaction_type_enum\s*=\s*2/);
   assert.match(sql, /is_reversed\s*=\s*false/);
+  assert.match(sql, /lt\.id\s+AS "Transaction ID"/i);
   assert.match(sql, /m_payment_type/i);
   assert.match(sql, /m_appuser/i);
+  assert.match(sql, /au\.id\s*=\s*lt\.created_by/i);
+  assert.doesNotMatch(sql, /lt\.submitted_by/i);
   assert.match(sql, /principal_portion_derived/i);
   assert.match(sql, /interest_portion_derived/i);
   assert.match(sql, /fee_charges_portion_derived/i);
@@ -97,6 +102,8 @@ test("performance report aggregates monthly sales and ranks captured stock only"
   assert.match(sql, /SUM\([^)]*total_stock_value/i);
   assert.match(sql, /AVG\([^)]*quantity/i);
   assert.match(sql, /AVG\([^)]*unit_value/i);
+  assert.match(sql, /AVG\([^)]*total_stock_value[^)]*lt\.amount/i);
+  assert.match(sql, /AS "Average Stock Value per Disbursement"/i);
   assert.match(sql, /DENSE_RANK\(\)\s+OVER/i);
   assert.match(sql, /CASE[\s\S]*stock_item_id\s+IS\s+NULL[\s\S]*DENSE_RANK/i);
   assert.match(sql, /Not captured/);

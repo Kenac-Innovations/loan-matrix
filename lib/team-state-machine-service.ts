@@ -1773,7 +1773,7 @@ export class TeamAwareStateMachineService {
           appTenantSlug: lead?.tenant?.slug || lead?.tenantSlug || "",
           tenantSettings: lead?.tenant?.settings,
           fineractLoanId,
-          details: lead ? getArdaStockDetails(lead) : null,
+          getDetails: () => (lead ? getArdaStockDetails(lead) : null),
           disburse: () => fineract.disburseLoan(fineractLoanId, disburseDate, {
             paymentTypeId: disbursementPaymentTypeId,
             accountNumber:

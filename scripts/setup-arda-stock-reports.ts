@@ -192,25 +192,25 @@ INSERT INTO stretchy_parameter (
   parameter_name,
   parameter_variable,
   parameter_label,
-  parameter_displaytype,
-  parameter_formattype,
+  "parameter_displayType",
+  "parameter_FormatType",
   parameter_default,
   special,
-  selectone,
-  selectall,
+  "selectOne",
+  "selectAll",
   parameter_sql,
   parent_id
 ) VALUES (
-  ${reportName}, 'stockItemId', 'Stock Item', 'select', 'text', '0', NULL, 'N', 'Y', NULL, NULL
+  ${reportName}, 'stockItemId', 'Stock Item', 'select', 'string', '0', NULL, 'N', 'Y', NULL, NULL
 )
 ON CONFLICT (parameter_name) DO UPDATE SET
   parameter_variable = EXCLUDED.parameter_variable,
   parameter_label = EXCLUDED.parameter_label,
-  parameter_displaytype = EXCLUDED.parameter_displaytype,
-  parameter_formattype = EXCLUDED.parameter_formattype,
+  "parameter_displayType" = EXCLUDED."parameter_displayType",
+  "parameter_FormatType" = EXCLUDED."parameter_FormatType",
   parameter_default = EXCLUDED.parameter_default,
-  selectone = EXCLUDED.selectone,
-  selectall = EXCLUDED.selectall,
+  "selectOne" = EXCLUDED."selectOne",
+  "selectAll" = EXCLUDED."selectAll",
   parameter_sql = EXCLUDED.parameter_sql,
   parent_id = EXCLUDED.parent_id;
 COMMIT;`);

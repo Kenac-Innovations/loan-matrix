@@ -8,7 +8,7 @@ export async function runArdaStockDisbursementGuard<T>(input: {
   appTenantSlug: string;
   tenantSettings: unknown;
   fineractLoanId: number;
-  details: ArdaStockDetails | null;
+  getDetails: () => ArdaStockDetails | null;
   sync?: typeof syncArdaStockDetailsForCurrentTenant;
   disburse: () => Promise<T>;
 }): Promise<T> {
@@ -17,15 +17,18 @@ export async function runArdaStockDisbursementGuard<T>(input: {
     tenantSettings: input.tenantSettings,
   });
 
-  if (!enabled || !input.details) {
+  if (!enabled) {
     return input.disburse();
   }
+
+  const details = input.getDetails();
+  if (!details) return input.disburse();
 
   await (input.sync ?? syncArdaStockDetailsForCurrentTenant)({
     appTenantSlug: input.appTenantSlug,
     tenantSettings: input.tenantSettings,
     fineractLoanId: input.fineractLoanId,
-    details: input.details,
+    details,
   });
 
   return input.disburse();

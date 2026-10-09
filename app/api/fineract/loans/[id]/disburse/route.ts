@@ -191,7 +191,8 @@ export async function POST(
       appTenantSlug: tenant?.slug || tenantSlug,
       tenantSettings: tenant?.settings,
       fineractLoanId: Number(id),
-      details: linkedLead ? getArdaStockDetails({ ...linkedLead, tenant }) : null,
+      getDetails: () =>
+        linkedLead ? getArdaStockDetails({ ...linkedLead, tenant }) : null,
       disburse: () => fetchFineractAPI(`/loans/${id}?command=disburse`, {
         method: 'POST',
         authMode: 'service',

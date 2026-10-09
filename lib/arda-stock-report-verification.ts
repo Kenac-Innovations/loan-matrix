@@ -25,9 +25,11 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
     "Disbursed Amount",
     "Principal Repaid",
     "Outstanding Amount",
+    "Loan Status",
   ],
   [ARDA_STOCK_REPORT_NAMES[1]]: [
     "Loan Account",
+    "Transaction ID",
     "Repayment Date",
     "Stock Item",
     "Repayment Amount",
@@ -48,6 +50,7 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
     "Stock Value Disbursed",
     "Average Quantity per Disbursement",
     "Average Unit Value",
+    "Average Stock Value per Disbursement",
     "Monthly Sales Rank",
   ],
 };
@@ -63,6 +66,26 @@ const REQUIRED_PARAMETERS = [
 
 function normalized(value: string): string {
   return value.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+export function extractReportParameterVariables(value: unknown): string[] {
+  const rows = Array.isArray(value)
+    ? value
+    : Array.isArray((value as { data?: unknown } | null)?.data)
+      ? ((value as { data: unknown[] }).data)
+      : [];
+
+  return rows
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return "";
+      const record = entry as {
+        parameter_variable?: unknown;
+        row?: unknown;
+      };
+      if (record.parameter_variable) return String(record.parameter_variable);
+      return Array.isArray(record.row) ? String(record.row[1] || "") : "";
+    })
+    .filter(Boolean);
 }
 
 function numberValue(value: unknown): number {
@@ -109,6 +132,7 @@ export function validateArdaReportFixtures(input: {
     postTransactionBalance: number;
     averageQuantity: number;
     averageUnitValue: number;
+    averageStockValue: number;
     rank: number;
   };
 }): void {
@@ -137,6 +161,11 @@ export function validateArdaReportFixtures(input: {
   assertNumber("Performance stock value", performance["Stock Value Disbursed"], input.expected.stockValue);
   assertNumber("Average quantity", performance["Average Quantity per Disbursement"], input.expected.averageQuantity);
   assertNumber("Average unit value", performance["Average Unit Value"], input.expected.averageUnitValue);
+  assertNumber(
+    "Average stock value",
+    performance["Average Stock Value per Disbursement"],
+    input.expected.averageStockValue
+  );
   assertNumber("Monthly rank", performance["Monthly Sales Rank"], input.expected.rank);
 }
 

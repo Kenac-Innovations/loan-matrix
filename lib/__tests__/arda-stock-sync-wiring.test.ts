@@ -34,7 +34,7 @@ test("ARDA stock sync completes before disbursement and receives final details",
     appTenantSlug: "arda",
     tenantSettings: enabledSettings,
     fineractLoanId: 22,
-    details: { ...details, quantity: "4", totalStockValue: "50.00" },
+    getDetails: () => ({ ...details, quantity: "4", totalStockValue: "50.00" }),
     sync: async (input) => {
       calls.push("sync");
       receivedDetails = input.details;
@@ -60,7 +60,7 @@ test("ARDA stock sync failure blocks the external disbursement", async () => {
       appTenantSlug: "arda",
       tenantSettings: enabledSettings,
       fineractLoanId: 22,
-      details,
+      getDetails: () => details,
       sync: async () => {
         throw new Error("metadata unavailable");
       },
@@ -75,17 +75,23 @@ test("ARDA stock sync failure blocks the external disbursement", async () => {
   assert.equal(disbursed, false);
 });
 
-test("non-ARDA and missing-detail loans disburse without metadata writes", async () => {
+test("disabled, non-ARDA, and missing-detail loans disburse without metadata reads or writes", async () => {
   for (const input of [
-    { appTenantSlug: "goodfellow", tenantSettings: enabledSettings, details },
-    { appTenantSlug: "arda", tenantSettings: enabledSettings, details: null },
-    { appTenantSlug: "arda", tenantSettings: {}, details },
+    { appTenantSlug: "goodfellow", tenantSettings: enabledSettings, detailsResult: details },
+    { appTenantSlug: "arda", tenantSettings: enabledSettings, detailsResult: null },
+    { appTenantSlug: "arda", tenantSettings: {}, detailsResult: details },
   ]) {
     let syncCalls = 0;
+    let detailReads = 0;
     let disbursementCalls = 0;
     const result = await runArdaStockDisbursementGuard({
-      ...input,
+      appTenantSlug: input.appTenantSlug,
+      tenantSettings: input.tenantSettings,
       fineractLoanId: 22,
+      getDetails: () => {
+        detailReads += 1;
+        return input.detailsResult;
+      },
       sync: async () => {
         syncCalls += 1;
         return "updated";
@@ -99,6 +105,10 @@ test("non-ARDA and missing-detail loans disburse without metadata writes", async
     assert.equal(result, "done");
     assert.equal(syncCalls, 0);
     assert.equal(disbursementCalls, 1);
+    assert.equal(
+      detailReads,
+      input.appTenantSlug === "arda" && input.tenantSettings === enabledSettings ? 1 : 0
+    );
   }
 });
 
@@ -109,8 +119,12 @@ test("manual create-loan links locally before best-effort stock metadata sync", 
     "await syncArdaStockDetailsForCurrentTenant",
     linkIndex
   );
+  const detailIndex = source.indexOf("getArdaStockDetails(lead)", linkIndex);
+  const guardedTryIndex = source.lastIndexOf("try {", detailIndex);
 
   assert.ok(linkIndex >= 0);
+  assert.ok(guardedTryIndex > linkIndex);
+  assert.ok(detailIndex > guardedTryIndex);
   assert.ok(syncIndex > linkIndex);
   assert.match(source, /ardaStockDetailSync/);
   assert.match(source, /stockDetailSync/);
@@ -125,11 +139,11 @@ test("both disbursement paths execute Fineract inside the ARDA guard", () => {
   assert.match(stateMachine, /runArdaStockDisbursementGuard/);
   assert.match(
     stateMachine,
-    /runArdaStockDisbursementGuard\([\s\S]*?disburse:\s*\(\)\s*=>\s*fineract\.disburseLoan/
+    /runArdaStockDisbursementGuard\([\s\S]*?getDetails:\s*\(\)\s*=>[\s\S]*?disburse:\s*\(\)\s*=>\s*fineract\.disburseLoan/
   );
   assert.match(directRoute, /runArdaStockDisbursementGuard/);
   assert.match(
     directRoute,
-    /runArdaStockDisbursementGuard\([\s\S]*?disburse:\s*\(\)\s*=>\s*fetchFineractAPI\([^]*?command=disburse/
+    /runArdaStockDisbursementGuard\([\s\S]*?getDetails:\s*\(\)\s*=>[\s\S]*?disburse:\s*\(\)\s*=>\s*fetchFineractAPI\([^]*?command=disburse/
   );
 });

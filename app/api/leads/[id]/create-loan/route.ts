@@ -222,22 +222,22 @@ export async function POST(
         },
       });
 
-      const details = getArdaStockDetails(lead);
-      if (
-        details &&
-        isArdaStockReportsEnabled({
-          tenantSlug: lead.tenant.slug,
-          tenantSettings: lead.tenant.settings,
-        })
-      ) {
+      const stockReportsEnabled = isArdaStockReportsEnabled({
+        tenantSlug: lead.tenant.slug,
+        tenantSettings: lead.tenant.settings,
+      });
+      if (stockReportsEnabled) {
         try {
-          await syncArdaStockDetailsForCurrentTenant({
-            appTenantSlug: lead.tenant.slug || "",
-            tenantSettings: lead.tenant.settings,
-            fineractLoanId: loanId,
-            details,
-          });
-          stockDetailSync = { status: "synced" };
+          const details = getArdaStockDetails(lead);
+          if (details) {
+            await syncArdaStockDetailsForCurrentTenant({
+              appTenantSlug: lead.tenant.slug || "",
+              tenantSettings: lead.tenant.settings,
+              fineractLoanId: loanId,
+              details,
+            });
+            stockDetailSync = { status: "synced" };
+          }
         } catch (error) {
           const message =
             error instanceof Error

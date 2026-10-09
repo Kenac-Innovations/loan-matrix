@@ -336,6 +336,31 @@ test("does not expose ARDA stock details for another tenant", () => {
   );
 });
 
+test("rejects an ARDA stock loan when its stock selection is missing", () => {
+  assert.throws(
+    () =>
+      getArdaStockDetails({
+        id: "lead-arda-missing-stock",
+        tenantId: "tenant-arda",
+        tenantSlug: "arda",
+        loanProductName: "ARDA Stock Input Loan",
+        stateMetadata: {},
+      }),
+    /missing its stock selection/i
+  );
+
+  assert.equal(
+    getArdaStockDetails({
+      id: "lead-arda-normal-loan",
+      tenantId: "tenant-arda",
+      tenantSlug: "arda",
+      loanProductName: "Ordinary Cash Loan",
+      stateMetadata: {},
+    }),
+    null
+  );
+});
+
 test("rejects invalid or inconsistent ARDA stock reporting values", () => {
   const lead = {
     id: "lead-invalid",

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -11,8 +13,39 @@ import {
   ARDA_STOCK_ITEM_OPTIONS_REPORT,
   ARDA_STOCK_REPORT_NAMES,
 } from "../fineract-arda-stock-reports";
+import type { FineractRequester } from "../fineract-arda-stock-details";
 
-type ApiCall = { endpoint: string; method: string; body?: any };
+type ReportParameterFixture = {
+  id: number;
+  parameterId: number;
+  reportParameterName: string;
+};
+type ReportFixture = {
+  id: number;
+  reportName: string;
+  reportParameters?: ReportParameterFixture[];
+};
+type ApiCall = {
+  endpoint: string;
+  method: string;
+  body?: Record<string, unknown>;
+};
+
+test("catalog SQL quotes Fineract's PostgreSQL camel-case parameter columns", () => {
+  const source = readFileSync(
+    path.resolve(process.cwd(), "scripts/setup-arda-stock-reports.ts"),
+    "utf8"
+  );
+
+  for (const column of [
+    "parameter_displayType",
+    "parameter_FormatType",
+    "selectOne",
+    "selectAll",
+  ]) {
+    assert.match(source, new RegExp(`"${column}"`));
+  }
+});
 
 function createHarness(existingReportNames: string[] = []) {
   const tenant = {
@@ -48,7 +81,7 @@ function createHarness(existingReportNames: string[] = []) {
   };
 
   let nextReportId = 100;
-  const reports: any[] = existingReportNames.map((reportName) => ({
+  const reports: ReportFixture[] = existingReportNames.map((reportName) => ({
     id: nextReportId++,
     reportName,
     reportParameters:
@@ -71,16 +104,21 @@ function createHarness(existingReportNames: string[] = []) {
   const apiCalls: ApiCall[] = [];
   let datatableCreated = false;
 
-  const fineract = async (endpoint: string, options: any = {}) => {
+  const fineract: FineractRequester = async (endpoint, options = {}) => {
     const method = options.method || "GET";
-    const body = options.body ? JSON.parse(options.body) : undefined;
+    const body = options.body
+      ? (JSON.parse(String(options.body)) as Record<string, unknown>)
+      : undefined;
     apiCalls.push({ endpoint, method, body });
 
     if (endpoint === "/reports" && method === "GET") {
       return structuredClone(reports);
     }
     if (endpoint === "/reports" && method === "POST") {
-      const report = { id: nextReportId++, reportName: body.reportName };
+      const report = {
+        id: nextReportId++,
+        reportName: String(body?.reportName || ""),
+      };
       reports.push(report);
       return { resourceId: report.id };
     }
@@ -107,15 +145,17 @@ function createHarness(existingReportNames: string[] = []) {
         encodeURIComponent(`'${ARDA_STOCK_ITEM_OPTIONS_REPORT}'`)
       );
       return isSelector
-        ? []
-        : [
-            { parameter_variable: "startDate" },
-            { parameter_variable: "endDate" },
-            { parameter_variable: "officeId" },
-            { parameter_variable: "currencyId" },
-            { parameter_variable: "loanProductId" },
-            { parameter_variable: "stockItemId" },
-          ];
+        ? { data: [] }
+        : {
+            data: [
+              ["startDateSelect", "startDate", "Start Date"],
+              ["endDateSelect", "endDate", "End Date"],
+              ["OfficeIdSelectOne", "officeId", "Office"],
+              ["currencyIdSelectAll", "currencyId", "Currency"],
+              ["loanProductIdSelectAll", "loanProductId", "Product"],
+              [ARDA_STOCK_ITEM_OPTIONS_REPORT, "stockItemId", "Stock Item"],
+            ].map((row) => ({ row })),
+          };
     }
     if (endpoint === "/permissions" && method === "GET") {
       return reportPermissionCodes.map((code) => ({ code }));
@@ -136,7 +176,11 @@ function createHarness(existingReportNames: string[] = []) {
     if (roleMatch && method === "PUT") {
       const roleId = Number(roleMatch[1]);
       const selected = new Set(
-        Object.entries(body.permissions)
+        Object.entries(
+          body?.permissions && typeof body.permissions === "object"
+            ? (body.permissions as Record<string, unknown>)
+            : {}
+        )
           .filter(([, enabled]) => enabled === true || enabled === "true")
           .map(([code]) => code)
       );
@@ -168,7 +212,7 @@ function createHarness(existingReportNames: string[] = []) {
       parameterId = value;
       for (const report of reports) {
         const stockItem = report.reportParameters?.find(
-          (parameter: any) => parameter.reportParameterName === "stockItemId"
+          (parameter) => parameter.reportParameterName === "stockItemId"
         );
         if (stockItem) stockItem.parameterId = value;
       }
@@ -285,12 +329,16 @@ test("apply updates matching report names without duplicates and reuses the cata
     (call) =>
       /^\/reports\/\d+$/.test(call.endpoint) &&
       call.method === "PUT" &&
-      call.body.reportName !== ARDA_STOCK_ITEM_OPTIONS_REPORT
+      call.body?.reportName !== ARDA_STOCK_ITEM_OPTIONS_REPORT
   );
   assert.ok(
     visibleUpdates.every((call) =>
-      call.body.reportParameters.every((parameter: any) =>
-        Number.isInteger(parameter.id)
+      Array.isArray(call.body?.reportParameters) &&
+      call.body.reportParameters.every(
+        (parameter) =>
+          Boolean(parameter) &&
+          typeof parameter === "object" &&
+          Number.isInteger((parameter as { id?: unknown }).id)
       )
     )
   );

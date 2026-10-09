@@ -60,6 +60,7 @@ const disbursementSql = `SELECT
        lt.amount AS "Disbursed Amount",
        COALESCE(ml.principal_repaid_derived, 0) AS "Principal Repaid",
        COALESCE(ml.total_outstanding_derived, 0) AS "Outstanding Amount",
+       COALESCE(ls.enum_value, 'Unknown') AS "Loan Status",
        COALESCE(asd.stock_issue_reference, 'Not captured') AS "Stock Issue Reference"
 FROM m_loan_transaction lt
 JOIN m_loan ml ON ml.id = lt.loan_id
@@ -68,6 +69,8 @@ JOIN m_office o ON o.id = mc.office_id
   AND o.hierarchy LIKE concat('\${currentUserHierarchy}', '%')
 LEFT JOIN m_product_loan lp ON lp.id = ml.product_id
 LEFT JOIN arda_stock_details asd ON asd.loan_id = ml.id
+LEFT JOIN r_enum_value ls ON ls.enum_id = ml.loan_status_id
+  AND ls.enum_name = 'loan_status_id'
 WHERE lt.transaction_type_enum = 1
   AND lt.is_reversed = false
   AND lt.transaction_date::date BETWEEN '\${startDate}'::date AND '\${endDate}'::date
@@ -84,6 +87,7 @@ const repaymentSql = `SELECT
        ml.account_no AS "Loan Account",
        lp.name AS "Loan Product",
        lt.transaction_date AS "Repayment Date",
+       lt.id AS "Transaction ID",
        ml.currency_code AS "Currency",
        COALESCE(asd.stock_item_id, 'Not captured') AS "Stock Item ID",
        COALESCE(asd.stock_item_name, 'Not captured') AS "Stock Item",
@@ -108,7 +112,7 @@ LEFT JOIN m_product_loan lp ON lp.id = ml.product_id
 LEFT JOIN arda_stock_details asd ON asd.loan_id = ml.id
 LEFT JOIN m_payment_detail pd ON pd.id = lt.payment_detail_id
 LEFT JOIN m_payment_type pt ON pt.id = pd.payment_type_id
-LEFT JOIN m_appuser au ON au.id = lt.submitted_by
+LEFT JOIN m_appuser au ON au.id = lt.created_by
 WHERE lt.transaction_type_enum = 2
   AND lt.is_reversed = false
   AND lt.transaction_date::date BETWEEN '\${startDate}'::date AND '\${endDate}'::date
@@ -129,7 +133,8 @@ const performanceSql = `WITH monthly AS (
          SUM(COALESCE(asd.quantity, 0)) AS total_quantity,
          SUM(COALESCE(asd.total_stock_value, lt.amount)) AS total_stock_value,
          AVG(asd.quantity) AS average_quantity,
-         AVG(asd.unit_value) AS average_unit_value
+         AVG(asd.unit_value) AS average_unit_value,
+         AVG(COALESCE(asd.total_stock_value, lt.amount)) AS average_stock_value
   FROM m_loan_transaction lt
   JOIN m_loan ml ON ml.id = lt.loan_id
   JOIN m_client mc ON mc.id = ml.client_id
@@ -157,6 +162,7 @@ SELECT month AS "Month",
        total_stock_value AS "Stock Value Disbursed",
        average_quantity AS "Average Quantity per Disbursement",
        average_unit_value AS "Average Unit Value",
+       average_stock_value AS "Average Stock Value per Disbursement",
        CASE
          WHEN stock_item_id IS NULL THEN NULL
          ELSE DENSE_RANK() OVER (PARTITION BY month ORDER BY total_quantity DESC)
