@@ -1,14 +1,21 @@
 // File: app/(application)/accounting/chart-of-accounts/page.tsx
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   Select,
   SelectTrigger,
@@ -17,67 +24,215 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import {
-  Plus, 
-  Eye, 
-  BookOpen, 
-  Search, 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Plus,
+  Eye,
+  Search,
   Filter,
-  Hash,
-  FileText,
-  TrendingUp,
-  TrendingDown,
-  Circle,
-  MoreHorizontal,
-  ArrowRight,
-  Calendar,
-  Tag
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  ArrowUp,
+  ArrowDown,
+  MoreVertical,
+  Pencil,
+  Download,
 } from 'lucide-react';
-import { toast } from '@/components/ui/use-toast';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
+type SortKey = 'glCode' | 'name' | 'type';
+
+interface GlAccount {
+  id: number;
+  name: string;
+  glCode?: string;
+  glcode?: string;
+  parentId?: number | null;
+  description?: string;
+  disabled?: boolean;
+  manualEntriesAllowed?: boolean;
+  type?: { value?: string };
+  usage?: { value?: string };
+}
+
+interface TreeRow {
+  acc: GlAccount;
+  depth: number;
+  hasChildren: boolean;
+}
+
+const typeConfig: Record<string, string> = {
+  ASSET: 'text-emerald-500 bg-emerald-500/15 border-emerald-500/30',
+  LIABILITY: 'text-amber-500 bg-amber-500/15 border-amber-500/30',
+  INCOME: 'text-blue-500 bg-blue-500/15 border-blue-500/30',
+  REVENUE: 'text-blue-500 bg-blue-500/15 border-blue-500/30',
+  EQUITY: 'text-purple-500 bg-purple-500/15 border-purple-500/30',
+  EXPENSE: 'text-red-500 bg-red-500/15 border-red-500/30',
+};
+
+const glCodeOf = (acc: GlAccount) => String(acc.glCode ?? acc.glcode ?? '');
+const typeOf = (acc: GlAccount) => (acc.type?.value || '').toUpperCase();
+
+function compareAccounts(a: GlAccount, b: GlAccount, key: SortKey, dir: 1 | -1) {
+  let av: string;
+  let bv: string;
+  if (key === 'name') {
+    av = a.name || '';
+    bv = b.name || '';
+  } else if (key === 'type') {
+    av = typeOf(a);
+    bv = typeOf(b);
+  } else {
+    av = glCodeOf(a);
+    bv = glCodeOf(b);
+  }
+  return av.localeCompare(bv, undefined, { numeric: true }) * dir;
+}
+
+function SortIcon({ active, dir }: { active: boolean; dir: 1 | -1 }) {
+  if (!active) return null;
+  return dir === 1 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+}
+
+function toCsvCell(value: unknown) {
+  const s = String(value ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 export default function ChartOfAccountsPage() {
-  const { data, error, mutate } = useSWR('/api/fineract/chart-of-accounts', fetcher);
-  const accounts = data?.chartAccounts || [];
+  const router = useRouter();
+  const { data, error } = useSWR('/api/fineract/chart-of-accounts', fetcher);
+  const accounts: GlAccount[] = useMemo(
+    () => (Array.isArray(data?.chartAccounts) ? data.chartAccounts : []),
+    [data]
+  );
 
   // State
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(12);
+  const [pageSize, setPageSize] = useState(25);
   const [filterType, setFilterType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [sortKey, setSortKey] = useState<SortKey>('glCode');
+  const [sortDir, setSortDir] = useState<1 | -1>(1);
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
-  // Filter & paginate
-  const filtered = useMemo(
-    () =>
-      accounts.filter((acc: any) => {
-        const matchesSearch = acc.name.toLowerCase().includes(search.toLowerCase()) ||
-          String(acc.glCode || acc.glcode).includes(search);
-        const matchesType = filterType === 'all' || 
-          (acc.type?.value?.toUpperCase() === filterType.toUpperCase());
-        return matchesSearch && matchesType;
-      }),
-    [accounts, search, filterType]
-  );
-  const pageCount = Math.ceil(filtered.length / pageSize);
-  const paginated = useMemo(
-    () =>
-      filtered.slice((page - 1) * pageSize, page * pageSize),
-    [filtered, page, pageSize]
-  );
+  const isFiltering =
+    search.trim() !== '' || filterType !== 'all' || filterStatus !== 'all';
+
+  // Build rows: hierarchical tree when browsing, flat list when filtering
+  const rows: TreeRow[] = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const sorter = (a: GlAccount, b: GlAccount) => compareAccounts(a, b, sortKey, sortDir);
+
+    if (isFiltering) {
+      return accounts
+        .filter(acc => {
+          const matchesSearch =
+            !term ||
+            (acc.name || '').toLowerCase().includes(term) ||
+            glCodeOf(acc).toLowerCase().includes(term);
+          const matchesType =
+            filterType === 'all' || typeOf(acc) === filterType.toUpperCase();
+          const matchesStatus =
+            filterStatus === 'all' ||
+            (filterStatus === 'active' ? !acc.disabled : !!acc.disabled);
+          return matchesSearch && matchesType && matchesStatus;
+        })
+        .sort(sorter)
+        .map(acc => ({ acc, depth: 0, hasChildren: false }));
+    }
+
+    const ids = new Set(accounts.map(acc => acc.id));
+    const childrenOf = new Map<number, GlAccount[]>();
+    const roots: GlAccount[] = [];
+    for (const acc of accounts) {
+      const parentId = acc.parentId;
+      if (parentId != null && ids.has(parentId) && parentId !== acc.id) {
+        if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
+        childrenOf.get(parentId)!.push(acc);
+      } else {
+        roots.push(acc);
+      }
+    }
+
+    const out: TreeRow[] = [];
+    const visited = new Set<number>();
+    const walk = (list: GlAccount[], depth: number) => {
+      for (const acc of [...list].sort(sorter)) {
+        if (visited.has(acc.id)) continue;
+        visited.add(acc.id);
+        const kids = childrenOf.get(acc.id) || [];
+        out.push({ acc, depth, hasChildren: kids.length > 0 });
+        if (kids.length && !collapsed.has(acc.id)) walk(kids, depth + 1);
+      }
+    };
+    walk(roots, 0);
+    return out;
+  }, [accounts, search, filterType, filterStatus, sortKey, sortDir, collapsed, isFiltering]);
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const paginated = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   // Stats
   const stats = useMemo(() => {
     const total = accounts.length;
-    const active = accounts.filter((acc: any) => !acc.disabled).length;
-    const disabled = total - active;
-    const types = accounts.reduce((acc: any, curr: any) => {
-      const type = curr.type?.value?.toUpperCase() || 'UNKNOWN';
-      acc[type] = (acc[type] || 0) + 1;
-      return acc;
-    }, {});
-
-    return { total, active, disabled, types };
+    const active = accounts.filter(acc => !acc.disabled).length;
+    const types = new Set(accounts.map(acc => typeOf(acc) || 'UNKNOWN'));
+    return { total, active, disabled: total - active, types: types.size };
   }, [accounts]);
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => (d === 1 ? -1 : 1));
+    } else {
+      setSortKey(key);
+      setSortDir(1);
+    }
+  };
+
+  const toggleCollapsed = (id: number) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exportCsv = () => {
+    const header = ['GL Code', 'Name', 'Type', 'Usage', 'Manual Entries', 'Status', 'Description'];
+    const lines = rows.map(({ acc }) =>
+      [
+        glCodeOf(acc),
+        acc.name,
+        typeOf(acc),
+        acc.usage?.value || '',
+        acc.manualEntriesAllowed ? 'Yes' : 'No',
+        acc.disabled ? 'Disabled' : 'Active',
+        acc.description || '',
+      ]
+        .map(toCsvCell)
+        .join(',')
+    );
+    const blob = new Blob([[header.join(','), ...lines].join('\n')], {
+      type: 'text/csv;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'chart-of-accounts.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (error) {
     return (
@@ -91,47 +246,36 @@ export default function ChartOfAccountsPage() {
       </Card>
     );
   }
-  
+
   if (!data) {
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[...Array(4)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="pt-6">
-                <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
-                <div className="h-8 bg-muted rounded w-1/2"></div>
-              </CardContent>
-            </Card>
+            <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />
           ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="pt-6">
-                <div className="h-4 bg-muted rounded w-1/2 mb-2"></div>
-                <div className="h-6 bg-muted rounded w-3/4 mb-2"></div>
-                <div className="h-3 bg-muted rounded w-full"></div>
-              </CardContent>
-            </Card>
+        <div className="h-10 rounded-lg bg-muted animate-pulse" />
+        <div className="rounded-lg border border-border">
+          {[...Array(10)].map((_, i) => (
+            <div key={i} className="h-11 border-b border-border last:border-0 px-4 flex items-center">
+              <div className="h-3 bg-muted rounded w-full animate-pulse" />
+            </div>
           ))}
         </div>
       </div>
     );
   }
 
-  // Type configuration
-  const typeConfig: Record<string, { color: string; bgColor: string; icon: any }> = {
-    ASSET: { color: 'text-emerald-500', bgColor: 'bg-emerald-500/20', icon: TrendingUp },
-    LIABILITY: { color: 'text-amber-500', bgColor: 'bg-amber-500/20', icon: TrendingDown },
-    INCOME: { color: 'text-blue-500', bgColor: 'bg-blue-500/20', icon: TrendingUp },
-    REVENUE: { color: 'text-blue-500', bgColor: 'bg-blue-500/20', icon: TrendingUp },
-    EQUITY: { color: 'text-purple-500', bgColor: 'bg-purple-500/20', icon: Circle },
-    EXPENSE: { color: 'text-red-500', bgColor: 'bg-red-500/20', icon: TrendingDown },
-  };
+  const statTiles = [
+    { label: 'Total Accounts', value: stats.total, color: 'text-blue-500' },
+    { label: 'Active', value: stats.active, color: 'text-emerald-500' },
+    { label: 'Disabled', value: stats.disabled, color: 'text-red-500' },
+    { label: 'Types', value: stats.types, color: 'text-purple-500' },
+  ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -148,254 +292,296 @@ export default function ChartOfAccountsPage() {
         </Link>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-blue-500">Total Accounts</p>
-                <p className="text-2xl font-bold text-foreground">{stats.total}</p>
-              </div>
-              <div className="h-12 w-12 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                <BookOpen className="h-6 w-6 text-blue-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-emerald-500">Active</p>
-                <p className="text-2xl font-bold text-foreground">{stats.active}</p>
-              </div>
-              <div className="h-12 w-12 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                <Circle className="h-6 w-6 text-emerald-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-red-500">Disabled</p>
-                <p className="text-2xl font-bold text-foreground">{stats.disabled}</p>
-              </div>
-              <div className="h-12 w-12 rounded-lg bg-red-500/20 flex items-center justify-center">
-                <Circle className="h-6 w-6 text-red-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-purple-500">Types</p>
-                <p className="text-2xl font-bold text-foreground">{Object.keys(stats.types).length}</p>
-              </div>
-              <div className="h-12 w-12 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <Tag className="h-6 w-6 text-purple-500" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {statTiles.map(tile => (
+          <div key={tile.label} className="rounded-lg border border-border bg-card px-4 py-3">
+            <p className={`text-xs font-medium ${tile.color}`}>{tile.label}</p>
+            <p className="text-xl font-bold text-foreground">{tile.value}</p>
+          </div>
+        ))}
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Search accounts by name or code..."
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
-                className="pl-10"
-              />
-            </div>
-            <Select
-              value={filterType}
-              onValueChange={v => { setFilterType(v); setPage(1); }}
-            >
-              <SelectTrigger className="w-48">
-                <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
-                <SelectValue placeholder="Filter by type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="asset">Assets</SelectItem>
-                <SelectItem value="liability">Liabilities</SelectItem>
-                <SelectItem value="equity">Equity</SelectItem>
-                <SelectItem value="income">Income</SelectItem>
-                <SelectItem value="expense">Expenses</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Accounts Grid */}
-      <div className="space-y-2">
-        {paginated.map((acc: any) => {
-          const typeKey = (acc.type?.value || '').toUpperCase();
-          const config = typeConfig[typeKey] || {
-            color: 'text-muted-foreground',
-            bgColor: 'bg-muted',
-            icon: FileText
-          };
-          const IconComponent = config.icon;
-          
-          return (
-            <Card key={acc.id} className="group hover:shadow-lg hover:scale-[1.02] transition-all duration-300">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                  <div className={`h-10 w-10 rounded-xl ${config.bgColor} flex items-center justify-center flex-shrink-0 shadow-sm group-hover:shadow-md transition-shadow duration-300`}>
-                    <IconComponent className={`h-5 w-5 ${config.color}`} />
-                  </div>
-                  
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        {/* Title and Description */}
-                        <div className="min-w-0">
-                          <h3 className="font-semibold text-foreground text-sm truncate group-hover:text-primary transition-colors duration-300">
-                            {acc.name}
-                          </h3>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">
-                            {acc.description || 'General ledger account'}
-                          </p>
-                        </div>
-
-                        {/* GL Code with modern styling */}
-                        <div className="flex items-center gap-1.5">
-                          <Hash className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-xs font-mono text-muted-foreground bg-muted px-2.5 py-1 rounded-md flex-shrink-0">
-                            {acc.glCode || acc.glcode}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {/* Right side info with enhanced badges */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <Badge
-                          variant="outline"
-                          className={`text-xs h-6 px-3 ${config.color} border-current ${config.bgColor} hover:shadow-sm transition-all duration-200`}
-                        >
-                          {typeKey}
-                        </Badge>
-
-                        {/* Usage Badge */}
-                        {acc.usage?.value && (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs h-6 px-3 transition-colors duration-200"
-                          >
-                            {acc.usage.value.toUpperCase()}
-                          </Badge>
-                        )}
-
-                        {/* Status Badge with animation */}
-                        <div className="relative">
-                          {!acc.disabled && (
-                            <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                          )}
-                          <Badge
-                            variant={acc.disabled ? "destructive" : "default"}
-                            className={`text-xs h-6 px-3 border ${acc.disabled ? 'text-red-500 bg-red-500/20 border-red-500/30' : 'text-green-500 bg-green-500/20 border-green-500/30'} transition-all duration-200`}
-                          >
-                            {acc.disabled ? 'Disabled' : 'Active'}
-                          </Badge>
-                        </div>
-
-                        {/* Action button with enhanced styling */}
-                        <Link href={`/accounting/chart-of-accounts/${acc.id}`}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-primary/10 hover:text-primary rounded-lg text-muted-foreground"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input
+            placeholder="Search accounts by name or code..."
+            value={search}
+            onChange={e => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            className="pl-10"
+          />
+        </div>
+        <Select
+          value={filterType}
+          onValueChange={v => {
+            setFilterType(v);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-44">
+            <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+            <SelectValue placeholder="Filter by type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="asset">Assets</SelectItem>
+            <SelectItem value="liability">Liabilities</SelectItem>
+            <SelectItem value="equity">Equity</SelectItem>
+            <SelectItem value="income">Income</SelectItem>
+            <SelectItem value="expense">Expenses</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={filterStatus}
+          onValueChange={v => {
+            setFilterStatus(v);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-36">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Any Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="disabled">Disabled</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
+          <Download className="h-4 w-4 mr-2" />
+          Export
+        </Button>
       </div>
 
-      {/* Pagination */}
-      {pageCount > 1 && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, filtered.length)} of {filtered.length} accounts
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page <= 1}
-                  onClick={() => setPage(p => p - 1)}
+      {/* Accounts table */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <Table>
+          <TableHeader className="bg-muted/50">
+            <TableRow>
+              <TableHead className="w-28">
+                <button
+                  type="button"
+                  className="flex items-center gap-1 hover:text-foreground"
+                  onClick={() => toggleSort('glCode')}
                 >
-                  Previous
-                </Button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, pageCount) }, (_, i) => {
-                    const pageNum = i + 1;
-                    return (
-                      <Button
-                        key={pageNum}
-                        size="sm"
-                        variant={page === pageNum ? "default" : "outline"}
-                        onClick={() => setPage(pageNum)}
-                        className="w-8 h-8 p-0"
+                  GL Code <SortIcon active={sortKey === 'glCode'} dir={sortDir} />
+                </button>
+              </TableHead>
+              <TableHead>
+                <button
+                  type="button"
+                  className="flex items-center gap-1 hover:text-foreground"
+                  onClick={() => toggleSort('name')}
+                >
+                  Account Name <SortIcon active={sortKey === 'name'} dir={sortDir} />
+                </button>
+              </TableHead>
+              <TableHead className="w-32">
+                <button
+                  type="button"
+                  className="flex items-center gap-1 hover:text-foreground"
+                  onClick={() => toggleSort('type')}
+                >
+                  Type <SortIcon active={sortKey === 'type'} dir={sortDir} />
+                </button>
+              </TableHead>
+              <TableHead className="w-24">Usage</TableHead>
+              <TableHead className="w-28 text-center">Manual Entries</TableHead>
+              <TableHead className="w-24">Status</TableHead>
+              <TableHead className="w-20 text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginated.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                  No accounts match your filters.
+                </TableCell>
+              </TableRow>
+            ) : (
+              paginated.map(({ acc, depth, hasChildren }) => {
+                const typeKey = typeOf(acc);
+                const isHeader = (acc.usage?.value || '').toUpperCase() === 'HEADER';
+                const isCollapsed = collapsed.has(acc.id);
+                return (
+                  <TableRow
+                    key={acc.id}
+                    className="group cursor-pointer"
+                    onClick={() => router.push(`/accounting/chart-of-accounts/${acc.id}`)}
+                  >
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {glCodeOf(acc)}
+                    </TableCell>
+                    <TableCell>
+                      <div
+                        className="flex items-center gap-1 min-w-0"
+                        style={{ paddingLeft: depth * 20 }}
                       >
-                        {pageNum}
-                      </Button>
-                    );
-                  })}
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page >= pageCount}
-                  onClick={() => setPage(p => p + 1)}
-                >
-                  Next
-                </Button>
-                <Select
-                  value={String(pageSize)}
-                  onValueChange={v => { setPageSize(Number(v)); setPage(1); }}
-                >
-                  <SelectTrigger className="w-24">
-                    <SelectValue placeholder="Items" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[6, 12, 24, 48].map(n => (
-                      <SelectItem key={n} value={String(n)}>
-                        {n} / page
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                        {hasChildren ? (
+                          <button
+                            type="button"
+                            aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+                            className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground flex-shrink-0"
+                            onClick={e => {
+                              e.stopPropagation();
+                              toggleCollapsed(acc.id);
+                            }}
+                          >
+                            {isCollapsed ? (
+                              <ChevronRight className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </button>
+                        ) : (
+                          !isFiltering && <span className="w-5 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <div
+                            className={`truncate text-foreground ${isHeader ? 'font-semibold' : ''}`}
+                          >
+                            {acc.name}
+                          </div>
+                          {acc.description && (
+                            <div className="truncate text-xs text-muted-foreground">
+                              {acc.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                          typeConfig[typeKey] || 'text-muted-foreground bg-muted border-border'
+                        }`}
+                      >
+                        {typeKey ? typeKey.charAt(0) + typeKey.slice(1).toLowerCase() : '—'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {acc.usage?.value
+                        ? acc.usage.value.charAt(0).toUpperCase() +
+                          acc.usage.value.slice(1).toLowerCase()
+                        : '—'}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {acc.manualEntriesAllowed ? (
+                        <Check className="h-4 w-4 text-emerald-500 inline" />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1.5 text-xs">
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            acc.disabled ? 'bg-red-500' : 'bg-emerald-500'
+                          }`}
+                        />
+                        <span className={acc.disabled ? 'text-red-500' : 'text-foreground'}>
+                          {acc.disabled ? 'Disabled' : 'Active'}
+                        </span>
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <Link href={`/accounting/chart-of-accounts/${acc.id}`}>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="View">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="More actions">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/accounting/chart-of-accounts/${acc.id}`}>
+                                <Eye className="h-4 w-4 mr-2" />
+                                View details
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/accounting/chart-of-accounts/${acc.id}/edit`}>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Edit
+                              </Link>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+
+        {/* Footer / pagination */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border px-4 py-3">
+          <div className="text-sm text-muted-foreground">
+            {rows.length === 0
+              ? 'No accounts'
+              : `Showing ${(currentPage - 1) * pageSize + 1}–${Math.min(
+                  currentPage * pageSize,
+                  rows.length
+                )} of ${rows.length} ${isFiltering ? 'matching ' : ''}accounts`}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Rows</span>
+            <Select
+              value={String(pageSize)}
+              onValueChange={v => {
+                setPageSize(Number(v));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-20 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[25, 50, 100].map(n => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              aria-label="Previous page"
+              disabled={currentPage <= 1}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">
+              {currentPage} of {pageCount}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 p-0"
+              aria-label="Next page"
+              disabled={currentPage >= pageCount}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
