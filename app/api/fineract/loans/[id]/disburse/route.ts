@@ -17,6 +17,25 @@ import { resolveYangoUssdDisbursementDetailsForLead } from '@/lib/yango-ussd-dis
 import { checkCashDisbursementSessionGate } from '@/lib/cashier-session-disbursement-gate';
 import { getCashierSessionTenantSettings } from '@/lib/cashier-session-settings';
 import { getPaymentTypeInfo } from '@/lib/cash-repayment-teller';
+import { getArdaStockDetails } from '@/lib/inventory/arda-stock-workflow-service';
+import { runArdaStockDisbursementGuard } from '@/lib/arda-stock-disbursement-guard';
+import type { Prisma } from '@/app/generated/prisma';
+
+type LinkedLead = {
+  id: string;
+  tenantId: string;
+  stateMetadata: Prisma.JsonValue;
+  externalId: string | null;
+  loanProductId: number | null;
+  loanProductName: string | null;
+  mobileNo: string | null;
+  accountNumber: string | null;
+  preferredPaymentMethod: string | null;
+  assignedToUserId: number | null;
+  assignedToUserName: string | null;
+  designatedDisburserUserId: number | null;
+  designatedDisburserUserName: string | null;
+};
 
 function coercePositiveNumber(value: unknown): number | undefined {
   const numericValue = typeof value === 'number' ? value : Number(value);
@@ -44,6 +63,7 @@ export async function POST(
 
     const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
+    let linkedLead: LinkedLead | null = null;
 
     if (tenant) {
       const leadAccess = await getLeadViewerAccessContext(
@@ -59,6 +79,7 @@ export async function POST(
           id: true,
           tenantId: true,
           stateMetadata: true,
+          externalId: true,
           loanProductId: true,
           loanProductName: true,
           mobileNo: true,
@@ -71,7 +92,7 @@ export async function POST(
         },
       });
 
-      const linkedLead = leadRecord
+      linkedLead = leadRecord
         ? await prisma.lead.findFirst({
             where: applyLeadVisibilityScope(
               {
@@ -84,6 +105,7 @@ export async function POST(
               id: true,
               tenantId: true,
               stateMetadata: true,
+              externalId: true,
               loanProductId: true,
               loanProductName: true,
               mobileNo: true,
@@ -134,34 +156,12 @@ export async function POST(
         : Number.isFinite(Number(payload?.paymentTypeId))
           ? Number(payload.paymentTypeId)
           : null;
-    const yangoUssdDetails =
-      tenant
-        ? await prisma.lead
-            .findFirst({
-              where: {
-                tenantId: tenant.id,
-                fineractLoanId: Number(id),
-              },
-              select: {
-                id: true,
-                tenantId: true,
-                stateMetadata: true,
-                loanProductId: true,
-                loanProductName: true,
-                mobileNo: true,
-                accountNumber: true,
-                preferredPaymentMethod: true,
-              },
-            })
-            .then((lead) =>
-              lead
-                ? resolveYangoUssdDisbursementDetailsForLead(
-                    lead,
-                    numericPaymentTypeId
-                  )
-                : null
-            )
-        : null;
+    const yangoUssdDetails = linkedLead
+      ? await resolveYangoUssdDisbursementDetailsForLead(
+          linkedLead,
+          numericPaymentTypeId
+        )
+      : null;
 
     if (yangoUssdDetails) {
       const callbackUrl = buildPaymentServiceCallbackUrl(
@@ -231,10 +231,17 @@ export async function POST(
     }
 
     // POST to /loans/{id}?command=disburse with payload
-    const data = await fetchFineractAPI(`/loans/${id}?command=disburse`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(augmentedPayload),
+    const data = await runArdaStockDisbursementGuard({
+      appTenantSlug: tenant?.slug || tenantSlug,
+      tenantSettings: tenant?.settings,
+      fineractLoanId: Number(id),
+      getDetails: () =>
+        linkedLead ? getArdaStockDetails({ ...linkedLead, tenant }) : null,
+      disburse: () => fetchFineractAPI(`/loans/${id}?command=disburse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(augmentedPayload),
+      }),
     });
 
     // Non-blocking: do not fail disbursement if charge application fails.

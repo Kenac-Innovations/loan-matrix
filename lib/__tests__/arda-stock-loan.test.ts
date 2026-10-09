@@ -10,7 +10,10 @@ import {
 } from "@/lib/inventory/arda-stock-loan";
 import { generateArdaStockLoanContractHTML } from "@/app/(application)/leads/new/components/arda-stock-loan-contract";
 import { generateArdaStockLoanMandateHTML } from "@/app/(application)/leads/new/components/arda-stock-loan-mandate";
-import { getArdaInventoryWorkflowOperation } from "@/lib/inventory/arda-stock-workflow-service";
+import {
+  getArdaInventoryWorkflowOperation,
+  getArdaStockDetails,
+} from "@/lib/inventory/arda-stock-workflow-service";
 import type { ContractData } from "@/app/(application)/leads/new/components/contract-types";
 
 test("detects the ARDA stock input loan product from stable product identifiers", () => {
@@ -187,8 +190,10 @@ test("maps ARDA workflow stages to reserve, release, and issue stock actions", (
           inventoryItemName: "Maize Seed 10kg",
           fineractOfficeId: 3,
           fineractOfficeName: "Mazowe",
+          unitOfMeasure: "bags",
           quantity: "12",
           unitValue: "25.00",
+          totalValue: "300.00",
           currencyCode: "USD",
         },
       },
@@ -217,7 +222,7 @@ test("maps ARDA workflow stages to reserve, release, and issue stock actions", (
 
   // This is the same shape used by the state-transition service, which loads
   // tenant as a relation instead of projecting a tenantSlug field.
-  const { tenantSlug: _tenantSlug, ...leadWithTenantRelation } = lead;
+  const leadWithTenantRelation = { ...lead, tenantSlug: undefined };
   assert.equal(
     getArdaInventoryWorkflowOperation(
       { ...leadWithTenantRelation, tenant: { slug: "arda" } },
@@ -239,5 +244,185 @@ test("maps ARDA workflow stages to reserve, release, and issue stock actions", (
       { fineractAction: "disburse" }
     ),
     "ISSUE"
+  );
+});
+
+test("normalizes ARDA stock details for Fineract reporting", () => {
+  assert.deepEqual(
+    getArdaStockDetails({
+      id: "lead-arda-2",
+      tenantId: "tenant-arda",
+      tenantSlug: "arda",
+      loanProductId: 147,
+      loanProductName: "ARDA Stock Input Loan",
+      stateMetadata: {
+        loanTerms: {
+          stockLoanSelection: {
+            inventoryItemId: "item-maize",
+            inventoryItemName: "Maize Seed 10kg",
+            fineractOfficeId: 3,
+            fineractOfficeName: "Mazowe",
+            quantity: "12.5",
+            unitOfMeasure: "bags",
+            unitValue: "24.00",
+            totalValue: "300.00",
+            currencyCode: "usd",
+          },
+        },
+      },
+    }),
+    {
+      stockItemId: "item-maize",
+      stockItemName: "Maize Seed 10kg",
+      fineractOfficeId: 3,
+      fineractOfficeName: "Mazowe",
+      quantity: "12.5",
+      unitOfMeasure: "bags",
+      unitValue: "24",
+      totalStockValue: "300.00",
+      currencyCode: "USD",
+      stockIssueReference: "lead-arda-2",
+    }
+  );
+});
+
+test("uses the lead external reference for ARDA stock reporting when available", () => {
+  const details = getArdaStockDetails({
+    id: "lead-arda-3",
+    externalId: "ARDA-ISSUE-1003",
+    tenantId: "tenant-arda",
+    tenantSlug: "arda",
+    loanProductName: "ARDA Stock Input Loan",
+    stateMetadata: {
+      loanTerms: {
+        stockLoanSelection: {
+          inventoryItemId: "item-groundnut",
+          inventoryItemName: "Groundnut Seed",
+          fineractOfficeId: 4,
+          unitOfMeasure: "bags",
+          quantity: "2",
+          unitValue: "50",
+          totalValue: "100",
+          currencyCode: "USD",
+        },
+      },
+    },
+  });
+
+  assert.equal(details?.stockIssueReference, "ARDA-ISSUE-1003");
+});
+
+test("does not expose ARDA stock details for another tenant", () => {
+  assert.equal(
+    getArdaStockDetails({
+      id: "lead-goodfellow",
+      tenantId: "tenant-goodfellow",
+      tenantSlug: "goodfellow",
+      loanProductName: "ARDA Stock Input Loan",
+      stateMetadata: {
+        loanTerms: {
+          stockLoanSelection: {
+            inventoryItemId: "item-maize",
+            fineractOfficeId: 3,
+            unitOfMeasure: "bags",
+            quantity: "1",
+            unitValue: "10",
+            totalValue: "10",
+          },
+        },
+      },
+    }),
+    null
+  );
+});
+
+test("rejects an ARDA stock loan when its stock selection is missing", () => {
+  assert.throws(
+    () =>
+      getArdaStockDetails({
+        id: "lead-arda-missing-stock",
+        tenantId: "tenant-arda",
+        tenantSlug: "arda",
+        loanProductName: "ARDA Stock Input Loan",
+        stateMetadata: {},
+      }),
+    /missing its stock selection/i
+  );
+
+  assert.equal(
+    getArdaStockDetails({
+      id: "lead-arda-normal-loan",
+      tenantId: "tenant-arda",
+      tenantSlug: "arda",
+      loanProductName: "Ordinary Cash Loan",
+      stateMetadata: {},
+    }),
+    null
+  );
+});
+
+test("rejects invalid or inconsistent ARDA stock reporting values", () => {
+  const lead = {
+    id: "lead-invalid",
+    tenantId: "tenant-arda",
+    tenantSlug: "arda",
+    loanProductName: "ARDA Stock Input Loan",
+    stateMetadata: {
+      loanTerms: {
+        stockLoanSelection: {
+          inventoryItemId: "item-maize",
+          fineractOfficeId: 3,
+          unitOfMeasure: "bags",
+          quantity: "2",
+          unitValue: "10",
+          totalValue: "20",
+        },
+      },
+    },
+  };
+
+  const selection = (
+    lead.stateMetadata.loanTerms.stockLoanSelection
+  ) as Record<string, unknown>;
+
+  assert.throws(
+    () =>
+      getArdaStockDetails({
+        ...lead,
+        stateMetadata: {
+          loanTerms: { stockLoanSelection: { ...selection, unitOfMeasure: "" } },
+        },
+      }),
+    /unit of measure/i
+  );
+  assert.throws(
+    () =>
+      getArdaStockDetails({
+        ...lead,
+        stateMetadata: {
+          loanTerms: { stockLoanSelection: { ...selection, quantity: "0" } },
+        },
+      }),
+    /quantity must be greater than zero/i
+  );
+  assert.throws(
+    () =>
+      getArdaStockDetails({
+        ...lead,
+        stateMetadata: {
+          loanTerms: { stockLoanSelection: { ...selection, unitValue: "-1" } },
+        },
+      }),
+    /unit value must be greater than zero/i
+  );
+  assert.throws(
+    () =>
+      getArdaStockDetails({
+        ...lead,
+        stateMetadata: {
+          loanTerms: { stockLoanSelection: { ...selection, totalValue: "21" } },
+        },
+      }),
+    /does not match/i
   );
 });

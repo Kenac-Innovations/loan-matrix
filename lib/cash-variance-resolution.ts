@@ -83,7 +83,7 @@ export function planVarianceAction(input: {
   varianceType: string;
   resolutionType?: unknown;
   notes?: unknown;
-}): 
+}):
   | {
       ok: true;
       fromStatus: string;

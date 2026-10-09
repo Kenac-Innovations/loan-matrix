@@ -18,6 +18,14 @@ import {
   reconcileLeadLoan,
 } from "@/lib/lead-loan-linking";
 import { sanitizeFineractLoanCreatePayload } from "@/lib/fineract-loan-payload";
+import { getArdaStockDetails } from "@/lib/inventory/arda-stock-workflow-service";
+import { syncArdaStockDetailsForCurrentTenant } from "@/lib/fineract-arda-stock-details";
+import { isArdaStockReportsEnabled } from "@/lib/tenant-arda-stock-reports";
+
+type StockDetailSyncResult = {
+  status: "synced" | "failed" | "skipped";
+  message?: string;
+};
 
 function isOverdueChargeLike(charge?: any) {
   const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
@@ -98,6 +106,7 @@ async function resolveLeadTenant(request: Request) {
         requestTenant,
         sessionTenant,
       }),
+      tenant: requestTenant,
     };
   } catch (error) {
     if (error instanceof LeadTenantContextError) {
@@ -234,7 +243,7 @@ export async function POST(
 ) {
   try {
     const { id: leadId } = await params;
-    const { context } = await resolveLeadTenant(request);
+    const { context, tenant } = await resolveLeadTenant(request);
     const loanData = (await request.json()) as Record<string, any>;
     const nestedPayload = isRecord(loanData.fineractPayload)
       ? { ...loanData.fineractPayload }
@@ -281,6 +290,65 @@ export async function POST(
       );
     }
 
+    let stockDetailSync: StockDetailSyncResult = { status: "skipped" };
+    const warnings: string[] = [];
+    const stockReportsEnabled = isArdaStockReportsEnabled({
+      tenantSlug: context.tenantSlug,
+      tenantSettings: tenant.settings,
+    });
+
+    if (stockReportsEnabled) {
+      try {
+        const details = getArdaStockDetails({
+          ...result.lead,
+          tenantSlug: context.tenantSlug,
+        });
+        if (details) {
+          await syncArdaStockDetailsForCurrentTenant({
+            appTenantSlug: context.tenantSlug,
+            tenantSettings: tenant.settings,
+            fineractLoanId: result.loanId,
+            details,
+          });
+          stockDetailSync = { status: "synced" };
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to synchronize ARDA stock reporting details.";
+        stockDetailSync = { status: "failed", message };
+        warnings.push(
+          `The loan was created, but its ARDA stock reporting details could not be synchronized: ${message}`
+        );
+      }
+
+      try {
+        const currentLead = await prisma.lead.findFirst({
+          where: { id: leadId, tenantId: context.tenantId },
+          select: { stateMetadata: true },
+        });
+        await prisma.lead.updateMany({
+          where: { id: leadId, tenantId: context.tenantId },
+          data: {
+            stateMetadata: {
+              ...((currentLead?.stateMetadata as Record<string, unknown> | null) || {}),
+              ardaStockDetailSync: {
+                ...stockDetailSync,
+                attemptedAt: new Date().toISOString(),
+              },
+            },
+          },
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to store the ARDA stock reporting sync status.";
+        warnings.push(`The ARDA stock reporting sync status could not be stored: ${message}`);
+      }
+    }
+
     // SMS is intentionally best effort and only sent when this request
     // created/adopted a remote loan.  A local retry must not send duplicates.
     if (
@@ -309,6 +377,8 @@ export async function POST(
       coreResponse: result.fineractResponse,
       loanId: result.loanId,
       reconciled: result.action !== "created",
+      stockDetailSync,
+      ...(warnings.length > 0 ? { warnings } : {}),
     });
   } catch (error) {
     console.error("Error creating/reconciling loan from lead:", error);

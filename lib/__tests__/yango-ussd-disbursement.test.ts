@@ -88,17 +88,22 @@ test(
     const disburseRoute = readRepoFile(
       "app/api/fineract/loans/[id]/disburse/route.ts"
     );
+    const autoProgressBlock = stateMachine.slice(
+      stateMachine.indexOf("const transitionResult = await this.executeTransition"),
+      stateMachine.indexOf("if (!transitionResult.success)")
+    );
 
     assert.match(disburseRoute, /getRequiredPaymentServiceCallbackUrl/);
     assert.doesNotMatch(disburseRoute, /payload\?\.note\s*\|\|/);
     assert.doesNotMatch(
-      stateMachine,
+      autoProgressBlock,
       /fineractOverrides:\s*isDisbursementHop\s*\?\s*{\s*\.\.\.paymentResolution\.fineractOverrides,\s*note:\s*`Auto-progressed after CDE \$\{cdeResult\.decision\}`/s
     );
     assert.match(
-      stateMachine,
-      /fineractOverrides:\s*isDisbursementHop\s*\?\s*{\s*\.\.\.paymentResolution\.fineractOverrides,\s*payoutNote:\s*`Auto-progressed after CDE \$\{cdeResult\.decision\}`/s
+      autoProgressBlock,
+      /\.\.\.paymentResolution\.fineractOverrides,\s*payoutNote:\s*`Auto-progressed after CDE \$\{cdeResult\.decision\}`/s
     );
+    assert.match(autoProgressBlock, /awaiting GeePay settlement/);
     assert.match(
       stateMachine,
       /note:\s*yangoUssdDetails\s*\?\s*getRequiredPaymentServiceCallbackUrl\(\)\s*:\s*overrides\?\.note/
