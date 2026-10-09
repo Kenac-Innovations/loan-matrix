@@ -31,12 +31,13 @@ An existing summary report named `ARDA Disbursements by Month` will remain uncha
 
 This work includes:
 
-1. An ARDA-only Fineract loan data table for stock details.
-2. Idempotent synchronization of approved ARDA stock details from Loan Matrix to the Fineract loan.
-3. Three standard Fineract Table reports displayed on the existing Reports page.
-4. Standard date, office, currency, product, and stock-item filters.
-5. CSV and Excel export through the existing report UI.
-6. A backfill path for ARDA stock issues that have a Fineract loan ID.
+1. A Loan Matrix database feature flag at `Tenant.settings.features.ardaStockReports`.
+2. An ARDA-only Fineract loan data table for stock details.
+3. Idempotent synchronization of approved ARDA stock details from Loan Matrix to the Fineract loan.
+4. Three standard Fineract Table reports displayed on the existing Reports page.
+5. Standard date, office, currency, product, and stock-item filters.
+6. CSV and Excel export through the existing report UI.
+7. A backfill path for ARDA stock issues that have a Fineract loan ID.
 
 This work does not:
 
@@ -61,6 +62,20 @@ flowchart LR
 ```
 
 The Reports page remains generic. It obtains the report list, parameter metadata, parameter options, and report results from the existing `/api/fineract/reports` proxy. Creating the reports in tenant `arda` makes them available through the same flow used by Goodfellow without adding report-specific rendering code.
+
+## Loan Matrix Tenant Setting
+
+Add `ardaStockReports` to the existing `TenantSettings.features` object. Its global default is `false`. The ARDA tenant row must explicitly store:
+
+```json
+{
+  "features": {
+    "ardaStockReports": true
+  }
+}
+```
+
+The setup routine merges this value into the existing JSON and preserves every unrelated tenant setting. Runtime synchronization proceeds only when the application tenant slug is `arda`, the resolved Fineract tenant ID is `arda`, and `Tenant.settings.features.ardaStockReports` is exactly `true`. A missing or false setting disables synchronization. Setting the flag on any non-ARDA tenant does not enable the feature because the two tenant-ID checks remain mandatory.
 
 ## Fineract Stock Details Data Table
 
@@ -89,6 +104,7 @@ Loan Matrix will expose a focused ARDA stock-detail service with two responsibil
 The upsert will:
 
 - run only when both the application tenant and resolved Fineract tenant are `arda`;
+- require `Tenant.settings.features.ardaStockReports` to be exactly `true`;
 - calculate `total_stock_value` again on the server;
 - reject missing or non-positive quantity and unit value;
 - create the row when absent and update the existing row when present;
@@ -203,6 +219,7 @@ The setup routine must resolve tenant `arda` explicitly before registering the d
 
 Validation must confirm:
 
+- only the Loan Matrix tenant row with slug `arda` has `features.ardaStockReports = true`;
 - all three reports exist only in Fineract tenant `arda`;
 - `arda_stock_details` exists only in Fineract tenant `arda`;
 - report permissions are available to the intended ARDA roles;
@@ -219,6 +236,7 @@ Implementation follows test-first development.
 - invalid quantity or unit value is rejected;
 - repeated upsert updates one data-table row and does not duplicate it;
 - non-ARDA tenants cannot register or write the data table;
+- a missing or false `features.ardaStockReports` setting prevents registration and synchronization before Fineract I/O;
 - loan creation submits the initial stock-detail upsert;
 - pre-disbursement validation requires a successful final upsert;
 - a failed upsert prevents the Fineract disbursement action;
@@ -240,16 +258,17 @@ Production currently lacks a complete item-level record suitable for live valida
 
 ## Rollout
 
-1. Add and test the tenant-gated stock-detail synchronization code.
-2. Register `arda_stock_details` in the ARDA Fineract tenant.
-3. Register the ARDA stock-item definition in the ARDA Fineract parameter catalog and resolve its ID.
-4. Create or update the three reports through the Fineract Reports API.
-5. Deploy Loan Matrix synchronization.
-6. Run the backfill preview, then apply it if eligible local records exist.
-7. Verify the Reports page, permissions, filters, values, and exports.
-8. Verify other tenants are unchanged.
+1. Add and test the database-backed tenant feature gate and stock-detail synchronization code.
+2. Merge `features.ardaStockReports = true` into the ARDA Loan Matrix tenant settings.
+3. Register `arda_stock_details` in the ARDA Fineract tenant.
+4. Register the ARDA stock-item definition in the ARDA Fineract parameter catalog and resolve its ID.
+5. Create or update the three reports through the Fineract Reports API.
+6. Deploy Loan Matrix synchronization.
+7. Run the backfill preview, then apply it if eligible local records exist.
+8. Verify the Reports page, permissions, filters, values, and exports.
+9. Verify other tenants are unchanged and do not have the feature enabled.
 
-Rollback disables the ARDA synchronization caller and removes the three report definitions from tenant `arda`. The data-table row is retained unless an explicit cleanup is approved, because it is audit metadata and does not alter loan accounting.
+Rollback sets `Tenant.settings.features.ardaStockReports` to `false` for ARDA and removes the three report definitions from tenant `arda`. The data-table row is retained unless an explicit cleanup is approved, because it is audit metadata and does not alter loan accounting.
 
 ## Additional Report Backlog
 
@@ -274,3 +293,4 @@ The following reports are useful follow-ups but are not part of this implementat
 7. A stock metadata synchronization failure prevents disbursement.
 8. Missing historical details are displayed as `Not captured` and never invented.
 9. No other tenant receives ARDA tables, parameters, reports, or workflow behavior.
+10. The feature is enabled by the ARDA tenant's database settings and defaults to disabled everywhere else.

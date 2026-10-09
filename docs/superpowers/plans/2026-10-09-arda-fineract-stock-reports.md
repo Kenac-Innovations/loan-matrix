@@ -4,7 +4,7 @@
 
 **Goal:** Add ARDA-only stock disbursement, repayment, and monthly best-selling-item reports to the existing Reports page, backed by synchronized loan-level stock metadata in Fineract.
 
-**Architecture:** Loan Matrix keeps its existing ARDA inventory records and copies each approved one-item stock selection into a single-row Fineract loan data table. The centralized loan workflow refreshes that row before disbursement, while Fineract Table reports join it to native loan and transaction tables. Report definitions and the hidden stock-item option report are created through the Fineract Reports API; only the reusable custom parameter record is registered directly in the ARDA Fineract parameter catalog because Fineract has no API for creating parameter definitions.
+**Architecture:** Loan Matrix keeps its existing ARDA inventory records and copies each approved one-item stock selection into a single-row Fineract loan data table only when `Tenant.settings.features.ardaStockReports` is enabled. Both Loan Matrix disbursement entry points refresh that row before disbursement, while Fineract Table reports join it to native loan and transaction tables. Report definitions and the hidden stock-item option report are created through the Fineract Reports API; only the reusable custom parameter record is registered directly in the ARDA Fineract parameter catalog because Fineract has no API for creating parameter definitions.
 
 **Tech Stack:** Next.js App Router, TypeScript, Prisma/PostgreSQL, Apache Fineract REST API and Table reports, PostgreSQL `psql`, Node test runner with `tsx`.
 
@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- Apply all data-table, parameter, report, permission, synchronization, and backfill behavior only when both the Loan Matrix tenant slug and Fineract tenant ID equal `arda` case-insensitively.
+- Apply all data-table, parameter, report, permission, synchronization, and backfill behavior only when the Loan Matrix tenant slug and Fineract tenant ID equal `arda` case-insensitively and `Tenant.settings.features.ardaStockReports` is exactly `true`.
+- Add `ardaStockReports` to the existing tenant feature settings with a global default of `false`; enable it only in the database row whose slug is `arda`.
 - Do not add or change artifacts in Goodfellow, Omama, or any other tenant.
 - Keep `ARDA Disbursements by Month` unchanged.
 - Use Fineract as the source of disbursement, repayment, allocation, balance, user, and loan-status values.
@@ -26,7 +27,7 @@
 
 ## Review Focus
 
-- A request whose Loan Matrix tenant is `arda` but whose resolved Fineract tenant is anything else must fail before any Fineract read or write; Task 2 tests this boundary.
+- A request whose Loan Matrix tenant is `arda` but whose resolved Fineract tenant is anything else, or whose database feature flag is missing/false, must fail before any Fineract read or write; Tasks 1 and 2 test this boundary.
 - A stock selection changed after initial loan creation must overwrite the existing row immediately before disbursement; Tasks 2 and 3 test update and call order.
 - A metadata outage after loan creation must leave the Fineract loan linked locally and return a visible warning, while the same outage before disbursement must block it; Task 3 tests both outcomes.
 - A historical issue with zero or multiple stock lines must be skipped with a reason instead of collapsing or inventing item data; Task 6 tests these inputs.
@@ -36,6 +37,8 @@
 
 ## File Structure
 
+- Modify `shared/types/tenant.ts` to define the database-backed `ardaStockReports` feature flag with a false default.
+- Create `lib/tenant-arda-stock-reports.ts` for the combined slug-and-setting gate.
 - Modify `lib/inventory/arda-stock-workflow-service.ts` to expose one normalized ARDA stock-details model already used by the inventory workflow.
 - Create `lib/fineract-arda-stock-details.ts` for tenant-gated data-table registration and row upsert.
 - Modify `app/api/leads/[id]/create-loan/route.ts` for the initial non-destructive synchronization.
@@ -51,15 +54,25 @@
 - Create `docs/runbooks/arda-stock-reports.md` with setup, verification, backfill, and rollback commands.
 - Add focused tests under `lib/__tests__` beside the existing ARDA and Fineract tests.
 
-## Task 1: Normalize The ARDA Stock Detail Contract
+## Task 1: Add The Database Tenant Gate And Normalize Stock Details
 
 **Files:**
+- Modify: `shared/types/tenant.ts`
+- Create: `lib/tenant-arda-stock-reports.ts`
 - Modify: `lib/inventory/arda-stock-workflow-service.ts`
 - Modify: `lib/__tests__/arda-stock-loan.test.ts`
+- Create: `lib/__tests__/tenant-arda-stock-reports.test.ts`
 
 **Interfaces:**
-- Produces: `ArdaStockDetails` and `getArdaStockDetails(lead: WorkflowLead): ArdaStockDetails | null`.
+- Produces: `isArdaStockReportsEnabled` plus `ArdaStockDetails` and `getArdaStockDetails(lead: WorkflowLead): ArdaStockDetails | null`.
 - Consumers: Tasks 2, 3, and 6.
+
+```ts
+export function isArdaStockReportsEnabled(input: {
+  tenantSlug?: string | null;
+  tenantSettings?: unknown;
+}): boolean;
+```
 
 ```ts
 export type ArdaStockDetails = {
@@ -76,31 +89,47 @@ export type ArdaStockDetails = {
 };
 ```
 
-- [ ] **Step 1: Write failing normalization tests**
+- [ ] **Step 1: Write failing tenant-setting tests**
+
+Create `lib/__tests__/tenant-arda-stock-reports.test.ts`. Assert that only slug `arda` plus `settings.features.ardaStockReports === true` returns true. Missing settings, missing feature, false, truthy non-boolean values, and Goodfellow with the flag set all return false. Assert `DEFAULT_FEATURES.ardaStockReports === false`.
+
+- [ ] **Step 2: Run the tenant-setting test and verify it fails**
+
+Run: `pnpm exec tsx --test lib/__tests__/tenant-arda-stock-reports.test.ts`
+
+Expected: FAIL because the setting and helper do not exist.
+
+- [ ] **Step 3: Define the feature and gate**
+
+Add `ardaStockReports: boolean` to `TenantFeatures` and set it to `false` in `DEFAULT_FEATURES`. Implement `isArdaStockReportsEnabled` with an exact boolean check and the existing `isArdaTenantSlug` helper.
+
+- [ ] **Step 4: Write failing normalization tests**
 
 Extend `lib/__tests__/arda-stock-loan.test.ts` with assertions that `getArdaStockDetails` returns the eight reporting fields plus the two local office fields above, recalculates `12.5 × 24.00` as `300.00`, uses the lead ID as the reference when no external reference exists, and returns `null` for a Goodfellow lead. Add rejection cases for blank units, non-positive quantity, non-positive unit value, and a saved total that differs from the recalculated total.
 
-- [ ] **Step 2: Run the test and verify the new cases fail**
+- [ ] **Step 5: Run the normalization test and verify the new cases fail**
 
 Run: `pnpm exec tsx --test lib/__tests__/arda-stock-loan.test.ts`
 
 Expected: FAIL because the helper and normalized fields are not exported.
 
-- [ ] **Step 3: Export the normalized contract**
+- [ ] **Step 6: Export the normalized contract**
 
 Add `unitOfMeasure` to `ArdaStockSelection`, export `WorkflowLead`, `ArdaStockDetails`, and `getArdaStockDetails`, rename `totalValue` in the returned reporting contract to `totalStockValue`, and retain `fineractOfficeId` and `fineractOfficeName` for the local inventory workflow. Reject a stored `totalValue` when it differs from `quantity × unitValue` after two-decimal normalization.
 
-- [ ] **Step 4: Run the focused test**
+- [ ] **Step 7: Run the focused tests**
 
-Run: `pnpm exec tsx --test lib/__tests__/arda-stock-loan.test.ts`
+Run: `pnpm exec tsx --test lib/__tests__/tenant-arda-stock-reports.test.ts lib/__tests__/arda-stock-loan.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add lib/inventory/arda-stock-workflow-service.ts lib/__tests__/arda-stock-loan.test.ts
-git commit -m "refactor: normalize ARDA stock reporting details"
+git add shared/types/tenant.ts lib/tenant-arda-stock-reports.ts \
+  lib/inventory/arda-stock-workflow-service.ts \
+  lib/__tests__/tenant-arda-stock-reports.test.ts lib/__tests__/arda-stock-loan.test.ts
+git commit -m "feat: gate ARDA stock reports by tenant setting"
 ```
 
 ## Task 2: Register And Upsert The Fineract Loan Data Table
@@ -122,11 +151,13 @@ export type FineractRequester = (
 export function buildArdaStockDetailsPayload(details: ArdaStockDetails): Record<string, string>;
 export async function ensureArdaStockDetailsDatatable(input: {
   appTenantSlug: string;
+  tenantSettings: unknown;
   fineractTenantId: string;
   request: FineractRequester;
 }): Promise<"created" | "exists">;
 export async function upsertArdaStockDetails(input: {
   appTenantSlug: string;
+  tenantSettings: unknown;
   fineractTenantId: string;
   fineractLoanId: number;
   details: ArdaStockDetails;
@@ -134,6 +165,7 @@ export async function upsertArdaStockDetails(input: {
 }): Promise<"created" | "updated">;
 export async function syncArdaStockDetailsForCurrentTenant(input: {
   appTenantSlug: string;
+  tenantSettings: unknown;
   fineractLoanId: number;
   details: ArdaStockDetails;
 }): Promise<"created" | "updated">;
@@ -141,7 +173,7 @@ export async function syncArdaStockDetailsForCurrentTenant(input: {
 
 - [ ] **Step 1: Write failing tenant, schema, and upsert tests**
 
-Create `lib/__tests__/fineract-arda-stock-details.test.ts` using an injected request recorder. Assert that tenant mismatch rejects before the recorder is called; the registration payload is single-row on `m_loan` with only the eight approved reporting columns; an empty GET result causes POST; an existing row causes PUT to `/datatables/arda_stock_details/{loanId}`; repeated calls never POST a second row; and the payload recalculates and verifies the total.
+Create `lib/__tests__/fineract-arda-stock-details.test.ts` using an injected request recorder. Assert that tenant mismatch and a missing/false database feature flag reject before the recorder is called; the registration payload is single-row on `m_loan` with only the eight approved reporting columns; an empty GET result causes POST; an existing row causes PUT to `/datatables/arda_stock_details/{loanId}`; repeated calls never POST a second row; and the payload recalculates and verifies the total.
 
 - [ ] **Step 2: Run the test and verify it fails**
 
@@ -151,7 +183,7 @@ Expected: FAIL because the module does not exist.
 
 - [ ] **Step 3: Implement tenant-gated registration and upsert**
 
-Use POST `/datatables` for registration and ignore only an explicit `409` or already-exists response. For a loan row, GET `/datatables/arda_stock_details/{loanId}` with service authentication, POST when no row is returned, and PUT when a row exists. The current-tenant wrapper must resolve `getFineractTenantId()` and pass a service-auth requester; it must compare that value with the supplied application tenant before I/O.
+Use POST `/datatables` for registration and ignore only an explicit `409` or already-exists response. For a loan row, GET `/datatables/arda_stock_details/{loanId}` with service authentication, POST when no row is returned, and PUT when a row exists. Every exported write function must call `isArdaStockReportsEnabled`, then compare the resolved Fineract tenant with the supplied application tenant before I/O. The current-tenant wrapper resolves `getFineractTenantId()` and passes a service-auth requester.
 
 - [ ] **Step 4: Run the focused tests**
 
@@ -183,6 +215,7 @@ git commit -m "feat: sync ARDA stock details to Fineract"
 ```ts
 export async function runArdaStockDisbursementGuard<T>(input: {
   appTenantSlug: string;
+  tenantSettings: unknown;
   fineractLoanId: number;
   details: ArdaStockDetails | null;
   sync?: typeof syncArdaStockDetailsForCurrentTenant;
@@ -202,11 +235,11 @@ Expected: FAIL because neither lifecycle path calls the sync service.
 
 - [ ] **Step 3: Add initial synchronization after durable loan linking**
 
-Load the lead’s tenant slug with the lead. After the existing local loan-link update, normalize the stock selection and call the current-tenant sync. Save a success or failure object under `stateMetadata.ardaStockDetailSync`, include the same result in the JSON response, and append a user-visible warning on failure. Non-ARDA or non-stock loans return `skipped`. SMS and CDE remain best-effort and retain their existing order after this block.
+Load the lead’s tenant slug and settings with the lead. After the existing local loan-link update, normalize the stock selection and call the current-tenant sync with those settings. Save a success or failure object under `stateMetadata.ardaStockDetailSync`, include the same result in the JSON response, and append a user-visible warning on failure. Disabled, non-ARDA, or non-stock loans return `skipped`. SMS and CDE remain best-effort and retain their existing order after this block.
 
 - [ ] **Step 4: Add the blocking pre-disbursement refresh**
 
-Implement `runArdaStockDisbursementGuard` as the wrapper around each existing Fineract disbursement callback. In `TeamStateMachineService.triggerFineractAction`, normalize the final selection and invoke the wrapper immediately where `fineract.disburseLoan` currently runs. In the direct disbursement route, retain the tenant-scoped linked lead after the access check, normalize it, and wrap the existing `fetchFineractAPI(...command=disburse)` call. Allow sync errors to propagate into each path’s existing failure response so the external disbursement does not run. Do not add calls to approve, reject, payout, or non-ARDA paths.
+Implement `runArdaStockDisbursementGuard` as the wrapper around each existing Fineract disbursement callback. In `TeamStateMachineService.triggerFineractAction`, pass the already-loaded tenant settings, normalize the final selection, and invoke the wrapper immediately where `fineract.disburseLoan` currently runs. In the direct disbursement route, retain the tenant-scoped linked lead and tenant settings after the access check, normalize it, and wrap the existing `fetchFineractAPI(...command=disburse)` call. Allow sync errors to propagate into each path’s existing failure response so the external disbursement does not run. Do not add calls to approve, reject, payout, or non-ARDA paths.
 
 - [ ] **Step 5: Run lifecycle and regression tests**
 
@@ -278,7 +311,7 @@ git commit -m "feat: define ARDA Fineract stock reports"
 
 - [ ] **Step 1: Write failing preview, isolation, and idempotency tests**
 
-Using injected API and catalog clients, assert preview returns the planned table, selector, parameter, three reports, and role updates without writes; `--apply` rejects any tenant other than `arda`, a database name other than `fineract_tenant_arda`, or an empty role list; create mode POSTs each missing report; update mode PUTs each matching name without duplicates; the same parameter ID is reused; and permission updates preserve existing role permissions.
+Using injected Loan Matrix, API, and catalog clients, assert preview returns the planned ARDA tenant-setting merge, table, selector, parameter, three reports, and role updates without writes; `--apply` rejects any tenant other than `arda`, a database name other than `fineract_tenant_arda`, or an empty role list; the settings merge preserves unrelated keys and changes no other tenant row; create mode POSTs each missing report; update mode PUTs each matching name without duplicates; the same parameter ID is reused; and permission updates preserve existing role permissions.
 
 - [ ] **Step 2: Run the test and verify it fails**
 
@@ -292,7 +325,7 @@ Use the repository’s existing `psql` execution pattern and `FINERACT_DB_HOST`,
 
 - [ ] **Step 4: Implement API setup and role grants**
 
-On apply: register the data table; create or update the hidden option report through `/reports`; resolve the parameter ID; create or update the three visible reports through `/reports`; fetch the generated report-read permissions; and merge them into each explicit ARDA role using the Fineract role-permission API. Read back `/datatables?apptable=m_loan`, `/reports`, FullParameterList for every report, and each role permission set; fail if any artifact or permission is absent.
+On apply: update only the `Tenant.slug = arda` row by merging `features.ardaStockReports = true` into its existing JSON; register the data table; create or update the hidden option report through `/reports`; resolve the parameter ID; create or update the three visible reports through `/reports`; fetch the generated report-read permissions; and merge them into each explicit ARDA role using the Fineract role-permission API. Read back the Loan Matrix tenant setting, `/datatables?apptable=m_loan`, `/reports`, FullParameterList for every report, and each role permission set; fail if any artifact or permission is absent.
 
 - [ ] **Step 5: Run setup tests and a dry run**
 
@@ -333,7 +366,7 @@ Expected: FAIL because the backfill module does not exist.
 
 - [ ] **Step 3: Implement the mapper and backfill command**
 
-Load only the `Tenant.slug = arda` record and its `StockLoanIssue` rows with included lines and inventory items. Preview prints source, eligible, skipped-by-reason, create/update estimate, and error counts. Apply uses an explicit ARDA Fineract requester, continues after per-loan errors, prints no credentials or personal client data, and exits non-zero when any eligible row fails.
+Load only the `Tenant.slug = arda` record, require `features.ardaStockReports = true`, and load its `StockLoanIssue` rows with included lines and inventory items. Preview prints source, eligible, skipped-by-reason, create/update estimate, and error counts. Apply uses an explicit ARDA Fineract requester, continues after per-loan errors, prints no credentials or personal client data, and exits non-zero when any eligible row fails.
 
 - [ ] **Step 4: Run tests and preview production eligibility**
 
@@ -364,7 +397,7 @@ git commit -m "feat: backfill ARDA Fineract stock details"
 
 - [ ] **Step 1: Write failing verifier tests**
 
-Test result-column validation for all three reports, count/value/rank comparison against known fixtures, and artifact isolation. The control tenant must fail verification if any ARDA report name or `arda_stock_details` appears; ARDA must fail if any expected artifact, parameter, column, or permission is absent.
+Test result-column validation for all three reports, count/value/rank comparison against known fixtures, the ARDA database feature flag, and artifact isolation. The control tenant must fail verification if its flag is true or any ARDA report name or `arda_stock_details` appears; ARDA must fail if its flag is not true or any expected artifact, parameter, column, or permission is absent.
 
 - [ ] **Step 2: Run the test and verify it fails**
 
@@ -378,13 +411,14 @@ Use the Fineract API to list artifacts, inspect parameters, and run all three re
 
 - [ ] **Step 4: Document operations and rollback**
 
-In `docs/runbooks/arda-stock-reports.md`, record exact preview/apply/verify/backfill commands, required environment variables, role-ID discovery, expected counts, failure recovery, and rollback. Rollback removes only the three visible reports and hidden option report from tenant `arda`, disables the two Loan Matrix sync call sites, and retains `arda_stock_details` unless separately approved.
+In `docs/runbooks/arda-stock-reports.md`, record exact preview/apply/verify/backfill commands, required environment variables, role-ID discovery, expected counts, failure recovery, and rollback. Rollback first sets the ARDA row’s `features.ardaStockReports` to `false`, then removes only the three visible reports and hidden option report from Fineract tenant `arda`; it retains `arda_stock_details` unless separately approved.
 
 - [ ] **Step 5: Run the complete automated validation**
 
 ```bash
 pnpm exec tsx --test \
   lib/__tests__/arda-stock-loan.test.ts \
+  lib/__tests__/tenant-arda-stock-reports.test.ts \
   lib/__tests__/fineract-arda-stock-details.test.ts \
   lib/__tests__/arda-stock-sync-wiring.test.ts \
   lib/__tests__/fineract-arda-stock-reports.test.ts \
@@ -395,6 +429,8 @@ pnpm exec tsx --test \
   lib/__tests__/team-state-machine-auto-disbursement.test.ts
 pnpm exec eslint \
   lib/inventory/arda-stock-workflow-service.ts \
+  lib/tenant-arda-stock-reports.ts \
+  shared/types/tenant.ts \
   lib/fineract-arda-stock-details.ts \
   lib/fineract-arda-stock-reports.ts \
   lib/fineract-arda-stock-report-setup.ts \
@@ -427,5 +463,6 @@ git commit -m "test: verify ARDA stock reports and isolation"
 - [ ] Review the complete branch diff against the approved specification.
 - [ ] Confirm only ARDA-gated runtime behavior and ARDA-targeted setup scripts were added.
 - [ ] Confirm existing Goodfellow report definitions and report parameters have no diff.
+- [ ] Confirm only the ARDA Loan Matrix tenant row has `settings.features.ardaStockReports = true`; every other tenant is false or missing.
 - [ ] Confirm no credentials, database passwords, customer details, or generated exports are committed.
 - [ ] Push the feature branch and update the pull request into `dev` with Tafadzwa and Gaku requested as approvers.
