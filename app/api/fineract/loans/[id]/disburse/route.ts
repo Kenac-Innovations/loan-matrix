@@ -10,6 +10,8 @@ import {
 import { applyTopupDisbursementCharges } from '@/lib/topup-disbursement-charge-service';
 import { extractTenantSlugFromRequest, getTenantBySlug } from '@/lib/tenant-service';
 import { resolveYangoUssdDisbursementDetailsForLead } from '@/lib/yango-ussd-disbursement';
+import { getArdaStockDetails } from '@/lib/inventory/arda-stock-workflow-service';
+import { runArdaStockDisbursementGuard } from '@/lib/arda-stock-disbursement-guard';
 
 function coercePositiveNumber(value: unknown): number | undefined {
   const numericValue = typeof value === 'number' ? value : Number(value);
@@ -37,6 +39,7 @@ export async function POST(
 
     const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
+    let linkedLead: any = null;
 
     if (tenant) {
       const leadAccess = await getLeadViewerAccessContext(
@@ -52,6 +55,7 @@ export async function POST(
           id: true,
           tenantId: true,
           stateMetadata: true,
+          externalId: true,
           loanProductId: true,
           loanProductName: true,
           mobileNo: true,
@@ -64,7 +68,7 @@ export async function POST(
         },
       });
 
-      const linkedLead = leadRecord
+      linkedLead = leadRecord
         ? await prisma.lead.findFirst({
             where: applyLeadVisibilityScope(
               {
@@ -77,6 +81,7 @@ export async function POST(
               id: true,
               tenantId: true,
               stateMetadata: true,
+              externalId: true,
               loanProductId: true,
               loanProductName: true,
               mobileNo: true,
@@ -132,34 +137,12 @@ export async function POST(
         : Number.isFinite(Number(payload?.paymentTypeId))
           ? Number(payload.paymentTypeId)
           : null;
-    const yangoUssdDetails =
-      tenant
-        ? await prisma.lead
-            .findFirst({
-              where: {
-                tenantId: tenant.id,
-                fineractLoanId: Number(id),
-              },
-              select: {
-                id: true,
-                tenantId: true,
-                stateMetadata: true,
-                loanProductId: true,
-                loanProductName: true,
-                mobileNo: true,
-                accountNumber: true,
-                preferredPaymentMethod: true,
-              },
-            })
-            .then((lead) =>
-              lead
-                ? resolveYangoUssdDisbursementDetailsForLead(
-                    lead,
-                    numericPaymentTypeId
-                  )
-                : null
-            )
-        : null;
+    const yangoUssdDetails = linkedLead
+      ? await resolveYangoUssdDisbursementDetailsForLead(
+          linkedLead,
+          numericPaymentTypeId
+        )
+      : null;
 
     if (yangoUssdDetails) {
       augmentedPayload.externalId = yangoUssdDetails.externalId;
@@ -169,7 +152,7 @@ export async function POST(
       }
       if (!coercePositiveNumber(augmentedPayload.transactionAmount)) {
         const fineractLoan = await fetchFineractAPI(`/loans/${id}`, {
-          authMode: 'service',
+          authMode: "service",
         });
         augmentedPayload.transactionAmount =
           coercePositiveNumber(fineractLoan?.netDisbursalAmount) ??
@@ -187,10 +170,17 @@ export async function POST(
     console.log('=== END DISBURSEMENT PAYLOAD ===');
 
     // POST to /loans/{id}?command=disburse with payload
-    const data = await fetchFineractAPI(`/loans/${id}?command=disburse`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(augmentedPayload),
+    const data = await runArdaStockDisbursementGuard({
+      appTenantSlug: tenant?.slug || tenantSlug,
+      tenantSettings: tenant?.settings,
+      fineractLoanId: Number(id),
+      details: linkedLead ? getArdaStockDetails({ ...linkedLead, tenant }) : null,
+      disburse: () => fetchFineractAPI(`/loans/${id}?command=disburse`, {
+        method: 'POST',
+        authMode: 'service',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(augmentedPayload),
+      }),
     });
 
     // Non-blocking: do not fail disbursement if charge application fails.

@@ -5,6 +5,14 @@ import { format } from "date-fns";
 import { getSession } from "@/lib/auth";
 import { callCDEAndStore } from "@/lib/cde-utils";
 import { sendLoanStatusSms } from "@/lib/notification-service";
+import { getArdaStockDetails } from "@/lib/inventory/arda-stock-workflow-service";
+import { syncArdaStockDetailsForCurrentTenant } from "@/lib/fineract-arda-stock-details";
+import { isArdaStockReportsEnabled } from "@/lib/tenant-arda-stock-reports";
+
+type StockDetailSyncResult = {
+  status: "synced" | "failed" | "skipped";
+  message?: string;
+};
 
 function isOverdueChargeLike(charge?: any) {
   const timeType = charge?.originalCharge?.chargeTimeType || charge?.chargeTimeType;
@@ -57,6 +65,9 @@ export async function POST(
     // Load lead by ID
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
+      include: {
+        tenant: { select: { slug: true, settings: true } },
+      },
     });
 
     if (!lead) {
@@ -182,9 +193,18 @@ export async function POST(
       body: JSON.stringify(payload),
     });
 
+    let stockDetailSync: StockDetailSyncResult = { status: "skipped" };
+    const warnings: string[] = [];
+
     if (result && result.resourceId) {
       const loanId = result.resourceId;
       const loanLinkedAt = new Date();
+      const initialStateMetadata = {
+        ...((lead.stateMetadata as Record<string, unknown> | null) || {}),
+        loanId,
+        loanExternalId: leadId,
+        loanCreatedAt: loanLinkedAt.toISOString(),
+      };
 
       // Persist the local link as soon as Fineract creates the loan. This must
       // not depend on any secondary Fineract update, otherwise successful loan
@@ -198,11 +218,47 @@ export async function POST(
           fineractClientId: loanData.clientId,
           clientCreatedInFineract: true,
           clientCreationDate: lead.clientCreationDate || loanLinkedAt,
+          stateMetadata: initialStateMetadata,
+        },
+      });
+
+      const details = getArdaStockDetails(lead);
+      if (
+        details &&
+        isArdaStockReportsEnabled({
+          tenantSlug: lead.tenant.slug,
+          tenantSettings: lead.tenant.settings,
+        })
+      ) {
+        try {
+          await syncArdaStockDetailsForCurrentTenant({
+            appTenantSlug: lead.tenant.slug || "",
+            tenantSettings: lead.tenant.settings,
+            fineractLoanId: loanId,
+            details,
+          });
+          stockDetailSync = { status: "synced" };
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Unable to synchronize ARDA stock reporting details.";
+          stockDetailSync = { status: "failed", message };
+          warnings.push(
+            `The loan was created, but its ARDA stock reporting details could not be synchronized: ${message}`
+          );
+        }
+      }
+
+      await prisma.lead.update({
+        where: { id: leadId },
+        data: {
           stateMetadata: {
-            ...((lead.stateMetadata as any) || {}),
-            loanId: loanId,
-            loanExternalId: leadId,
-            loanCreatedAt: loanLinkedAt.toISOString(),
+            ...initialStateMetadata,
+            ardaStockDetailSync: {
+              ...stockDetailSync,
+              attemptedAt: new Date().toISOString(),
+            },
           },
         },
       });
@@ -221,7 +277,7 @@ export async function POST(
         await sendLoanStatusSms({
           type: "pending_approval",
           clientName: clientName || "Customer",
-          phone: lead.mobileNo,
+          phone: lead.mobileNo!,
           countryCode: lead.countryCode,
           amount: Number(loanData.principal) || 0,
           tenantId: tenant?.slug,
@@ -248,6 +304,8 @@ export async function POST(
       success: true,
       coreResponse: result,
       loanId: result?.resourceId,
+      stockDetailSync,
+      ...(warnings.length > 0 ? { warnings } : {}),
     });
   } catch (error: any) {
     console.error("Error creating loan from lead:", error);

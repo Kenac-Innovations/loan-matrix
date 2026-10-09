@@ -45,8 +45,10 @@ import { resolvePaymentTypeForPreferredMethod } from "./payment-method-resolutio
 import { resolveYangoUssdDisbursementDetailsForLead } from "./yango-ussd-disbursement";
 import {
   applyArdaInventoryWorkflowOperation,
+  getArdaStockDetails,
   validateArdaInventoryWorkflowOperation,
 } from "./inventory/arda-stock-workflow-service";
+import { runArdaStockDisbursementGuard } from "./arda-stock-disbursement-guard";
 import type { AssignmentStrategy, AssignmentConfig } from "@/shared/defaults/team-config";
 
 export interface FineractOverrides {
@@ -733,7 +735,7 @@ export class TeamAwareStateMachineService {
         where: { id: request.leadId },
         include: {
           currentStage: true,
-          tenant: { select: { slug: true } },
+          tenant: { select: { slug: true, settings: true } },
         },
       });
 
@@ -1767,17 +1769,23 @@ export class TeamAwareStateMachineService {
             ? loanDisbursementAmount
             : undefined);
 
-        await fineract.disburseLoan(fineractLoanId, disburseDate, {
-          paymentTypeId: disbursementPaymentTypeId,
-          accountNumber:
-            yangoUssdDetails?.accountNumber ?? overrides?.accountNumber,
-          checkNumber: overrides?.checkNumber,
-          routingCode: overrides?.routingCode,
-          receiptNumber: overrides?.receiptNumber,
-          bankNumber: overrides?.bankNumber,
-          externalId: yangoUssdDetails?.externalId ?? overrides?.externalId,
-          transactionAmount: yangoUssdDetails ? transactionAmount : overrides?.transactionAmount,
-          note: overrides?.note,
+        await runArdaStockDisbursementGuard({
+          appTenantSlug: lead?.tenant?.slug || lead?.tenantSlug || "",
+          tenantSettings: lead?.tenant?.settings,
+          fineractLoanId,
+          details: lead ? getArdaStockDetails(lead) : null,
+          disburse: () => fineract.disburseLoan(fineractLoanId, disburseDate, {
+            paymentTypeId: disbursementPaymentTypeId,
+            accountNumber:
+              yangoUssdDetails?.accountNumber ?? overrides?.accountNumber,
+            checkNumber: overrides?.checkNumber,
+            routingCode: overrides?.routingCode,
+            receiptNumber: overrides?.receiptNumber,
+            bankNumber: overrides?.bankNumber,
+            externalId: yangoUssdDetails?.externalId ?? overrides?.externalId,
+            transactionAmount: yangoUssdDetails ? transactionAmount : overrides?.transactionAmount,
+            note: overrides?.note,
+          }),
         });
 
         // Non-blocking: disbursement succeeds even when charge application fails.
