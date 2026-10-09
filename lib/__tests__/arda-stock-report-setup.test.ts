@@ -45,6 +45,12 @@ test("catalog SQL quotes Fineract's PostgreSQL camel-case parameter columns", ()
   ]) {
     assert.match(source, new RegExp(`"${column}"`));
   }
+  assert.match(source, /ARDA_STOCK_ITEM_OPTIONS_SQL/);
+  assert.match(
+    source,
+    /const parameterSql = sqlLiteral\(ARDA_STOCK_ITEM_OPTIONS_SQL\)/
+  );
+  assert.match(source, /'N', 'Y', \$\{parameterSql\}, NULL/);
 });
 
 function createHarness(existingReportNames: string[] = []) {
@@ -156,6 +162,12 @@ function createHarness(existingReportNames: string[] = []) {
               [ARDA_STOCK_ITEM_OPTIONS_REPORT, "stockItemId", "Stock Item"],
             ].map((row) => ({ row })),
           };
+    }
+    if (
+      endpoint ===
+      `/runreports/${encodeURIComponent(ARDA_STOCK_ITEM_OPTIONS_REPORT)}?parameterType=true`
+    ) {
+      return [];
     }
     if (endpoint === "/permissions" && method === "GET") {
       return reportPermissionCodes.map((code) => ({ code }));
@@ -303,6 +315,14 @@ test("apply creates missing artifacts, preserves settings and permissions, and v
       call.endpoint.startsWith("/runreports/FullParameterList")
     ).length,
     4
+  );
+  assert.equal(
+    harness.apiCalls.filter(
+      (call) =>
+        call.endpoint ===
+        `/runreports/${encodeURIComponent(ARDA_STOCK_ITEM_OPTIONS_REPORT)}?parameterType=true`
+    ).length,
+    1
   );
 });
 

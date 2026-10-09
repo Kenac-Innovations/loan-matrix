@@ -239,7 +239,6 @@ export async function POST(
         linkedLead ? getArdaStockDetails({ ...linkedLead, tenant }) : null,
       disburse: () => fetchFineractAPI(`/loans/${id}?command=disburse`, {
         method: 'POST',
-        authMode: 'service',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(augmentedPayload),
       }),

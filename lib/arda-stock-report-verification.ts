@@ -126,6 +126,8 @@ export function validateArdaReportFixtures(input: {
     disbursementCount: number;
     quantity: number;
     stockValue: number;
+    disbursedAmount: number;
+    repaymentTransactionId: number;
     repaymentAmount: number;
     principalAllocation: number;
     interestAllocation: number;
@@ -140,7 +142,9 @@ export function validateArdaReportFixtures(input: {
     (row) => String(row["Loan Account"]) === input.expected.loanAccount
   );
   const repayment = input.repayments.find(
-    (row) => String(row["Loan Account"]) === input.expected.loanAccount
+    (row) =>
+      String(row["Loan Account"]) === input.expected.loanAccount &&
+      numberValue(row["Transaction ID"]) === input.expected.repaymentTransactionId
   );
   const performance = input.performance.find(
     (row) => String(row["Stock Item"]) === input.expected.stockItem
@@ -151,7 +155,11 @@ export function validateArdaReportFixtures(input: {
 
   assertNumber("Disbursement quantity", disbursement.Quantity, input.expected.quantity);
   assertNumber("Disbursement stock value", disbursement["Stock Value"], input.expected.stockValue);
-  assertNumber("Disbursed amount", disbursement["Disbursed Amount"], input.expected.stockValue);
+  assertNumber(
+    "Disbursed amount",
+    disbursement["Disbursed Amount"],
+    input.expected.disbursedAmount
+  );
   assertNumber("Repayment amount", repayment["Repayment Amount"], input.expected.repaymentAmount);
   assertNumber("Principal allocation", repayment["Principal Allocation"], input.expected.principalAllocation);
   assertNumber("Interest allocation", repayment["Interest Allocation"], input.expected.interestAllocation);

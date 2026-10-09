@@ -7,7 +7,10 @@ import {
   type ArdaLoanMatrixClient,
   type ArdaStockCatalogClient,
 } from "../lib/fineract-arda-stock-report-setup";
-import { ARDA_STOCK_ITEM_OPTIONS_REPORT } from "../lib/fineract-arda-stock-reports";
+import {
+  ARDA_STOCK_ITEM_OPTIONS_REPORT,
+  ARDA_STOCK_ITEM_OPTIONS_SQL,
+} from "../lib/fineract-arda-stock-reports";
 import type { FineractRequester } from "../lib/fineract-arda-stock-details";
 
 type CliOptions = {
@@ -167,6 +170,7 @@ class PsqlArdaStockCatalogClient implements ArdaStockCatalogClient {
     ];
     const requiredArray = requiredColumns.map(sqlLiteral).join(", ");
     const reportName = sqlLiteral(ARDA_STOCK_ITEM_OPTIONS_REPORT);
+    const parameterSql = sqlLiteral(ARDA_STOCK_ITEM_OPTIONS_SQL);
 
     this.run(`BEGIN;
 DO $$
@@ -201,7 +205,7 @@ INSERT INTO stretchy_parameter (
   parameter_sql,
   parent_id
 ) VALUES (
-  ${reportName}, 'stockItemId', 'Stock Item', 'select', 'string', '0', NULL, 'N', 'Y', NULL, NULL
+  ${reportName}, 'stockItemId', 'Stock Item', 'select', 'string', '0', NULL, 'N', 'Y', ${parameterSql}, NULL
 )
 ON CONFLICT (parameter_name) DO UPDATE SET
   parameter_variable = EXCLUDED.parameter_variable,

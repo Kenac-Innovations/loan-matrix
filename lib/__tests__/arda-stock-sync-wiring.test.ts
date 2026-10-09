@@ -146,4 +146,9 @@ test("both disbursement paths execute Fineract inside the ARDA guard", () => {
     directRoute,
     /runArdaStockDisbursementGuard\([\s\S]*?getDetails:\s*\(\)\s*=>[\s\S]*?disburse:\s*\(\)\s*=>\s*fetchFineractAPI\([^]*?command=disburse/
   );
+  const guardedDisbursement = directRoute.slice(
+    directRoute.indexOf("disburse: () => fetchFineractAPI"),
+    directRoute.indexOf("// Non-blocking: do not fail disbursement")
+  );
+  assert.doesNotMatch(guardedDisbursement, /authMode:\s*["']service["']/);
 });

@@ -10,6 +10,7 @@ import {
   type StockReportArtifactSnapshot,
 } from "../lib/arda-stock-report-verification";
 import {
+  ARDA_STOCK_ITEM_OPTIONS_REPORT,
   ARDA_STOCK_REPORT_NAMES,
   buildArdaStockReportDefinitions,
 } from "../lib/fineract-arda-stock-reports";
@@ -241,6 +242,12 @@ function runTransactionalFixture(input: CliOptions): {
   repayments: ReportRow[];
   performance: ReportRow[];
   loanAccount: string;
+  disbursedAmount: number;
+  repaymentTransactionId: number;
+  repaymentAmount: number;
+  principalAllocation: number;
+  interestAllocation: number;
+  postTransactionBalance: number;
 } {
   const database = requiredEnv("FINERACT_DB_NAME");
   if (database !== "fineract_tenant_arda") {
@@ -255,7 +262,61 @@ FROM (${sql}) report_row;`;
   });
   const script = `BEGIN;
 CREATE TEMP TABLE arda_verify_loan ON COMMIT DROP AS
-SELECT ml.id, ml.account_no
+SELECT ml.id, ml.account_no,
+       (
+         SELECT t.amount
+         FROM m_loan_transaction t
+         WHERE t.loan_id = ml.id AND t.transaction_type_enum = 1
+           AND COALESCE(t.is_reversed, false) = false
+           AND t.transaction_date::date BETWEEN ${sqlLiteral(input.startDate)}::date AND ${sqlLiteral(input.endDate)}::date
+         ORDER BY t.id
+         LIMIT 1
+       ) AS disbursed_amount,
+       (
+         SELECT t.id
+         FROM m_loan_transaction t
+         WHERE t.loan_id = ml.id AND t.transaction_type_enum = 2
+           AND COALESCE(t.is_reversed, false) = false
+           AND t.transaction_date::date BETWEEN ${sqlLiteral(input.startDate)}::date AND ${sqlLiteral(input.endDate)}::date
+         ORDER BY t.id
+         LIMIT 1
+       ) AS repayment_transaction_id,
+       (
+         SELECT t.amount
+         FROM m_loan_transaction t
+         WHERE t.loan_id = ml.id AND t.transaction_type_enum = 2
+           AND COALESCE(t.is_reversed, false) = false
+           AND t.transaction_date::date BETWEEN ${sqlLiteral(input.startDate)}::date AND ${sqlLiteral(input.endDate)}::date
+         ORDER BY t.id
+         LIMIT 1
+       ) AS repayment_amount,
+       (
+         SELECT COALESCE(t.principal_portion_derived, 0)
+         FROM m_loan_transaction t
+         WHERE t.loan_id = ml.id AND t.transaction_type_enum = 2
+           AND COALESCE(t.is_reversed, false) = false
+           AND t.transaction_date::date BETWEEN ${sqlLiteral(input.startDate)}::date AND ${sqlLiteral(input.endDate)}::date
+         ORDER BY t.id
+         LIMIT 1
+       ) AS principal_allocation,
+       (
+         SELECT COALESCE(t.interest_portion_derived, 0)
+         FROM m_loan_transaction t
+         WHERE t.loan_id = ml.id AND t.transaction_type_enum = 2
+           AND COALESCE(t.is_reversed, false) = false
+           AND t.transaction_date::date BETWEEN ${sqlLiteral(input.startDate)}::date AND ${sqlLiteral(input.endDate)}::date
+         ORDER BY t.id
+         LIMIT 1
+       ) AS interest_allocation,
+       (
+         SELECT COALESCE(t.outstanding_loan_balance_derived, 0)
+         FROM m_loan_transaction t
+         WHERE t.loan_id = ml.id AND t.transaction_type_enum = 2
+           AND COALESCE(t.is_reversed, false) = false
+           AND t.transaction_date::date BETWEEN ${sqlLiteral(input.startDate)}::date AND ${sqlLiteral(input.endDate)}::date
+         ORDER BY t.id
+         LIMIT 1
+       ) AS post_transaction_balance
 FROM m_loan ml
 WHERE EXISTS (
   SELECT 1 FROM m_loan_transaction t
@@ -290,7 +351,16 @@ INSERT INTO arda_stock_details (
 SELECT id, '__arda_verification_stock__', 'Verification Stock', 4, 'bag',
        12.50, 50.00, 'USD', '__arda_verification__'
 FROM arda_verify_loan;
-SELECT json_build_object('kind', 'loan', 'loanAccount', account_no)
+SELECT json_build_object(
+  'kind', 'loan',
+  'loanAccount', account_no,
+  'disbursedAmount', disbursed_amount,
+  'repaymentTransactionId', repayment_transaction_id,
+  'repaymentAmount', repayment_amount,
+  'principalAllocation', principal_allocation,
+  'interestAllocation', interest_allocation,
+  'postTransactionBalance', post_transaction_balance
+)
 FROM arda_verify_loan;
 ${reportQueries.join("\n")}
 ROLLBACK;`;
@@ -328,6 +398,12 @@ ROLLBACK;`;
   const byKind = new Map(records.map((record) => [record.kind, record]));
   return {
     loanAccount: String(byKind.get("loan")?.loanAccount || ""),
+    disbursedAmount: Number(byKind.get("loan")?.disbursedAmount),
+    repaymentTransactionId: Number(byKind.get("loan")?.repaymentTransactionId),
+    repaymentAmount: Number(byKind.get("loan")?.repaymentAmount),
+    principalAllocation: Number(byKind.get("loan")?.principalAllocation),
+    interestAllocation: Number(byKind.get("loan")?.interestAllocation),
+    postTransactionBalance: Number(byKind.get("loan")?.postTransactionBalance),
     disbursements: byKind.get("disbursements")?.rows || [],
     repayments: byKind.get("repayments")?.rows || [],
     performance: byKind.get("performance")?.rows || [],
@@ -359,6 +435,9 @@ async function main() {
     }),
   ]);
   verifyArdaStockReportIsolation(ardaArtifacts, controlArtifacts);
+  await ardaApi(
+    `/runreports/${encodeURIComponent(ARDA_STOCK_ITEM_OPTIONS_REPORT)}?parameterType=true`
+  );
 
   const [disbursements, repayments, performance] = await Promise.all(
     ARDA_STOCK_REPORT_NAMES.map((reportName) =>
@@ -379,10 +458,12 @@ async function main() {
       disbursementCount: 1,
       quantity: 4,
       stockValue: 50,
-      repaymentAmount: Number(fixture.repayments[0]?.["Repayment Amount"]),
-      principalAllocation: Number(fixture.repayments[0]?.["Principal Allocation"]),
-      interestAllocation: Number(fixture.repayments[0]?.["Interest Allocation"]),
-      postTransactionBalance: Number(fixture.repayments[0]?.["Post Transaction Balance"]),
+      disbursedAmount: fixture.disbursedAmount,
+      repaymentTransactionId: fixture.repaymentTransactionId,
+      repaymentAmount: fixture.repaymentAmount,
+      principalAllocation: fixture.principalAllocation,
+      interestAllocation: fixture.interestAllocation,
+      postTransactionBalance: fixture.postTransactionBalance,
       averageQuantity: 4,
       averageUnitValue: 12.5,
       averageStockValue: 50,

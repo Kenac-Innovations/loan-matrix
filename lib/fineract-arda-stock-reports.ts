@@ -32,7 +32,7 @@ const reportParameters = (stockItemParameterId: number) => [
   { parameterId: stockItemParameterId, reportParameterName: "stockItemId" },
 ];
 
-const optionSql = `SELECT DISTINCT
+export const ARDA_STOCK_ITEM_OPTIONS_SQL = `SELECT DISTINCT
        asd.stock_item_id AS id,
        asd.stock_item_name AS name
 FROM arda_stock_details asd
@@ -189,7 +189,7 @@ export function buildArdaStockReportDefinitions(
       reportName: ARDA_STOCK_ITEM_OPTIONS_REPORT,
       description: "Stock items captured for ARDA loan reporting filters.",
       useReport: false,
-      reportSql: optionSql,
+      reportSql: ARDA_STOCK_ITEM_OPTIONS_SQL,
     },
     {
       ...common,

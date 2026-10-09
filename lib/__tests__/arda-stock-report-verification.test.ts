@@ -147,6 +147,7 @@ test("compares known counts, amounts, averages, and monthly rank", () => {
       repayments: [
         {
           "Loan Account": "00081",
+          "Transaction ID": 991,
           "Repayment Amount": 20,
           "Principal Allocation": 15,
           "Interest Allocation": 5,
@@ -171,6 +172,8 @@ test("compares known counts, amounts, averages, and monthly rank", () => {
         disbursementCount: 1,
         quantity: 4,
         stockValue: 50,
+        disbursedAmount: 50,
+        repaymentTransactionId: 991,
         repaymentAmount: 20,
         principalAllocation: 15,
         interestAllocation: 5,
@@ -195,6 +198,8 @@ test("compares known counts, amounts, averages, and monthly rank", () => {
           disbursementCount: 1,
           quantity: 4,
           stockValue: 50,
+          disbursedAmount: 50,
+          repaymentTransactionId: 991,
           repaymentAmount: 20,
           principalAllocation: 15,
           interestAllocation: 5,

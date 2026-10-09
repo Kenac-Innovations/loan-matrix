@@ -284,6 +284,11 @@ async function verifyAppliedSetup(input: {
     }
   }
 
+  await options.fineract(
+    `/runreports/${encodeURIComponent(ARDA_STOCK_ITEM_OPTIONS_REPORT)}?parameterType=true`,
+    { authMode: "service", cache: "no-store" }
+  );
+
   for (const roleId of options.roleIds) {
     const role = await options.fineract(`/roles/${roleId}/permissions`, {
       authMode: "service",
