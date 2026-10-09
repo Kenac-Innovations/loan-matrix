@@ -14,13 +14,14 @@ type ArdaStockSelection = {
   inventoryItemName?: unknown;
   fineractOfficeId?: unknown;
   fineractOfficeName?: unknown;
+  unitOfMeasure?: unknown;
   quantity?: unknown;
   unitValue?: unknown;
   totalValue?: unknown;
   currencyCode?: unknown;
 };
 
-type WorkflowLead = {
+export type WorkflowLead = {
   id: string;
   tenantId: string;
   tenantSlug?: string | null;
@@ -36,6 +37,19 @@ type WorkflowLead = {
   middlename?: string | null;
   lastname?: string | null;
   fullname?: string | null;
+};
+
+export type ArdaStockDetails = {
+  stockItemId: string;
+  stockItemName: string;
+  fineractOfficeId: number;
+  fineractOfficeName?: string;
+  quantity: string;
+  unitOfMeasure: string;
+  unitValue: string;
+  totalStockValue: string;
+  currencyCode: string;
+  stockIssueReference: string;
 };
 
 type WorkflowStage = {
@@ -126,7 +140,9 @@ function parsePositiveDecimal(value: unknown, field: string): string {
   return parsed.toString();
 }
 
-function getArdaStockDetails(lead: WorkflowLead) {
+export function getArdaStockDetails(
+  lead: WorkflowLead
+): ArdaStockDetails | null {
   // State transitions load the tenant relation, whereas lightweight callers
   // may supply tenantSlug directly. Support both forms so an ARDA workflow is
   // not silently skipped after Fineract has completed its action.
@@ -155,17 +171,38 @@ function getArdaStockDetails(lead: WorkflowLead) {
 
   const quantity = parsePositiveDecimal(selection.quantity, "Stock quantity");
   const unitValue = parsePositiveDecimal(selection.unitValue, "Stock unit value");
+  const unitOfMeasure = normalize(selection.unitOfMeasure);
+  if (!unitOfMeasure) {
+    throw new InventoryLedgerServiceError(
+      "INVALID_REQUEST",
+      "Stock unit of measure is required for an ARDA stock loan."
+    );
+  }
+
+  const totalStockValue = new Prisma.Decimal(quantity).mul(unitValue).toFixed(2);
+  const storedTotal = normalize(selection.totalValue);
+  if (
+    storedTotal &&
+    !new Prisma.Decimal(storedTotal).equals(new Prisma.Decimal(totalStockValue))
+  ) {
+    throw new InventoryLedgerServiceError(
+      "INVALID_REQUEST",
+      "The saved ARDA stock total does not match quantity multiplied by unit value."
+    );
+  }
   const currencyCode = normalize(selection.currencyCode || "USD").toUpperCase();
 
   return {
-    inventoryItemId,
-    inventoryItemName: normalize(selection.inventoryItemName) || "ARDA stock item",
+    stockItemId: inventoryItemId,
+    stockItemName: normalize(selection.inventoryItemName) || "ARDA stock item",
     fineractOfficeId: officeId,
     fineractOfficeName: normalize(selection.fineractOfficeName) || undefined,
     quantity,
+    unitOfMeasure,
     unitValue,
-    totalValue: new Prisma.Decimal(quantity).mul(unitValue).toFixed(2),
+    totalStockValue,
     currencyCode,
+    stockIssueReference: normalize(lead.externalId) || lead.id,
   };
 }
 
@@ -206,7 +243,7 @@ async function getActiveItemAndBalance(
   details: NonNullable<ReturnType<typeof getArdaStockDetails>>
 ) {
   const item = await tx.inventoryItem.findFirst({
-    where: { id: details.inventoryItemId, tenantId: lead.tenantId },
+    where: { id: details.stockItemId, tenantId: lead.tenantId },
     select: { id: true, isActive: true },
   });
   if (!item || !item.isActive) {
@@ -219,7 +256,7 @@ async function getActiveItemAndBalance(
   const balance = await tx.inventoryBalance.findFirst({
     where: {
       tenantId: lead.tenantId,
-      inventoryItemId: details.inventoryItemId,
+      inventoryItemId: details.stockItemId,
       fineractOfficeId: details.fineractOfficeId,
       currencyCode: details.currencyCode,
     },
@@ -280,7 +317,7 @@ async function reserveStockForLead(
       fineractOfficeName: details.fineractOfficeName,
       reference: `arda-stock:${lead.id}`,
       status: "RESERVED",
-      totalValue: details.totalValue,
+      totalValue: details.totalStockValue,
       currencyCode: details.currencyCode,
       borrowerName: getLeadDisplayName(lead),
       loanAccountNo: lead.fineractAccountNo || lead.accountNumber,
@@ -292,10 +329,10 @@ async function reserveStockForLead(
   await tx.stockLoanIssueLine.create({
     data: {
       stockLoanIssueId: issue.id,
-      inventoryItemId: details.inventoryItemId,
+      inventoryItemId: details.stockItemId,
       quantity: details.quantity,
       unitValue: details.unitValue,
-      lineValue: details.totalValue,
+      lineValue: details.totalStockValue,
       currencyCode: details.currencyCode,
     },
   });
@@ -313,7 +350,7 @@ async function reserveStockForLead(
   await tx.inventoryMovement.create({
     data: {
       tenantId: lead.tenantId,
-      inventoryItemId: details.inventoryItemId,
+      inventoryItemId: details.stockItemId,
       fineractOfficeId: details.fineractOfficeId,
       fineractOfficeName: details.fineractOfficeName,
       stockLoanIssueId: issue.id,
@@ -376,7 +413,7 @@ async function releaseReservedStockForLead(
   await tx.inventoryMovement.create({
     data: {
       tenantId: lead.tenantId,
-      inventoryItemId: details.inventoryItemId,
+      inventoryItemId: details.stockItemId,
       fineractOfficeId: details.fineractOfficeId,
       fineractOfficeName: details.fineractOfficeName,
       stockLoanIssueId: issue.id,
@@ -422,7 +459,7 @@ async function issueReservedStockForLead(
         quantityReserved: balance.quantityReserved.toString(),
         stockValue: balance.stockValue.toString(),
       },
-      { type: "ISSUE", quantity: details.quantity, value: details.totalValue }
+      { type: "ISSUE", quantity: details.quantity, value: details.totalStockValue }
     );
   } catch (error) {
     mapLedgerError(error);
@@ -455,14 +492,14 @@ async function issueReservedStockForLead(
   await tx.inventoryMovement.create({
     data: {
       tenantId: lead.tenantId,
-      inventoryItemId: details.inventoryItemId,
+      inventoryItemId: details.stockItemId,
       fineractOfficeId: details.fineractOfficeId,
       fineractOfficeName: details.fineractOfficeName,
       stockLoanIssueId: issue.id,
       fineractLoanId: lead.fineractLoanId,
       type: "ISSUE",
       quantityDelta: `-${details.quantity}`,
-      valueDelta: `-${details.totalValue}`,
+      valueDelta: `-${details.totalStockValue}`,
       currencyCode: details.currencyCode,
       idempotencyKey: `arda-stock-issue:${lead.id}`,
       reason: `Issued for disbursed ARDA loan: ${getLeadDisplayName(lead)}.`,
@@ -535,7 +572,7 @@ export async function validateArdaInventoryWorkflowOperation(input: {
   const balance = await prisma.inventoryBalance.findFirst({
     where: {
       tenantId: input.lead.tenantId,
-      inventoryItemId: details.inventoryItemId,
+      inventoryItemId: details.stockItemId,
       fineractOfficeId: details.fineractOfficeId,
       currencyCode: details.currencyCode,
     },

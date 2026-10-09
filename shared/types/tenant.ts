@@ -34,6 +34,8 @@ export interface TenantFeatures {
   topupLoanBalanceExcludeUnrealizedInterests: boolean;
   /** Restrict non-exempt users to cash-only loan repayments, auto-resolving their teller/cashier from their cashier session (blocking submission if unresolvable), unless the user is individually exempted */
   autoResolveRepaymentCashier: boolean;
+  /** Enable ARDA-only Fineract stock metadata synchronization and reports */
+  ardaStockReports: boolean;
   /** When true, MFA is required for tenant logins. Missing or false disables MFA. */
   usesMFA?: boolean;
   /** Enabled MFA delivery channels for the tenant. */
@@ -144,6 +146,7 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   officeScopedAdminLeadsDashboard: false,
   topupLoanBalanceExcludeUnrealizedInterests: false,
   autoResolveRepaymentCashier: false,
+  ardaStockReports: false,
 };
 
 /**
