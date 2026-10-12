@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 type RouteContext = {
@@ -14,10 +15,7 @@ export async function GET(_: Request, context: RouteContext) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching payment type:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to fetch payment type" },
-      { status: error.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -32,10 +30,7 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error updating payment type:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to update payment type" },
-      { status: error.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -48,9 +43,6 @@ export async function DELETE(_: Request, context: RouteContext) {
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error deleting payment type:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to delete payment type" },
-      { status: error.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

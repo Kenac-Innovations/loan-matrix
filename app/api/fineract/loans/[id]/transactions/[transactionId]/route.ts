@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
 
 // POST /api/fineract/loans/:id/transactions/:transactionId?command=chargeback
@@ -23,10 +24,7 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error posting loan transaction command:', error);
-    return NextResponse.json(
-      { error: error.message || 'Unknown error' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 

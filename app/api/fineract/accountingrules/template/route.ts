@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractAPI } from '@/lib/api';
 
 export async function GET(request: NextRequest) {
@@ -7,9 +8,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(template);
   } catch (error: any) {
     console.error('Error fetching accounting rules template:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch accounting rules template' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 } 

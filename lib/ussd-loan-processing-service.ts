@@ -4,6 +4,7 @@ import { fetchFineractAPI } from "@/lib/api";
 import { callCDEAndStore } from "@/lib/cde-utils";
 import prisma from "@/lib/prisma";
 import { TeamAwareStateMachineService } from "@/lib/team-state-machine-service";
+import { dispatchUssdLoanApplicationSms } from "@/lib/ussd-loan-sms-service";
 import {
   classifyUssdAutoProcessingOutcome,
   shouldAutoProgressFromCde,
@@ -55,6 +56,12 @@ function readCdeDecision(
   return typeof cdeResult?.decision === "string"
     ? cdeResult.decision
     : null;
+}
+
+function isRejectedCdeDecision(decision: string | null): boolean {
+  return ["REJECTED", "DECLINED"].includes(
+    decision?.trim().toUpperCase() || ""
+  );
 }
 
 function isNumericUserId(value: string | null | undefined): boolean {
@@ -305,11 +312,34 @@ export async function processUssdApplicationToDisbursement(input: {
     },
   });
 
+  dispatchUssdLoanApplicationSms({
+    applicationId: application.id,
+    tenantId: application.tenantId,
+    userFullName: application.userFullName,
+    userPhoneNumber: application.userPhoneNumber,
+    principalAmount: application.principalAmount,
+    referenceNumber: application.referenceNumber,
+    event: "submission",
+  });
+
   const cdeResult = (await callCDEAndStore(leadId)) as Record<
     string,
     unknown
   > | null;
   const cdeDecision = readCdeDecision(cdeResult);
+
+  if (isRejectedCdeDecision(cdeDecision)) {
+    dispatchUssdLoanApplicationSms({
+      applicationId: application.id,
+      tenantId: application.tenantId,
+      userFullName: application.userFullName,
+      userPhoneNumber: application.userPhoneNumber,
+      principalAmount: application.principalAmount,
+      referenceNumber: application.referenceNumber,
+      event: "rejection",
+    });
+  }
+
   let autoProgressMessage: string | null = null;
 
   if (shouldAutoProgressFromCde(cdeDecision)) {

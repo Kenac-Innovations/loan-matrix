@@ -5,8 +5,9 @@ import { format } from "date-fns";
 import { fetchFineractAPI } from "@/lib/api";
 import { getOrgDefaultCurrencyCode } from "@/lib/currency-utils";
 import { getSession } from "@/lib/auth";
-import { isOmamaTenantSlug } from "@/lib/omama-tenant";
-import { isArdaStockInputLoanProduct } from "@/lib/inventory/arda-stock-loan";
+import { formatFineractBusinessDate } from "@/lib/fineract-business-date";
+import { parseFineractErrorResponse } from "@/lib/fineract-error";
+import { getArdaDocumentVariant } from "@/lib/arda-contract-variant";
 
 type FineractLoanLike = {
   id?: number;
@@ -589,7 +590,10 @@ async function resolveFineractLoan(
 ): Promise<FineractLoanLike | null> {
   if (fineractLoanId) {
     try {
-      return (await fetchFineractAPI(`/loans/${fineractLoanId}?associations=all`)) as FineractLoanLike;
+      return (await fetchFineractAPI(
+        `/loans/${fineractLoanId}?associations=all`,
+        { authMode: "service" },
+      )) as FineractLoanLike;
     } catch (error) {
       console.warn(
         `Failed to fetch Fineract loan by ID ${fineractLoanId}, trying external ID lookup:`,
@@ -600,7 +604,8 @@ async function resolveFineractLoan(
 
   try {
     const loans = (await fetchFineractAPI(
-      `/loans?externalId=${encodeURIComponent(leadId)}`
+      `/loans?externalId=${encodeURIComponent(leadId)}`,
+      { authMode: "service" },
     )) as any;
     const loanList = Array.isArray(loans)
       ? loans
@@ -614,7 +619,8 @@ async function resolveFineractLoan(
     if (!matchingLoan?.id) return null;
 
     return (await fetchFineractAPI(
-      `/loans/${matchingLoan.id}?associations=all`
+      `/loans/${matchingLoan.id}?associations=all`,
+      { authMode: "service" },
     )) as FineractLoanLike;
   } catch (error) {
     console.warn(`Failed to fetch Fineract loan by external ID ${leadId}:`, error);
@@ -766,6 +772,19 @@ export async function GET(
       console.log("Live Fineract loan fetched for contract data:", fineractLoan.id);
     } else {
       console.warn("No live Fineract loan found for contract data");
+
+      // A submitted loan's financial figures must come from Fineract. Never
+      // create a compliance document with placeholder zero values on failure.
+      if (lead.loanSubmittedToFineract && lead.fineractLoanId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Live loan terms are unavailable. The contract cannot be generated until they can be retrieved from Fineract.",
+          },
+          { status: 503 },
+        );
+      }
     }
 
     // Fetch loan details
@@ -980,13 +999,13 @@ export async function GET(
 
     if (!repaymentSchedule && loanTerms && loanDetails && loanTemplate) {
       try {
-        const submittedDate = loanDetails.submittedOn
-          ? format(new Date(loanDetails.submittedOn), "dd MMMM yyyy")
-          : format(new Date(), "dd MMMM yyyy");
+        const submittedDate =
+          formatFineractBusinessDate(loanDetails.submittedOn) ||
+          formatFineractBusinessDate(new Date())!;
 
-        const disbursementDate = loanDetails.disbursementOn
-          ? format(new Date(loanDetails.disbursementOn), "dd MMMM yyyy")
-          : format(new Date(), "dd MMMM yyyy");
+        const disbursementDate =
+          formatFineractBusinessDate(loanDetails.disbursementOn) ||
+          formatFineractBusinessDate(new Date())!;
         const resolvedLoanScheduleType = resolveLoanScheduleTypeCode(
           loanTerms.loanScheduleType,
           loanTemplate?.loanScheduleTypeOptions,
@@ -1030,12 +1049,12 @@ export async function GET(
             loanTerms.repaymentFrequencyNthDay || "",
           repaymentFrequencyDayOfWeekType:
             loanTerms.repaymentFrequencyDayOfWeek || "",
-          repaymentsStartingFromDate: loanTerms.firstRepaymentOn
-            ? format(new Date(loanTerms.firstRepaymentOn), "dd MMMM yyyy")
-            : null,
-          interestChargedFromDate: loanTerms.interestChargedFrom
-            ? format(new Date(loanTerms.interestChargedFrom), "dd MMMM yyyy")
-            : null,
+          repaymentsStartingFromDate: formatFineractBusinessDate(
+            loanTerms.firstRepaymentOn,
+          ),
+          interestChargedFromDate: formatFineractBusinessDate(
+            loanTerms.interestChargedFrom,
+          ),
           interestType: loanTerms.interestMethod
             ? parseInt(loanTerms.interestMethod)
             : loanTemplate?.interestType?.id || 1,
@@ -1089,9 +1108,26 @@ export async function GET(
           },
         );
 
-        if (scheduleResponse.ok) {
-          repaymentSchedule = await scheduleResponse.json();
+        if (!scheduleResponse.ok) {
+          const scheduleError = await scheduleResponse
+            .json()
+            .catch(() => null);
+
+          console.error("Contract repayment schedule calculation failed:", {
+            status: scheduleResponse.status,
+            error: scheduleError,
+          });
+
+          return NextResponse.json(
+            {
+              success: false,
+              error: parseFineractErrorResponse(scheduleError || {}),
+            },
+            { status: 422 },
+          );
         }
+
+        repaymentSchedule = await scheduleResponse.json();
       } catch (err) {
         console.error("Error calculating repayment schedule:", err);
       }
@@ -1119,17 +1155,17 @@ export async function GET(
       fineractLoan?.proposedPrincipal ||
       0;
     const interest =
-      repaymentSchedule?.totalInterestCharged ||
-      fineractLoan?.summary?.interestCharged ||
+      repaymentSchedule?.totalInterestCharged ??
+      fineractLoan?.summary?.interestCharged ??
       0;
     const fees =
-      repaymentSchedule?.totalFeeChargesCharged ||
-      ((fineractLoan?.summary?.feeChargesCharged || 0) +
-        (fineractLoan?.summary?.penaltyChargesCharged || 0));
+      repaymentSchedule?.totalFeeChargesCharged ??
+      ((fineractLoan?.summary?.feeChargesCharged ?? 0) +
+        (fineractLoan?.summary?.penaltyChargesCharged ?? 0));
     const totalRepayment =
-      repaymentSchedule?.totalRepaymentExpected ||
-      fineractLoan?.summary?.totalExpectedRepayment ||
-      fineractLoan?.summary?.totalRepayment ||
+      repaymentSchedule?.totalRepaymentExpected ??
+      fineractLoan?.summary?.totalExpectedRepayment ??
+      fineractLoan?.summary?.totalRepayment ??
       principal + interest + fees;
 
     // Calculate monthly percentage rate
@@ -1553,17 +1589,13 @@ export async function GET(
     // Product identity is the authoritative tenant/Fineract classification.
     // The stock selection supplies the specific in-kind issue, but a missing
     // selection must never make an ARDA product fall back to an Omama contract.
-    const isArdaStockInputAgreement =
-      isOmamaTenantSlug(tenant.slug) &&
-      isArdaStockInputLoanProduct({
-        id: lead.loanProductId ?? fineractLoan?.loanProductId,
-        name: lead.loanProductName ?? fineractLoan?.loanProductName,
-      });
+    const documentVariant = getArdaDocumentVariant(tenant.slug, {
+      id: lead.loanProductId ?? fineractLoan?.loanProductId,
+      name: lead.loanProductName ?? fineractLoan?.loanProductName,
+    });
 
     const contractData = {
-      documentVariant: isArdaStockInputAgreement
-        ? "ARDA_STOCK_INPUT"
-        : "DEFAULT",
+      documentVariant,
       // Client Information
       clientName,
       nrc: lead.externalId || "N/A",

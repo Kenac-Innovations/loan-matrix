@@ -211,6 +211,7 @@ function mapFineractProductToForm(product: Record<string, unknown>): LoanProduct
       : [],
 
     accountingRule: getEnumId(product.accountingRule),
+    enableAccrualActivityPosting: b(product.enableAccrualActivityPosting),
 
     // Fineract nests all GL account objects under accountingMappings
     ...(() => {

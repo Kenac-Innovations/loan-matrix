@@ -4,12 +4,17 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
-import { getTenantFromHeaders, getOrCreateDefaultTenant } from "@/lib/tenant-service";
+import { resolveLeadServerActionTenantContext } from "@/lib/lead-tenant-context";
+import { getOrCreateDefaultTenant, getTenantFromHeaders } from "@/lib/tenant-service";
 import { fetchFineractAPI } from "@/lib/api";
+import { getFineractServiceWithSession } from "@/lib/fineract-api";
+import { assertClientCanCreateLoanLead } from "@/lib/client-servicing-lead-guard";
 import {
   getLeadViewerAccessContext,
   getOriginatorDesignatedDisburserData,
 } from "@/lib/lead-policy";
+import { getFineractBusinessToday } from "@/lib/fineract-business-date";
+import { withClientSubmittedOnDate } from "@/lib/lead-client-submitted-date";
 
 // Client form schema - uses z.coerce.date() to handle strings, numbers, and Date objects
 const clientFormSchema = z.object({
@@ -134,16 +139,32 @@ export async function saveDraft(
     console.log("==========> User ID from session:", userId);
     console.log("==========> Created by user name:", createdByUserName);
 
-    const tenant = await getTenantFromHeaders() || await getOrCreateDefaultTenant();
-    const tenantId = tenant.id;
+    const tenantContext = await resolveLeadServerActionTenantContext({
+      sessionTenantId: session.user.tenantId,
+    });
+    const tenantId = tenantContext.tenantId;
     console.log("==========> Tenant ID:", tenantId);
     const initialStageId = await getInitialStageId(tenantId);
 
+    if (!leadId && validatedData.fineractClientId !== undefined) {
+      const fineractService = await getFineractServiceWithSession(
+        tenantContext.fineractTenantId
+      );
+      await assertClientCanCreateLoanLead(
+        validatedData.fineractClientId,
+        (clientId) => fineractService.getClientServicingStatus(clientId)
+      );
+    }
+
     if (leadId) {
-      const existingLead = await prisma.lead.findUnique({
-        where: { id: leadId },
-        select: { currentStageId: true },
+      const existingLead = await prisma.lead.findFirst({
+        where: { id: leadId, tenantId },
+        select: { currentStageId: true, stateMetadata: true },
       });
+
+      if (!existingLead) {
+        throw new Error("Lead not found in your tenant workspace.");
+      }
 
       // Update existing lead
       await prisma.lead.update({
@@ -178,7 +199,12 @@ export async function saveDraft(
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          // Client Details owns the registration date, not the loan date.
+          // Preserve the lead's loan submitted-on date once it exists.
+          stateMetadata: withClientSubmittedOnDate(
+            existingLead?.stateMetadata,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,
@@ -238,7 +264,13 @@ export async function saveDraft(
           clientClassificationId:
             validatedData.clientClassificationId || undefined,
           clientClassificationName: validatedData.clientClassificationName,
-          submittedOnDate: validatedData.submittedOnDate,
+          // A new lead starts a new loan application today. The client
+          // registration date is stored separately in stateMetadata.
+          submittedOnDate: getFineractBusinessToday(),
+          stateMetadata: withClientSubmittedOnDate(
+            undefined,
+            validatedData.submittedOnDate,
+          ),
           active: validatedData.active,
           activationDate: validatedData.activationDate || undefined,
           openSavingsAccount: validatedData.openSavingsAccount,

@@ -3,31 +3,23 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
+// USSD loan application ingestion (dedup + insert) moved to loan-matrix-be —
+// see zw.co.kenac.loanmatrixbe.ussdloans.service.UssdLoanApplicationListener
+// and its UssdLoanApplicationListenerTests. This module only still owns the
+// auto-lead-creation / CDE-decisioning / auto-disbursement pipeline that
+// runs once a row already exists.
 const source = readFileSync(
-  path.join(process.cwd(), "lib/amqp-queue-service.ts"),
+  path.join(process.cwd(), "lib/ussd-auto-processing-poller.ts"),
   "utf8"
 );
 
-test("consumer sends configured USSD products through shared processing", () => {
+test("poller sends configured USSD products through shared processing", () => {
   assert.match(source, /findMatchingUssdAutoLeadRule/);
   assert.match(source, /processUssdApplicationToDisbursement/);
   assert.match(source, /runWithBoundedRetries/);
 });
 
-test("duplicate USSD applications resume instead of returning early", () => {
-  assert.match(source, /existingApp\s*\?\?/);
-
-  const duplicateStart = source.indexOf("if (existingApp)");
-  const createStart = source.indexOf(
-    "prisma.ussdLoanApplication.create",
-    duplicateStart
-  );
-  const duplicateBranch = source.slice(duplicateStart, createStart);
-
-  assert.doesNotMatch(duplicateBranch, /return;/);
-});
-
-test("consumer persists automatic-processing outcome and failure notes", () => {
+test("poller persists automatic-processing outcome and failure notes", () => {
   assert.match(source, /AUTO_DISBURSED/);
   assert.match(source, /MANUAL_REVIEW/);
   assert.match(source, /AUTO_PROCESSING_STOPPED/);

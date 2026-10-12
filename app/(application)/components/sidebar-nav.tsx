@@ -28,6 +28,7 @@ interface SubMenuItem {
 interface SidebarNavProps {
   canReadUsers: boolean;
   canResetUssdPin: boolean;
+  canAccessUssdDetails: boolean;
 }
 
 /**
@@ -37,6 +38,7 @@ interface SidebarNavProps {
 export function SidebarNav({
   canReadUsers,
   canResetUssdPin,
+  canAccessUssdDetails,
 }: Readonly<SidebarNavProps>) {
   const {
     canConfirmPayments,
@@ -74,6 +76,12 @@ export function SidebarNav({
 
   const organizationSubMenuItems: SubMenuItem[] = [];
 
+  organizationSubMenuItems.push(
+    { label: "Manage Offices", href: "/organization/offices" },
+    { label: "Manage Holidays", href: "/organization/holidays" },
+    { label: "Manage Currencies", href: "/organization/currencies" },
+  );
+
   if (canReadUsers) {
     organizationSubMenuItems.push({ label: "Users", href: "/organization/users" });
   }
@@ -92,6 +100,13 @@ export function SidebarNav({
     clientsSubMenuItems.push({
       label: "USSD PIN Reset",
       href: "/ussd-pin-reset",
+    });
+  }
+
+  if (canAccessUssdDetails) {
+    clientsSubMenuItems.push({
+      label: "USSD Details",
+      href: "/ussd-details",
     });
   }
 
@@ -164,6 +179,8 @@ export function SidebarNav({
         subMenuItems={[
           { label: "Banks", href: "/banks" },
           { label: "Tellers", href: "/tellers" },
+          { label: "Variance events", href: "/tellers/variance-events" },
+          { label: "Reconciliation report", href: "/tellers/reports/session-reconciliation" },
           { label: "Mobile Money", href: "/mobile-money" },
           ...(isEnabled("receiptRanges")
             ? [{ label: "Receipt Ranges", href: "/banks/receipts" }]
@@ -197,7 +214,7 @@ export function SidebarNav({
       <MenuItemWithSubmenu
         icon={<Building2 />}
         label="Organization"
-        href={organizationSubMenuItems[0]?.href || "/organization/payment-types"}
+        href="/organization/offices"
         subMenuItems={organizationSubMenuItems}
       />
 
@@ -215,6 +232,10 @@ export function SidebarNav({
             { label: "Notifications", href: "/system/notifications" },
             { label: "Reminders", href: "/system/reminders" },
             { label: "Audit Trails", href: "/system/audit-trails" },
+            {
+              label: "Client Servicing Statuses",
+              href: "/system/client-servicing-statuses",
+            },
             {
               label: "Configure Maker Checker Tasks",
               href: "/system/configure-mc-tasks",

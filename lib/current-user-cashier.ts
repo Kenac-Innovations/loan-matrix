@@ -244,6 +244,36 @@ async function resolveStaffForCashierContext(
   return null;
 }
 
+/**
+ * Resolve staff ID for a Fineract user without side effects.
+ * Used for authorization checks in session closure actions.
+ *
+ * @returns { status: "OK"; staffId: number } on success
+ *          { status: "NO_STAFF" } if user exists but has no staff record
+ *          { status: "ERROR" } if lookup fails (network/auth error)
+ */
+export async function resolveStaffIdForFineractUser(
+  fineractUserId: string | number | null | undefined
+): Promise<
+  | { status: "OK"; staffId: number }
+  | { status: "NO_STAFF" }
+  | { status: "ERROR" }
+> {
+  const numericUserId = Number(fineractUserId);
+  if (!fineractUserId || Number.isNaN(numericUserId)) {
+    return { status: "NO_STAFF" };
+  }
+
+  try {
+    const systemFineract = await getFineractServiceWithSystemAuth();
+    const staffId = await systemFineract.getUserStaffIdStrict(numericUserId);
+    return staffId ? { status: "OK", staffId } : { status: "NO_STAFF" };
+  } catch (error) {
+    console.error("[CashierContext] Strict staff lookup failed:", { userId: numericUserId, error });
+    return { status: "ERROR" };
+  }
+}
+
 export async function resolveCurrentUserCashierContext(
   tenantId: string,
   mifosUserId: string | number | null | undefined

@@ -491,6 +491,30 @@ export function StepAccounting({ form, template, onChange }: StepAccountingProps
         </div>
       </div>
 
+      {isAccrual && (
+        <div
+          className="flex cursor-pointer select-none items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/40"
+          onClick={() =>
+            onChange({ enableAccrualActivityPosting: !form.enableAccrualActivityPosting })
+          }
+        >
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Accrual Activity Posting
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Post accrual activity automatically on installment due dates for
+              eligible accrual-based loans.
+            </p>
+          </div>
+          <Switch
+            checked={form.enableAccrualActivityPosting}
+            onCheckedChange={(v) => onChange({ enableAccrualActivityPosting: v })}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
       {hasAccounting && (
         <>
           <Separator />

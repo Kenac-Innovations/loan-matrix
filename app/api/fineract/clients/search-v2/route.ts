@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { buildFineractErrorResponse } from '@/lib/fineract-route-error';
 import { fetchFineractSearch } from '@/lib/fineract-search-auth';
 import { ClientSearchRequest, ClientSearchResponse } from '@/shared/types/client';
 
@@ -46,9 +47,6 @@ export async function POST(request: Request) {
       );
     }
     
-    return NextResponse.json(
-      { error: error.message || 'Unknown error occurred during client search' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

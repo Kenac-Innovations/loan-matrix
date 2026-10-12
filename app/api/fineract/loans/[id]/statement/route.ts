@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { format } from "date-fns";
 import { buildFineractRequest } from "@/lib/api";
 import {
   generateLoanStatementHTML,
   transformFineractLoanToStatement,
+  getPrincipalBalanceEffect,
+  getRunningBalanceEffect,
 } from "@/lib/loan-statement-template";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
@@ -28,6 +31,7 @@ export async function GET(
     const format = searchParams.get("format") || "html";
     const fromDate = searchParams.get("from");
     const toDate = searchParams.get("to");
+    const hasTransactionDateFilter = Boolean(fromDate || toDate);
 
     console.log("=== GENERATING LOAN STATEMENT ===");
     console.log("Loan ID:", loanId);
@@ -119,16 +123,25 @@ export async function GET(
 
     // Filter transactions by date if provided
     let transactions = loanData.transactions || [];
-    if (fromDate || toDate) {
-      transactions = transactions.filter((tx: any) => {
-        const txDate = Array.isArray(tx.date)
-          ? new Date(tx.date[0], tx.date[1] - 1, tx.date[2])
-          : new Date(tx.date);
-
-        if (fromDate && new Date(fromDate) > txDate) return false;
-        if (toDate && new Date(toDate) < txDate) return false;
-        return true;
-      });
+    let openingPrincipalBalance = 0;
+    let openingRunningBalance = 0;
+    if (hasTransactionDateFilter) {
+      // Compare calendar dates as YYYY-MM-DD strings so the server timezone
+      // cannot shift transactions across the from/to boundaries.
+      const fromKey = fromDate ? toDateKey(fromDate) : null;
+      const toKey = toDate ? toDateKey(toDate) : null;
+      const inPeriod: typeof transactions = [];
+      for (const tx of transactions) {
+        const txKey = toDateKey(tx.date);
+        if (fromKey && txKey < fromKey) {
+          // Carried forward into the Balance B/Fwd row
+          openingPrincipalBalance += getPrincipalBalanceEffect(tx);
+          openingRunningBalance += getRunningBalanceEffect(tx);
+        } else if (!toKey || txKey <= toKey) {
+          inPeriod.push(tx);
+        }
+      }
+      transactions = inPeriod;
       loanData.transactions = transactions;
     }
 
@@ -157,7 +170,16 @@ export async function GET(
       formattedToDate,
       undefined,
       preparedBy,
-      interestRateDisplayMode
+      interestRateDisplayMode,
+      {
+        // The Fineract summary is the current full-loan balance, not an
+        // as-of balance for a filtered transaction period.
+        balanceSource: hasTransactionDateFilter ? "transaction-ledger" : "summary",
+        // Pass the opening principal balance computed before the from date
+        openingBalance: openingPrincipalBalance,
+        // Pass the opening running balance computed before the from date
+        openingRunningBalance,
+      }
     );
 
     // Return based on requested format
@@ -193,4 +215,13 @@ export async function GET(
       { status: 500 }
     );
   }
+}
+
+function toDateKey(value: string | number[] | undefined): string {
+  if (Array.isArray(value)) {
+    const [y, m, d] = value;
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  const iso = /^\d{4}-\d{2}-\d{2}/.exec(value ?? "");
+  return iso ? iso[0] : format(new Date(value ?? ""), "yyyy-MM-dd");
 }

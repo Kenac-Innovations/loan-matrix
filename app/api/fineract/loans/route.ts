@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { sendLoanStatusSms } from "@/lib/notification-service";
 import { extractTenantSlugFromRequest } from "@/lib/tenant-service";
 import { resolveOmamaOfficeScope } from "@/lib/omama-office-scope";
+import { sanitizeFineractLoanCreatePayload } from "@/lib/fineract-loan-payload";
 
 const baseUrl = process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
 
@@ -14,17 +15,6 @@ type AccessTokenSession = {
   base64EncodedAuthenticationKey?: string;
   accessToken?: string;
 };
-
-function sanitizeCreateLoanPayload(body: Record<string, unknown>) {
-  const sanitized = { ...body };
-
-  // This Fineract deployment rejects these on loan create even when callers
-  // include them to mirror broader Mifos payload shapes.
-  delete sanitized.balloonPaymentAmount;
-  delete sanitized.allowPartialPeriodInterestCalculation;
-
-  return sanitized;
-}
 
 /**
  * Get access token from either NextAuth session or custom JWT session
@@ -305,7 +295,7 @@ export async function POST(request: NextRequest) {
     }
 
     const rawBody = await request.json();
-    const body = sanitizeCreateLoanPayload(rawBody);
+    const body = sanitizeFineractLoanCreatePayload(rawBody);
 
     console.log("Creating loan in Fineract with data:", body);
 

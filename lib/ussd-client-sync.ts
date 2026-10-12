@@ -13,6 +13,7 @@ export type UssdPhoneUpdateResult = {
   externalId?: number | null;
   oldPhoneNumber?: string | null;
   newPhoneNumber?: string | null;
+  primaryPhoneUpdated?: boolean | null;
 };
 
 type PhoneUpdateInput = {
@@ -47,6 +48,10 @@ function optionalNumber(value: unknown): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
+function optionalBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function parsePhoneUpdateResult(payload: unknown): UssdPhoneUpdateResult | null {
   if (
     !isRecord(payload) ||
@@ -65,6 +70,7 @@ function parsePhoneUpdateResult(payload: unknown): UssdPhoneUpdateResult | null 
     externalId: optionalNumber(payload.externalId),
     oldPhoneNumber: optionalString(payload.oldPhoneNumber),
     newPhoneNumber: optionalString(payload.newPhoneNumber),
+    primaryPhoneUpdated: optionalBoolean(payload.primaryPhoneUpdated),
   };
 }
 

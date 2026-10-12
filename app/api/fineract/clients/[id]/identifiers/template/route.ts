@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 /**
@@ -27,15 +28,6 @@ export async function GET(
       message: error?.message,
       errorData: error?.errorData,
     });
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to fetch identifiers template",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

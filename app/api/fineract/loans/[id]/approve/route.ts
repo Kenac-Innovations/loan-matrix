@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { fetchFineractAPI } from '@/lib/api';
+import {
+  buildFineractErrorResponse,
+  createFineractErrorResponsePayload,
+} from '@/lib/fineract-route-error';
 
 /**
  * GET /api/fineract/loans/[id]/approve
@@ -25,10 +29,10 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error fetching loan approval template:', error);
-    return NextResponse.json(
-      { error: error.message || 'Unknown error' },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: 'load',
+      resource: 'loan approval template',
+    });
   }
 }
 
@@ -56,11 +60,9 @@ export async function POST(
         return NextResponse.json(
           { 
             error: `Cannot approve loan. Current status: ${loanStatus}. Loan must be in 'Submitted and pending approval' status to be approved.`,
-            errorData: {
-              defaultUserMessage: `Cannot approve loan. Current status: ${loanStatus}. Loan must be in 'Submitted and pending approval' status to be approved.`,
-              developerMessage: `Loan status validation failed. Expected: 'Submitted and pending approval', Actual: '${loanStatus}'`,
+            details: {
               currentStatus: loanStatus
-            }
+            },
           },
           { status: 400 }
         );
@@ -82,29 +84,28 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error approving loan:', error);
-    
-    // Enhanced error handling with better user messages
-    let userMessage = 'Failed to approve loan';
-    let statusCode = 500;
-    
-    if (error.status === 400) {
-      statusCode = 400;
-      if (error.errorData?.defaultUserMessage) {
-        userMessage = error.errorData.defaultUserMessage;
-      } else if (error.errorData?.developerMessage) {
-        userMessage = error.errorData.developerMessage;
-      } else if (error.message?.includes('not in submitted and pending approval state')) {
-        userMessage = 'Cannot approve loan. The loan is not in the correct state for approval. Please ensure the loan is submitted and pending approval.';
-      }
+
+    if (
+      error.message?.includes('not in submitted and pending approval state')
+    ) {
+      const errorResponse = createFineractErrorResponsePayload(error, {
+        action: 'approve',
+        resource: 'loan',
+      });
+
+      return NextResponse.json(
+        {
+          error:
+            'Cannot approve loan. The loan is not in the correct state for approval. Please ensure the loan is submitted and pending approval.',
+          details: errorResponse.body.details,
+        },
+        { status: errorResponse.status || 400 }
+      );
     }
-    
-    return NextResponse.json(
-      { 
-        error: userMessage,
-        errorData: error.errorData || null,
-        details: error.message || 'Unknown error'
-      },
-      { status: statusCode }
-    );
+
+    return buildFineractErrorResponse(error, {
+      action: 'approve',
+      resource: 'loan',
+    });
   }
 }

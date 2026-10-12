@@ -14,52 +14,76 @@ export interface GlBalanceResult {
   error?: string;
 }
 
+type JournalEntryLike = {
+  amount?: number | null;
+  entryType?: { value?: string | null } | null;
+  currency?: { code?: string | null } | null;
+};
+
+/**
+ * Net a page of journal entries as an ASSET account: DEBIT increases the
+ * balance, CREDIT decreases it.
+ */
+export function sumJournalEntries(entries: JournalEntryLike[]): number {
+  let total = 0;
+  for (const entry of entries) {
+    if (entry.entryType?.value === "DEBIT") {
+      total += entry.amount || 0;
+    } else if (entry.entryType?.value === "CREDIT") {
+      total -= entry.amount || 0;
+    }
+  }
+  return total;
+}
+
+const GL_PAGE_SIZE = 500;
+// Safety stop so a misbehaving API cannot loop forever (500 x 200 = 100k entries).
+const GL_MAX_PAGES = 200;
+
 /**
  * Compute the current balance for a Fineract GL account by summing journal entries.
  *
  * Treats the account as an ASSET (DEBIT increases, CREDIT decreases). This matches
- * how cash/till GL accounts (e.g. branch cash, bank vault) behave in Fineract and
- * is what we use everywhere else in the codebase (see `app/api/banks/[id]/route.ts`).
+ * how cash/till GL accounts (e.g. branch cash, bank vault) behave in Fineract.
  *
- * Pages through at most `limit` most-recent entries; default 500 is large enough
- * for any reasonable single-account ledger and matches the existing bank logic.
+ * Pages through every entry for the account — summing only the most recent page
+ * gives a wrong balance once an account has more history than one page.
  */
 export async function getGlAccountBalance(
   glAccountId: number,
-  options: { limit?: number } = {}
+  options: { pageSize?: number } = {}
 ): Promise<GlBalanceResult> {
-  const limit = options.limit ?? 500;
+  const pageSize = options.pageSize ?? GL_PAGE_SIZE;
 
   try {
-    const journalData = await fetchFineractAPI(
-      `/journalentries?glAccountId=${glAccountId}&limit=${limit}&orderBy=id&sortOrder=DESC`
-    );
+    let balance = 0;
+    let entryCount = 0;
+    let currency: string | null = null;
 
-    if (journalData?.pageItems && journalData.pageItems.length > 0) {
-      let calculated = 0;
-      for (const entry of journalData.pageItems) {
-        if (entry.entryType?.value === "DEBIT") {
-          calculated += entry.amount || 0;
-        } else if (entry.entryType?.value === "CREDIT") {
-          calculated -= entry.amount || 0;
-        }
+    for (let page = 0; page < GL_MAX_PAGES; page++) {
+      const journalData = await fetchFineractAPI(
+        `/journalentries?glAccountId=${glAccountId}&offset=${page * pageSize}&limit=${pageSize}&orderBy=id&sortOrder=DESC`
+      );
+      const items: JournalEntryLike[] = journalData?.pageItems ?? [];
+
+      if (page === 0) currency = items[0]?.currency?.code ?? null;
+      balance += sumJournalEntries(items);
+      entryCount += items.length;
+
+      const total =
+        typeof journalData?.totalFilteredRecords === "number"
+          ? journalData.totalFilteredRecords
+          : null;
+      if (items.length < pageSize || (total !== null && entryCount >= total)) {
+        break;
       }
-
-      const latestEntry = journalData.pageItems[0];
-      return {
-        balance: calculated,
-        currency: latestEntry.currency?.code ?? null,
-        source: "fineract_calculated",
-        entryCount: journalData.pageItems.length,
-      };
     }
 
-    return {
-      balance: 0,
-      currency: null,
-      source: "fineract_empty",
-      entryCount: 0,
-    };
+    if (entryCount === 0) {
+      return { balance: 0, currency: null, source: "fineract_empty", entryCount: 0 };
+    }
+
+    return { balance, currency, source: "fineract_calculated", entryCount };
   } catch (error) {
     return {
       balance: 0,

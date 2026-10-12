@@ -3,6 +3,7 @@ import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { prisma } from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
+import { pendingClosureBlockResponse } from "@/lib/cashier-session-guards";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/repayment
@@ -169,6 +170,10 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    // Check if session closure is pending
+    const blocked = await pendingClosureBlockResponse(tenant.id, cashier?.id);
+    if (blocked) return blocked;
 
     // NOTE: No vault balance check here.
     // Repayments add to the cashier's balance without reducing the vault.

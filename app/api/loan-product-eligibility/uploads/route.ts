@@ -7,6 +7,7 @@ import prisma from "@/lib/prisma";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { performEligibilitySync } from "@/lib/loan-eligibility-sync";
+import { DEFAULT_REPLACE_EXISTING_ELIGIBILITY } from "@/lib/loan-eligibility-upload-mode";
 
 const itemSchema = z.object({
   rowNumber: z.number().int().positive(),
@@ -19,6 +20,7 @@ const createUploadSchema = z.object({
   fileName: z.string().trim().min(1),
   productExternalId: z.string().trim().min(1),
   productName: z.string().trim().min(1),
+  replaceExisting: z.boolean().optional().default(DEFAULT_REPLACE_EXISTING_ELIGIBILITY),
   items: z.array(itemSchema).min(1),
 });
 
@@ -124,6 +126,7 @@ export async function POST(request: NextRequest) {
         productExternalId: payload.productExternalId,
         productName: payload.productName,
         uploadedBy,
+        replaceExisting: payload.replaceExisting,
         status: "STAGING",
         totalRows: normalizedRows.length,
         items: {

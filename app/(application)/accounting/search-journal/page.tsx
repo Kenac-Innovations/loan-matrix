@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { format } from 'date-fns';
@@ -19,17 +19,18 @@ import {
   Loader2,
   TrendingUp,
   TrendingDown,
-  DollarSign,
   Clock,
   User,
   Database,
-  Sparkles
+  Sparkles,
+  type LucideIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { SearchableSelect, type Option } from '@/components/searchable-select';
 import {
   Select,
   SelectTrigger,
@@ -126,7 +127,20 @@ export default function SearchJournalPage() {
   const { data: glAccountsResponse, error: glAccountsError } = useSWR<GlAccountsResponse>('/api/fineract/glaccounts?manualEntriesAllowed=true&usage=1&disabled=false', fetcher);
 
   // Ensure glAccounts is always an array
-  const glAccounts = glAccountsResponse?.chartAccounts || [];
+  const glAccounts = useMemo(
+    () => glAccountsResponse?.chartAccounts ?? [],
+    [glAccountsResponse?.chartAccounts]
+  );
+  const glAccountOptions = useMemo<Option[]>(
+    () => [
+      { value: 'all', label: 'All Accounts' },
+      ...glAccounts.map((account) => ({
+        value: account.id.toString(),
+        label: `${account.glCode} - ${account.name}`,
+      })),
+    ],
+    [glAccounts]
+  );
 
   // Build query parameters
   const queryParams = useMemo(() => {
@@ -160,7 +174,7 @@ export default function SearchJournalPage() {
   }, [currentPage, pageSize, officeName, glAccountNameOrCode, filterType, transactionDateFrom, transactionDateTo, transactionId, submittedOnDateFrom, submittedOnDateTo]);
 
   // Fetch journal entries
-  const { data: journalEntriesData, error, isLoading, mutate } = useSWR<JournalEntriesResponse>(
+  const { data: journalEntriesData, error, isLoading } = useSWR<JournalEntriesResponse>(
     `/api/fineract/journalentries?${queryParams}`,
     fetcher
   );
@@ -169,11 +183,26 @@ export default function SearchJournalPage() {
   const totalRecords = journalEntriesData?.totalFilteredRecords || 0;
   const totalPages = Math.ceil(totalRecords / pageSize);
 
-  // Auto-refresh when filters change
-  useEffect(() => {
+  const updateFilter = (setter: React.Dispatch<React.SetStateAction<string>>) => {
+    return (value: string) => {
+      setCurrentPage(1);
+      setter(value);
+    };
+  };
+
+  const handleOfficeChange = updateFilter(setOfficeName);
+  const handleGlAccountChange = updateFilter(setGlAccountNameOrCode);
+  const handleFilterTypeChange = updateFilter(setFilterType);
+  const handleTransactionDateFromChange = updateFilter(setTransactionDateFrom);
+  const handleTransactionDateToChange = updateFilter(setTransactionDateTo);
+  const handleTransactionIdChange = updateFilter(setTransactionId);
+  const handleSubmittedOnDateFromChange = updateFilter(setSubmittedOnDateFrom);
+  const handleSubmittedOnDateToChange = updateFilter(setSubmittedOnDateTo);
+
+  const handlePageSizeChange = (value: string) => {
     setCurrentPage(1);
-    mutate();
-  }, [officeName, glAccountNameOrCode, filterType, transactionDateFrom, transactionDateTo, transactionId, submittedOnDateFrom, submittedOnDateTo, mutate]);
+    setPageSize(Number(value));
+  };
 
   const formatDate = (dateArray: number[]) => {
     if (dateArray.length >= 3) {
@@ -192,7 +221,7 @@ export default function SearchJournalPage() {
   };
 
   const getAccountTypeBadge = (accountType: string) => {
-    const variants: { [key: string]: { className: string; icon: any } } = {
+    const variants: Record<string, { className: string; icon: LucideIcon }> = {
       'ASSET': {
         className: 'bg-blue-500/20 text-blue-500',
         icon: TrendingUp
@@ -283,7 +312,7 @@ export default function SearchJournalPage() {
                 <Building2 className="h-4 w-4" />
                 Office Name
               </Label>
-              <Select value={officeName} onValueChange={setOfficeName}>
+              <Select value={officeName} onValueChange={handleOfficeChange}>
                 <SelectTrigger className="h-12">
                   <SelectValue placeholder="Select office" />
                 </SelectTrigger>
@@ -308,24 +337,14 @@ export default function SearchJournalPage() {
                 <Hash className="h-4 w-4" />
                 GL Account <span className="text-red-500">*</span>
               </Label>
-              <Select value={glAccountNameOrCode} onValueChange={setGlAccountNameOrCode}>
-                <SelectTrigger className="h-12">
-                  <SelectValue placeholder="Select GL account" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    All Accounts
-                  </SelectItem>
-                  {glAccounts.map(account => (
-                    <SelectItem key={account.id} value={account.id.toString()}>
-                      <div className="flex items-center gap-2">
-                        <Hash className="h-4 w-4 text-muted-foreground" />
-                        <span>{account.glCode} - {account.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                options={glAccountOptions}
+                value={glAccountNameOrCode}
+                onValueChange={handleGlAccountChange}
+                placeholder="Select GL account"
+                emptyMessage={glAccountsError ? "Unable to load GL accounts." : "No GL accounts found."}
+                className="h-12"
+              />
             </div>
 
             <div className="space-y-3">
@@ -333,7 +352,7 @@ export default function SearchJournalPage() {
                 <FileText className="h-4 w-4" />
                 Filter Type
               </Label>
-              <Select value={filterType} onValueChange={setFilterType}>
+              <Select value={filterType} onValueChange={handleFilterTypeChange}>
                 <SelectTrigger className="h-12">
                   <SelectValue />
                 </SelectTrigger>
@@ -358,7 +377,7 @@ export default function SearchJournalPage() {
                 <Input
                   type="date"
                   value={transactionDateFrom}
-                  onChange={e => setTransactionDateFrom(e.target.value)}
+                  onChange={e => handleTransactionDateFromChange(e.target.value)}
                   className="h-12 pl-12"
                 />
               </div>
@@ -374,7 +393,7 @@ export default function SearchJournalPage() {
                 <Input
                   type="date"
                   value={transactionDateTo}
-                  onChange={e => setTransactionDateTo(e.target.value)}
+                  onChange={e => handleTransactionDateToChange(e.target.value)}
                   className="h-12 pl-12"
                 />
               </div>
@@ -387,7 +406,7 @@ export default function SearchJournalPage() {
               </Label>
               <Input
                 value={transactionId}
-                onChange={e => setTransactionId(e.target.value)}
+                onChange={e => handleTransactionIdChange(e.target.value)}
                 placeholder="Enter transaction ID"
                 className="h-12"
               />
@@ -406,7 +425,7 @@ export default function SearchJournalPage() {
                 <Input
                   type="date"
                   value={submittedOnDateFrom}
-                  onChange={e => setSubmittedOnDateFrom(e.target.value)}
+                  onChange={e => handleSubmittedOnDateFromChange(e.target.value)}
                   className="h-12 pl-12"
                 />
               </div>
@@ -422,7 +441,7 @@ export default function SearchJournalPage() {
                 <Input
                   type="date"
                   value={submittedOnDateTo}
-                  onChange={e => setSubmittedOnDateTo(e.target.value)}
+                  onChange={e => handleSubmittedOnDateToChange(e.target.value)}
                   className="h-12 pl-12"
                 />
               </div>
@@ -571,7 +590,7 @@ export default function SearchJournalPage() {
               <div className="flex items-center justify-between mt-8 pt-6 border-t">
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-muted-foreground">Items per page:</span>
-                  <Select value={pageSize.toString()} onValueChange={(value) => setPageSize(Number(value))}>
+                  <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
                     <SelectTrigger className="w-20 h-9">
                       <SelectValue />
                     </SelectTrigger>

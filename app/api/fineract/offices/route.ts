@@ -1,7 +1,14 @@
 // File: app/api/fineract/offices/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { getSearchHeaders } from "@/lib/fineract-search-auth";
+import {
+  officeInputSchema,
+  toFineractOfficePayload,
+  validationErrorMessage,
+} from "@/lib/organization-form-schemas";
 
 const FINERACT_BASE_URL =
   process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
@@ -104,5 +111,26 @@ export async function GET(request: NextRequest) {
       },
       { status: statusCode }
     );
+  }
+}
+
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => null);
+  const parsed = officeInputSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: validationErrorMessage(parsed.error), details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const data = await fetchFineractAPI("/offices", {
+      method: "POST",
+      body: JSON.stringify(toFineractOfficePayload(parsed.data)),
+    });
+    return NextResponse.json(data);
+  } catch (error) {
+    return buildFineractErrorResponse(error, { action: "create", resource: "office" });
   }
 }

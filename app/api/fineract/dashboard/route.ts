@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 
 /**
@@ -137,9 +138,6 @@ export async function GET(request: Request) {
     return NextResponse.json(dashboardData);
   } catch (error: any) {
     console.error("Error fetching dashboard data:", error);
-    return NextResponse.json(
-      { error: error.message || "Unknown error" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

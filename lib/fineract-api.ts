@@ -1,13 +1,54 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
-import { error } from "console";
 import { transferClientToOfficeWithServiceAuth } from "./fineract-client-transfer-service";
 import { getFineractBaseUrl } from "./fineract-base-url";
+import { normalizeFineractErrorPayload } from "./fineract-error";
+import {
+  cashierSummaryScope,
+  getOrLoadCashierSummary,
+  invalidateCashierSummary,
+} from "./cashier-summary-cache";
+
+const DEFAULT_FINERACT_REPORT_TIMEOUT_MS = 300_000;
+
+function getFineractReportTimeoutMs(): number {
+  const configuredTimeout = Number(process.env.FINERACT_REPORT_TIMEOUT_MS);
+
+  if (Number.isFinite(configuredTimeout) && configuredTimeout > 0) {
+    return configuredTimeout;
+  }
+
+  return DEFAULT_FINERACT_REPORT_TIMEOUT_MS;
+}
+
+const FINERACT_REPORT_TIMEOUT_MS = getFineractReportTimeoutMs();
 
 export interface FineractConfig {
   baseUrl: string;
   username: string;
   password: string;
   tenantId: string;
+}
+
+function normalizeAxiosFineractError(error: any) {
+  const status = error?.response?.status;
+  const statusText = error?.response?.statusText;
+  const normalizedErrorData = normalizeFineractErrorPayload(
+    error?.response?.data,
+    { status, statusText }
+  );
+
+  error.status = status;
+  error.errorData = normalizedErrorData;
+
+  if (error?.response) {
+    error.response.data = normalizedErrorData;
+  }
+
+  if (normalizedErrorData.defaultUserMessage) {
+    error.message = normalizedErrorData.defaultUserMessage;
+  }
+
+  return error;
 }
 
 export interface FineractClient {
@@ -64,6 +105,44 @@ export interface FineractClient {
     code: string;
     value: string;
   };
+}
+
+export type ClientServicingPolicies = Record<string, boolean>;
+
+export interface ClientServicingStatusDefinition {
+  code: string;
+  name: string;
+  displayOrder: number;
+  active: boolean;
+  policies: ClientServicingPolicies;
+}
+
+export interface ClientServicingStatusHistoryEntry {
+  previousStatus: { code: string; name: string } | null;
+  newStatus: { code: string; name: string };
+  reason: string;
+  changedBy: string;
+  changedOn: string;
+  source: string;
+}
+
+export interface ClientServicingStatusResponse {
+  clientId: number;
+  assigned: boolean;
+  status: {
+    code: string;
+    name: string;
+    version: number;
+    changedOn: string;
+    changedBy: string;
+  } | null;
+  policies: ClientServicingPolicies;
+  history: ClientServicingStatusHistoryEntry[];
+}
+
+export interface ClientServicingStatusDefinitionsResponse {
+  actions: Array<{ code: string; label: string }>;
+  statuses: ClientServicingStatusDefinition[];
 }
 
 export interface FineractLoan {
@@ -417,9 +496,14 @@ export class FineractAPIService {
   private client: AxiosInstance;
   private clientV2: AxiosInstance;
   private config: FineractConfig;
+  private cashierSummaryScope: string;
 
   constructor(config: FineractConfig, authToken?: string) {
     this.config = config;
+    this.cashierSummaryScope = cashierSummaryScope(
+      config.tenantId,
+      authToken ?? `basic:${config.username}`
+    );
 
     console.log("FineractAPIService initialized with tenant:", config.tenantId);
 
@@ -460,15 +544,19 @@ export class FineractAPIService {
     });
 
     // Add response interceptor for error handling
-    this.client.interceptors.response.use(
+    const handleAxiosError = (axiosError: any) => {
+      const normalizedError = normalizeAxiosFineractError(axiosError);
+      console.error(
+        "Fineract API Error:",
+        normalizedError.errorData || normalizedError.message
+      );
+      throw normalizedError;
+    };
+
+    this.client.interceptors.response.use((response) => response, handleAxiosError);
+    this.clientV2.interceptors.response.use(
       (response) => response,
-      (error) => {
-        console.error(
-          "Fineract API Error:",
-          error.response?.data || error.message
-        );
-        throw error;
-      }
+      handleAxiosError
     );
   }
 
@@ -498,6 +586,44 @@ export class FineractAPIService {
     const response: AxiosResponse<FineractClient> = await this.client.put(
       `/clients/${clientId}`,
       clientData
+    );
+    return response.data;
+  }
+
+  async getClientServicingStatusDefinitions(): Promise<ClientServicingStatusDefinitionsResponse> {
+    const response = await this.client.get<ClientServicingStatusDefinitionsResponse>(
+      "/client-servicing-statuses"
+    );
+    return response.data;
+  }
+
+  async getClientServicingStatus(
+    clientId: number
+  ): Promise<ClientServicingStatusResponse> {
+    const response = await this.client.get<ClientServicingStatusResponse>(
+      `/client-servicing-statuses/clients/${clientId}`
+    );
+    return response.data;
+  }
+
+  async updateClientServicingStatus(
+    clientId: number,
+    payload: { statusCode: string; reason: string }
+  ): Promise<ClientServicingStatusResponse> {
+    const response = await this.client.put<ClientServicingStatusResponse>(
+      `/client-servicing-statuses/clients/${clientId}`,
+      payload
+    );
+    return response.data;
+  }
+
+  async updateClientServicingStatusPolicies(
+    statusCode: string,
+    payload: { policies: ClientServicingPolicies; reason: string }
+  ): Promise<ClientServicingStatusDefinitionsResponse> {
+    const response = await this.client.put<ClientServicingStatusDefinitionsResponse>(
+      `/client-servicing-statuses/${encodeURIComponent(statusCode)}/policies`,
+      payload
     );
     return response.data;
   }
@@ -771,7 +897,9 @@ export class FineractAPIService {
       queryString ? `?${queryString}` : ""
     }`;
 
-    const response = await this.client.get(url);
+    const response = await this.client.get(url, {
+      timeout: FINERACT_REPORT_TIMEOUT_MS,
+    });
     return response.data;
   }
 
@@ -1173,6 +1301,7 @@ export class FineractAPIService {
         `/tellers/${tellerId}/cashiers/${cashierId}`,
         payload
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       const errorDetails = {
@@ -1204,6 +1333,7 @@ export class FineractAPIService {
         `/tellers/${tellerId}/cashiers/allocate`,
         allocationData
       );
+      invalidateCashierSummary(tellerId);
       return response.data;
     } catch (error) {
       console.error("Fineract API Error:", error);
@@ -1232,6 +1362,7 @@ export class FineractAPIService {
           locale: allocationData.locale || "en",
         }
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       console.error("Fineract API Error allocating cash to cashier:", {
@@ -1266,6 +1397,7 @@ export class FineractAPIService {
           locale: settlementData.locale || "en",
         }
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       console.error("Fineract API Error settling cash for cashier:", {
@@ -1285,17 +1417,29 @@ export class FineractAPIService {
     options?: { offset?: number; limit?: number }
   ): Promise<any> {
     try {
-      const params = new URLSearchParams({ currencyCode });
-      if (options?.offset != null) params.set("offset", String(options.offset));
-      if (options?.limit != null) params.set("limit", String(options.limit));
-      const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?${params}`;
-      console.log("Fetching cashier summary and transactions:", url);
-      const response: AxiosResponse<any> = await this.client.get(url);
-      console.log(
-        "Cashier summary response:",
-        JSON.stringify(response.data, null, 2).substring(0, 500)
+      return await getOrLoadCashierSummary(
+        {
+          scope: this.cashierSummaryScope,
+          tellerId,
+          cashierId,
+          currencyCode,
+          offset: options?.offset,
+          limit: options?.limit,
+        },
+        async () => {
+          const params = new URLSearchParams({ currencyCode });
+          if (options?.offset != null) params.set("offset", String(options.offset));
+          if (options?.limit != null) params.set("limit", String(options.limit));
+          const url = `/tellers/${tellerId}/cashiers/${cashierId}/summaryandtransactions?${params}`;
+          console.log("Fetching cashier summary and transactions:", url);
+          const response: AxiosResponse<any> = await this.client.get(url);
+          console.log(
+            "Cashier summary response:",
+            JSON.stringify(response.data, null, 2).substring(0, 500)
+          );
+          return response.data;
+        }
       );
-      return response.data;
     } catch (error: any) {
       console.error("Fineract API Error getting cashier summary:", {
         message: error.message,
@@ -1373,6 +1517,7 @@ export class FineractAPIService {
           locale: sessionData?.locale || "en",
         }
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       console.error("Fineract API Error starting session:", {
@@ -1404,6 +1549,7 @@ export class FineractAPIService {
           locale: closeData.locale || "en",
         }
       );
+      invalidateCashierSummary(tellerId, cashierId);
       return response.data;
     } catch (error: any) {
       console.error("Fineract API Error closing session:", {
@@ -1567,6 +1713,18 @@ export class FineractAPIService {
     }
   }
 
+  /**
+   * Staff id linked to a Fineract user, or null when the user has no staff link.
+   * Unlike getStaffByUserId, transport/auth errors are thrown so callers can
+   * fail closed instead of treating an outage as "no staff".
+   */
+  async getUserStaffIdStrict(userId: number): Promise<number | null> {
+    const response: AxiosResponse<{ staff?: { id?: number }; staffId?: number }> =
+      await this.client.get(`/users/${userId}`);
+    const staffId = Number(response.data?.staff?.id ?? response.data?.staffId);
+    return Number.isFinite(staffId) && staffId > 0 ? staffId : null;
+  }
+
   // Get staff member by user ID
   async getStaffByUserId(userId: number): Promise<any | null> {
     try {
@@ -1688,10 +1846,12 @@ async function resolveAuthToken(): Promise<string> {
   return SERVICE_TOKEN;
 }
 
-export async function getFineractServiceWithSession(): Promise<FineractAPIService> {
+export async function getFineractServiceWithSession(
+  tenantId?: string
+): Promise<FineractAPIService> {
   try {
     const { getFineractTenantId } = await import("./fineract-tenant-service");
-    const fineractTenantId = await getFineractTenantId();
+    const fineractTenantId = tenantId || (await getFineractTenantId());
     const authToken = await resolveAuthToken();
     return getFineractService(authToken, fineractTenantId);
   } catch (error) {

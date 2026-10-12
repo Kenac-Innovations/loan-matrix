@@ -33,6 +33,23 @@ test("classifies completed and already-disbursed outcomes", () => {
   );
 });
 
+test("keeps an approved Salary Advance application pending until GeePay settles", () => {
+  assert.equal(
+    classifyUssdAutoProcessingOutcome({
+      cdeDecision: "APPROVED",
+      autoProgressMessage: "Payment settlement pending GeePay confirmation.",
+    }),
+    "payment_pending"
+  );
+  assert.equal(
+    classifyUssdAutoProcessingOutcome({
+      cdeDecision: "APPROVED",
+      autoProgressMessage: "Payment settlement requires review: uncertain gateway request.",
+    }),
+    "manual_review"
+  );
+});
+
 test("classifies decisions that require a stop", () => {
   assert.equal(
     classifyUssdAutoProcessingOutcome({

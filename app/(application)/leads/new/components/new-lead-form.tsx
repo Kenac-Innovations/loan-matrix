@@ -1201,19 +1201,29 @@ export function NewLeadForm() {
     } catch (error: any) {
       console.error("Error creating lead:", error);
 
+      const isServicingStatusRestriction =
+        error instanceof Error &&
+        error.message.includes(
+          "servicing status does not allow new loan origination"
+        );
+
       // Check if it's a Fineract-specific error
       const isFineractError =
         error.message?.includes("Fineract") ||
         error.message?.includes("client");
 
       toast({
-        title: isFineractError ? "Fineract Connection Error" : "Error",
+        title: isServicingStatusRestriction
+          ? "Loan origination blocked"
+          : isFineractError
+            ? "Fineract Connection Error"
+            : "Error",
         description:
           error instanceof Error
             ? error.message
             : "An unexpected error occurred",
         variant: "destructive",
-        action: isFineractError
+        action: isFineractError && !isServicingStatusRestriction
           ? {
               label: "Retry",
               onClick: () => {

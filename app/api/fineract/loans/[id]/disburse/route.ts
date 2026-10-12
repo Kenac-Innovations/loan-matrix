@@ -7,9 +7,35 @@ import {
   getDisbursementBlockReason,
   getLeadViewerAccessContext,
 } from '@/lib/lead-policy';
+import {
+  buildPaymentServiceCallbackUrl,
+  getRequiredPaymentServiceCallbackUrl,
+} from '@/lib/payment-service-callback-url';
 import { applyTopupDisbursementCharges } from '@/lib/topup-disbursement-charge-service';
 import { extractTenantSlugFromRequest, getTenantBySlug } from '@/lib/tenant-service';
 import { resolveYangoUssdDisbursementDetailsForLead } from '@/lib/yango-ussd-disbursement';
+import { checkCashDisbursementSessionGate } from '@/lib/cashier-session-disbursement-gate';
+import { getCashierSessionTenantSettings } from '@/lib/cashier-session-settings';
+import { getPaymentTypeInfo } from '@/lib/cash-repayment-teller';
+import { getArdaStockDetails } from '@/lib/inventory/arda-stock-workflow-service';
+import { runArdaStockDisbursementGuard } from '@/lib/arda-stock-disbursement-guard';
+import type { Prisma } from '@/app/generated/prisma';
+
+type LinkedLead = {
+  id: string;
+  tenantId: string;
+  stateMetadata: Prisma.JsonValue;
+  externalId: string | null;
+  loanProductId: number | null;
+  loanProductName: string | null;
+  mobileNo: string | null;
+  accountNumber: string | null;
+  preferredPaymentMethod: string | null;
+  assignedToUserId: number | null;
+  assignedToUserName: string | null;
+  designatedDisburserUserId: number | null;
+  designatedDisburserUserName: string | null;
+};
 
 function coercePositiveNumber(value: unknown): number | undefined {
   const numericValue = typeof value === 'number' ? value : Number(value);
@@ -37,6 +63,7 @@ export async function POST(
 
     const tenantSlug = extractTenantSlugFromRequest(request);
     const tenant = await getTenantBySlug(tenantSlug);
+    let linkedLead: LinkedLead | null = null;
 
     if (tenant) {
       const leadAccess = await getLeadViewerAccessContext(
@@ -52,6 +79,7 @@ export async function POST(
           id: true,
           tenantId: true,
           stateMetadata: true,
+          externalId: true,
           loanProductId: true,
           loanProductName: true,
           mobileNo: true,
@@ -64,7 +92,7 @@ export async function POST(
         },
       });
 
-      const linkedLead = leadRecord
+      linkedLead = leadRecord
         ? await prisma.lead.findFirst({
             where: applyLeadVisibilityScope(
               {
@@ -77,6 +105,7 @@ export async function POST(
               id: true,
               tenantId: true,
               stateMetadata: true,
+              externalId: true,
               loanProductId: true,
               loanProductName: true,
               mobileNo: true,
@@ -117,11 +146,6 @@ export async function POST(
       }
     }
 
-    // Build callback URL to be used by payment gateway
-    //const callbackUrl = `https://webhook.site/45f26e26-5c80-4290-9a1a-87b60be151a4`;
-    // Use specific callback URL for payment gateway
-    const callbackUrl = `http://loan-matrix-dev.loan-matrix-dev.svc.cluster.local:3000/api/ussd-leads/payment-callback`;
-
     const augmentedPayload: Record<string, unknown> = {
       ...payload,
     };
@@ -132,36 +156,18 @@ export async function POST(
         : Number.isFinite(Number(payload?.paymentTypeId))
           ? Number(payload.paymentTypeId)
           : null;
-    const yangoUssdDetails =
-      tenant
-        ? await prisma.lead
-            .findFirst({
-              where: {
-                tenantId: tenant.id,
-                fineractLoanId: Number(id),
-              },
-              select: {
-                id: true,
-                tenantId: true,
-                stateMetadata: true,
-                loanProductId: true,
-                loanProductName: true,
-                mobileNo: true,
-                accountNumber: true,
-                preferredPaymentMethod: true,
-              },
-            })
-            .then((lead) =>
-              lead
-                ? resolveYangoUssdDisbursementDetailsForLead(
-                    lead,
-                    numericPaymentTypeId
-                  )
-                : null
-            )
-        : null;
+    const yangoUssdDetails = linkedLead
+      ? await resolveYangoUssdDisbursementDetailsForLead(
+          linkedLead,
+          numericPaymentTypeId
+        )
+      : null;
 
     if (yangoUssdDetails) {
+      const callbackUrl = buildPaymentServiceCallbackUrl(
+        getRequiredPaymentServiceCallbackUrl(),
+        tenant?.ussdServiceTenantId
+      );
       augmentedPayload.externalId = yangoUssdDetails.externalId;
       augmentedPayload.accountNumber = yangoUssdDetails.accountNumber;
       if (yangoUssdDetails.paymentTypeId) {
@@ -176,7 +182,7 @@ export async function POST(
           coercePositiveNumber(fineractLoan?.approvedPrincipal) ??
           coercePositiveNumber(fineractLoan?.principal);
       }
-      augmentedPayload.note = payload?.note || callbackUrl;
+      augmentedPayload.note = callbackUrl;
     }
 
     // Log the payload being sent to Fineract
@@ -186,11 +192,56 @@ export async function POST(
     console.log('Payload sent to Fineract:', JSON.stringify(augmentedPayload, null, 2));
     console.log('=== END DISBURSEMENT PAYLOAD ===');
 
+    // Check if this is a cash disbursement and verify session closure compliance
+    // Use the payment type actually sent to Fineract (Yango may override it).
+    // Fail closed: if module is on and we need to verify payment type, error if lookup fails.
+    let isCash = false;
+    if (tenant) {
+      const settings = await getCashierSessionTenantSettings(tenant.id);
+      if (settings.isTellerManagementModuleOn && augmentedPayload.paymentTypeId) {
+        const paymentTypeInfo = await getPaymentTypeInfo(Number(augmentedPayload.paymentTypeId));
+        if (paymentTypeInfo === null) {
+          return NextResponse.json(
+            {
+              error: "Could not verify the payment type. Please try again.",
+              code: "PAYMENT_TYPE_LOOKUP_FAILED",
+            },
+            { status: 503 }
+          );
+        }
+        isCash = paymentTypeInfo.isCashPayment ?? false;
+      }
+    }
+    if (tenant) {
+      const gate = await checkCashDisbursementSessionGate({
+        tenantId: tenant.id,
+        isCash,
+        fineractUserId: session.user.userId,
+      });
+      if (!gate.allowed) {
+        return NextResponse.json(
+          {
+            error: gate.message,
+            code: gate.code,
+            blockingSessions: gate.blockingSessions,
+          },
+          { status: gate.status }
+        );
+      }
+    }
+
     // POST to /loans/{id}?command=disburse with payload
-    const data = await fetchFineractAPI(`/loans/${id}?command=disburse`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(augmentedPayload),
+    const data = await runArdaStockDisbursementGuard({
+      appTenantSlug: tenant?.slug || tenantSlug,
+      tenantSettings: tenant?.settings,
+      fineractLoanId: Number(id),
+      getDetails: () =>
+        linkedLead ? getArdaStockDetails({ ...linkedLead, tenant }) : null,
+      disburse: () => fetchFineractAPI(`/loans/${id}?command=disburse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(augmentedPayload),
+      }),
     });
 
     // Non-blocking: do not fail disbursement if charge application fails.

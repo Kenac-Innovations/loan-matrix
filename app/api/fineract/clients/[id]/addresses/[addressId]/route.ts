@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchFineractAPI } from "@/lib/api";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 
 /**
  * PUT /api/fineract/clients/[id]/addresses/[addressId]
@@ -15,10 +16,12 @@ export async function PUT(
     const { id, addressId: addressTypeId } = await params;
     const body = await request.json();
 
+    const rawAddressType =
+      body.addressType ?? body.addressTypeId ?? parseInt(addressTypeId);
     const addressType =
-      typeof body.addressType === "string"
-        ? parseInt(body.addressType)
-        : body.addressType ?? parseInt(addressTypeId);
+      typeof rawAddressType === "string"
+        ? parseInt(rawAddressType)
+        : rawAddressType;
 
     if (!addressType || isNaN(addressType)) {
       return NextResponse.json(
@@ -80,16 +83,10 @@ export async function PUT(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error updating client address:", error);
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to update client address",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "update",
+      resource: "address",
+    });
   }
 }
 
@@ -115,15 +112,9 @@ export async function DELETE(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error deleting client address:", error);
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to delete client address",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "delete",
+      resource: "address",
+    });
   }
 }

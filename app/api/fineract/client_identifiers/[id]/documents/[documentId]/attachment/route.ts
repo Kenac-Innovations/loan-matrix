@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken, getFineractTenantId } from "@/lib/api";
 import { toInlineContentDisposition } from "@/lib/document-viewing";
+import {
+  buildFineractErrorResponse,
+  createFineractErrorResponsePayload,
+} from "@/lib/fineract-route-error";
 
 export async function GET(
   request: NextRequest,
@@ -86,15 +90,29 @@ export async function GET(
     }
 
     if (!response.ok) {
+      const errorResponse = createFineractErrorResponsePayload(
+        {
+          status: response.status,
+          errorData: {
+            defaultUserMessage: "Failed to download document",
+            developerMessage: response.statusText,
+          },
+          response: { statusText: response.statusText },
+        },
+        {
+          action: "download",
+          resource: "document",
+        }
+      );
+
       console.error(
         "Failed to download identifier document:",
         response.status,
         response.statusText
       );
-      return NextResponse.json(
-        { error: "Failed to download document" },
-        { status: response.status }
-      );
+      return NextResponse.json(errorResponse.body, {
+        status: errorResponse.status,
+      });
     }
 
     // Get the file data
@@ -118,9 +136,9 @@ export async function GET(
     });
   } catch (error) {
     console.error("Error downloading identifier document:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "download",
+      resource: "document",
+    });
   }
 }

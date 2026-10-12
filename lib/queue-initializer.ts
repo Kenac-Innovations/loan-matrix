@@ -1,105 +1,50 @@
-// Queue consumer initialization
-// This module initializes the queue consumers when imported
+// Background job initialization — this module starts on server boot (see
+// instrumentation.ts).
+//
+// There is no RabbitMQ (or any other message broker) used by this app
+// anymore. Both background flows that used to run through AMQP consumers
+// now work by polling Postgres:
+//
+// - Bulk repayments (Collections): loan-matrix-be polls BulkRepaymentItem
+//   directly for QUEUED rows and posts to Fineract itself — see
+//   zw.co.kenac.loanmatrixbe.bulkrepayments. Nothing to start here.
+// - USSD loan applications: loan-matrix-be still consumes
+//   ussdloanapplications.queue (see
+//   zw.co.kenac.loanmatrixbe.ussdloans.service.UssdLoanApplicationListener)
+//   and inserts rows here, but the auto-lead-creation /
+//   CDE-decisioning / auto-disbursement pipeline is Next.js-only business
+//   logic that stayed here — see lib/ussd-auto-processing-poller.ts. This
+//   module just runs that poller on an interval.
 
-import { getUssdQueueConsumer } from './ussd-queue-consumer';
-import { getBulkRepaymentQueueService } from './bulk-repayment-queue-service';
-import { getBulkRepaymentReversalQueueService } from './bulk-repayment-reversal-queue-service';
-import prisma from './prisma';
-import { refreshBulkRepaymentUploadStats } from './bulk-repayment-upload-stats';
+import { pollUssdAutoProcessing } from "./ussd-auto-processing-poller";
 
-// Prevent multiple initializations using global variable
 declare global {
-  var __queueConsumerInitialized: boolean | undefined;
+  var __ussdAutoProcessingPollerStarted: boolean | undefined;
 }
 
-async function cleanupOrphanedItems(): Promise<void> {
-  try {
-    // Items stuck in QUEUED or PROCESSING for > 30 minutes have no live worker
-    // behind them (pod crash, DB blip during ack, etc). Mark them FAILED so the
-    // user can see them and retry from the UI instead of waiting indefinitely.
-    const cutoff = new Date(Date.now() - 30 * 60 * 1000);
-    const orphaned = await prisma.bulkRepaymentItem.findMany({
-      where: {
-        status: { in: ["QUEUED", "PROCESSING"] },
-        updatedAt: { lt: cutoff },
-      },
-      select: { id: true, uploadId: true },
-    });
+const POLL_INTERVAL_MS = 5000;
 
-    if (orphaned.length === 0) return;
-
-    await prisma.bulkRepaymentItem.updateMany({
-      where: { id: { in: orphaned.map((i) => i.id) } },
-      data: {
-        status: "FAILED",
-        errorMessage: "Processing timed out - please retry",
-        processedAt: new Date(),
-      },
-    });
-
-    const uploadIds = [...new Set(orphaned.map((i) => i.uploadId))];
-    for (const uploadId of uploadIds) {
-      await refreshBulkRepaymentUploadStats(uploadId);
-    }
-
-    console.log(`[Startup] Cleaned up ${orphaned.length} orphaned bulk repayment item(s) across ${uploadIds.length} upload(s)`);
-  } catch (error) {
-    console.error('[Startup] Failed to clean up orphaned bulk repayment items:', error);
-  }
-}
-
-const queueConsumersDisabled =
+const pollersDisabled =
   process.env.DISABLE_QUEUE_CONSUMERS === "true" ||
   process.env.DISABLE_QUEUE_CONSUMERS === "1";
 
-if (queueConsumersDisabled) {
-  console.log("Queue consumers disabled via DISABLE_QUEUE_CONSUMERS");
+if (pollersDisabled) {
+  console.log("Background pollers disabled via DISABLE_QUEUE_CONSUMERS");
 }
 
-// Initialize the queue consumers only once
 if (
-  !queueConsumersDisabled &&
+  !pollersDisabled &&
   process.env.NODE_ENV !== "test" &&
-  !global.__queueConsumerInitialized
+  !global.__ussdAutoProcessingPollerStarted
 ) {
-  global.__queueConsumerInitialized = true;
+  global.__ussdAutoProcessingPollerStarted = true;
 
-  // Clean up any items left stuck from a previous pod's crash or DB blip
-  // before starting consumers so workers start with a clean slate.
-  cleanupOrphanedItems().catch((error) => {
-    console.error('[Startup] Orphan cleanup failed:', error);
-  });
-
-  // USSD Loan Application consumer
-  try {
-    const consumer = getUssdQueueConsumer();
-    console.log('USSD queue consumer initialized');
-    consumer.start().catch((error) => {
-      console.error('Failed to start USSD queue consumer:', error);
+  console.log(
+    `USSD auto-processing poller started (every ${POLL_INTERVAL_MS}ms)`
+  );
+  setInterval(() => {
+    pollUssdAutoProcessing().catch((error) => {
+      console.error("USSD auto-processing poll tick failed:", error);
     });
-  } catch (error) {
-    console.error('Failed to initialize USSD queue consumer:', error);
-  }
-
-  // Bulk Repayment consumer
-  try {
-    const bulkService = getBulkRepaymentQueueService();
-    console.log('Bulk repayment queue consumer initialized');
-    bulkService.startConsuming().catch((error) => {
-      console.error('Failed to start bulk repayment consumer:', error);
-    });
-  } catch (error) {
-    console.error('Failed to initialize bulk repayment consumer:', error);
-  }
-
-  // Bulk Repayment reversal consumer
-  try {
-    const reversalService = getBulkRepaymentReversalQueueService();
-    console.log('Bulk repayment reversal queue consumer initialized');
-    reversalService.startConsuming().catch((error) => {
-      console.error('Failed to start bulk repayment reversal consumer:', error);
-    });
-  } catch (error) {
-    console.error('Failed to initialize bulk repayment reversal consumer:', error);
-  }
+  }, POLL_INTERVAL_MS);
 }

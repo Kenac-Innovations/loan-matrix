@@ -41,6 +41,12 @@ import {
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 import { isOmamaTenantHostname } from "@/lib/omama-tenant";
+import { ReportDateParameterInput } from "../components/report-date-parameter-input";
+import {
+  formatReportDateValue,
+  isReportDateColumn,
+  isReportDateLike,
+} from "../components/report-date-utils";
 
 interface ReportParameter {
   parameter_name: string;
@@ -74,6 +80,8 @@ interface ReportData {
     row: any[];
   }>;
 }
+
+type ReportColumnHeader = ReportData["columnHeaders"][number];
 
 function safeText(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;
@@ -188,6 +196,14 @@ export default function ReportDetailPage() {
     const fallbackValue = getInitialParameterValue(parentParam);
     if (fallbackValue) {
       fetchParams[parentParam.parameter_variable] = fallbackValue;
+      return;
+    }
+
+    // An All-capable parent has no concrete default. Use its standard All
+    // value while loading dependent options, instead of arbitrarily loading
+    // only office 1 before the parent control is initialized.
+    if (parentParam.selectAll === "Y") {
+      fetchParams[parentParam.parameter_variable] = "-1";
       return;
     }
 
@@ -403,19 +419,13 @@ export default function ReportDetailPage() {
     const rows = reportData.data
       .map((item) =>
         visibleIndices.map((i) => {
+            const header = reportData.columnHeaders[i];
             const cell = item.row[i];
             if (cell === null || cell === undefined) return "";
-            if (
-              Array.isArray(cell) &&
-              cell.length === 3 &&
-              typeof cell[0] === "number"
-            ) {
-              const [year, month, day] = cell;
-              return `${year}-${month.toString().padStart(2, "0")}-${day
-                .toString()
-                .padStart(2, "0")}`;
-            }
-            const str = String(cell);
+            const str =
+              isDateColumn(header) || isReportDateLike(cell)
+              ? formatReportDateValue(cell, "")
+              : String(cell);
             return str.includes(",") || str.includes('"') || str.includes("\n")
               ? `"${str.replace(/"/g, '""')}"`
               : str;
@@ -447,11 +457,11 @@ export default function ReportDetailPage() {
     const rows = reportData.data.map((item) => ({
       row_type: rowTypeIndex >= 0 ? (item.row[rowTypeIndex] as string | null) : null,
       cells: visibleIndices.map((i) => {
+        const header = reportData.columnHeaders[i];
         const cell = item.row[i];
         if (cell === null || cell === undefined) return null;
-        if (Array.isArray(cell) && cell.length === 3 && typeof cell[0] === "number") {
-          const [year, month, day] = cell;
-          return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        if (isDateColumn(header) || isReportDateLike(cell)) {
+          return formatReportDateValue(cell, "");
         }
         return cell;
       }),
@@ -550,6 +560,9 @@ export default function ReportDetailPage() {
     setParameters(newParams);
   };
 
+  const isDateColumn = (header?: ReportColumnHeader) =>
+    isReportDateColumn(header?.columnType, header?.columnDisplayType);
+
   const renderParameterInput = (param: ReportParameter) => {
     const value = parameters[param.parameter_variable] || "";
     const options = parameterOptions[param.parameter_name] || [];
@@ -583,12 +596,12 @@ export default function ReportDetailPage() {
 
       case "date":
         return (
-          <Input
-            type="date"
+          <ReportDateParameterInput
             value={value}
-            onChange={(e) =>
-              handleParameterChange(param.parameter_variable, e.target.value)
+            onChange={(nextValue) =>
+              handleParameterChange(param.parameter_variable, nextValue)
             }
+            placeholder={`Select ${displayLabel}`}
           />
         );
 
@@ -631,23 +644,39 @@ export default function ReportDetailPage() {
     }
   };
 
-  const formatCellValue = (cell: any) => {
+  const formatCellValue = (cell: any, header?: ReportColumnHeader) => {
     if (cell === null || cell === undefined) {
       return <span className="text-muted-foreground">-</span>;
     }
 
-    if (
-      Array.isArray(cell) &&
-      cell.length === 3 &&
-      typeof cell[0] === "number"
-    ) {
-      const [year, month, day] = cell;
-      return `${year}-${month.toString().padStart(2, "0")}-${day
-        .toString()
-        .padStart(2, "0")}`;
+    if (isDateColumn(header) || isReportDateLike(cell)) {
+      return formatReportDateValue(cell, String(cell));
     }
 
     return String(cell);
+  };
+
+  const rowTypeIndex = reportData?.columnHeaders.findIndex(
+    (header) => header.columnName === "row_type"
+  ) ?? -1;
+  const visibleColumnHeaders = reportData?.columnHeaders.filter(
+    (header) => header.columnName !== "row_type"
+  ) ?? [];
+  const metadataRows = (reportData?.data ?? []).filter((item) => {
+    const rowType = rowTypeIndex >= 0 ? item.row[rowTypeIndex] : null;
+    return rowType === "TITLE" || rowType === "METADATA";
+  });
+  const titleRows = metadataRows.filter(
+    (item) => item.row[rowTypeIndex] === "TITLE");
+  const reportDetails = (reportData?.data ?? []).filter((item) => {
+    const rowType = rowTypeIndex >= 0 ? item.row[rowTypeIndex] : null;
+    return rowType !== "TITLE" && rowType !== "METADATA";
+  });
+  const metadataText = (item: ReportData["data"][number]) => {
+    const value = item.row.find(
+      (cell, index) => index !== rowTypeIndex && cell !== null && cell !== undefined
+    );
+    return safeText(value);
   };
 
   return (
@@ -710,7 +739,7 @@ export default function ReportDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {reportData ? reportData.data.length : 0}
+              {reportDetails.length}
             </div>
             <p className="text-xs text-muted-foreground">Data records</p>
           </CardContent>
@@ -824,23 +853,47 @@ export default function ReportDetailPage() {
                     variant="outline"
                     className="bg-green-500 text-white border-0"
                   >
-                    {reportData.data.length} rows
+                    {reportDetails.length} rows
                   </Badge>
                   <Badge
                     variant="outline"
                     className="bg-blue-500 text-white border-0"
                   >
-                    {reportData.columnHeaders.length} columns
+                    {visibleColumnHeaders.length} columns
                   </Badge>
                 </div>
               </div>
+              {metadataRows.length > 0 && (
+                <div className="mb-6 rounded-md border bg-muted/30 px-6 py-5">
+                  <div className="space-y-1 text-center">
+                    {titleRows.map((item, index) => (
+                      <p
+                        key={`title-${index}`}
+                        className={index === 0 ? "text-xl font-bold" : "text-lg font-semibold"}
+                      >
+                        {metadataText(item)}
+                      </p>
+                    ))}
+                  </div>
+                  {metadataRows.some(
+                    (item) => item.row[rowTypeIndex] === "METADATA"
+                  ) && (
+                    <div className="mt-4 flex flex-col gap-1 border-t pt-4 text-sm text-muted-foreground sm:flex-row sm:justify-center sm:gap-6">
+                      {metadataRows
+                        .filter((item) => item.row[rowTypeIndex] === "METADATA")
+                        .map((item, index) => (
+                          <span key={`metadata-${index}`}>{metadataText(item)}</span>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="border rounded-md overflow-hidden">
                 <div className="overflow-auto max-h-[600px]">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        {reportData.columnHeaders.map((header, index) => {
-                          if (header.columnName === "row_type") return null;
+                        {visibleColumnHeaders.map((header, index) => {
                           return (
                             <TableHead
                               key={index}
@@ -853,20 +906,34 @@ export default function ReportDetailPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {reportData.data.slice(0, 100).map((item, rowIndex) => {
-                        const rowTypeIndex = reportData.columnHeaders.findIndex(h => h.columnName === "row_type");
+                      {reportDetails.slice(0, 100).map((item, rowIndex) => {
                         const rowType = rowTypeIndex >= 0 ? item.row[rowTypeIndex] : null;
-                        const isBold = rowType === "HEADER" || rowType === "SUBTOTAL" || rowType === "TOTAL";
+                        const isBold = [
+                          "HEADER",
+                          "SECTION",
+                          "GROUP",
+                          "SUBTOTAL",
+                          "TOTAL",
+                          "GROUP_TOTAL",
+                          "SECTION_TOTAL",
+                          "GRAND_TOTAL",
+                        ].includes(String(rowType));
+                        const rowClassName = ["SECTION", "GROUP"].includes(String(rowType))
+                          ? "bg-muted/40"
+                          : ["GROUP_TOTAL", "SECTION_TOTAL", "GRAND_TOTAL"].includes(String(rowType))
+                            ? "bg-muted/20"
+                            : undefined;
                         return (
-                          <TableRow key={rowIndex}>
+                          <TableRow key={rowIndex} className={rowClassName}>
                             {item.row.map((cell, cellIndex) => {
-                              if (reportData.columnHeaders[cellIndex]?.columnName === "row_type") return null;
+                              const header = reportData.columnHeaders[cellIndex];
+                              if (header?.columnName === "row_type") return null;
                               return (
                                 <TableCell
                                   key={cellIndex}
                                   className={`border-r border-border last:border-r-0${isBold ? " font-bold" : ""}`}
                                 >
-                                  {formatCellValue(cell)}
+                                  {formatCellValue(cell, header)}
                                 </TableCell>
                               );
                             })}
@@ -876,9 +943,9 @@ export default function ReportDetailPage() {
                     </TableBody>
                   </Table>
                 </div>
-                {reportData.data.length > 100 && (
+                {reportDetails.length > 100 && (
                   <div className="text-center text-sm text-muted-foreground p-4 border-t bg-muted/30">
-                    Showing first 100 rows of {reportData.data.length} total
+                    Showing first 100 rows of {reportDetails.length} total
                     rows
                   </div>
                 )}

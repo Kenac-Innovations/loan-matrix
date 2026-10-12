@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { upsertRepaymentCashLink } from "@/lib/repayment-cash-link";
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
-import { getOrgRawCurrencyCode } from "@/lib/currency-utils";
+import { getOrgCurrencyForWrite } from "@/lib/currency-utils";
 import { getGlAccountBalance } from "@/lib/gl-balance";
+import { pendingClosureBlockResponse } from "@/lib/cashier-session-guards";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/allocate
@@ -184,12 +185,41 @@ export async function POST(
       );
     }
 
+    // Check if session closure is pending
+    const blocked = await pendingClosureBlockResponse(tenant.id, cashier?.id);
+    if (blocked) return blocked;
+
     // Note: No session required for allocating cash to cashier
     // Cash allocation happens BEFORE starting a session - the allocated cash becomes the opening float
 
+    const organizationCurrency = await getOrgCurrencyForWrite().catch((error) => {
+      console.error("[Allocate] Failed to resolve organization currency:", error);
+      return null;
+    });
+    if (!organizationCurrency) {
+      return NextResponse.json(
+        { error: "Organization currency could not be resolved" },
+        { status: 503 }
+      );
+    }
+
+    const requestedCurrency =
+      typeof currency === "string" ? currency.trim().toUpperCase() : "";
+    const requestedDisplayCurrency = requestedCurrency === "ZMK" ? "ZMW" : requestedCurrency;
+    if (requestedDisplayCurrency !== organizationCurrency.displayCode) {
+      return NextResponse.json(
+        {
+          error: "Currency does not match the organization's currency",
+          details: `Expected ${organizationCurrency.displayCode}, received ${requestedCurrency || "an invalid currency"}.`,
+        },
+        { status: 400 }
+      );
+    }
+
     // Calculate available balance - must DECREASE when loans are disbursed, and handle deposits
     // allocatedToCashiers = cash currently in cashier tills. Use netCash (current balance), NOT sumCashAllocation (cumulative).
-    const validationCurrency = await getOrgRawCurrencyCode();
+    const validationCurrency = organizationCurrency.rawCode;
+    const displayCurrency = organizationCurrency.displayCode;
     const tellerVaultAllocations = await prisma.cashAllocation.findMany({
       where: {
         tellerId: teller.id,
@@ -309,8 +339,8 @@ export async function POST(
 
     // Always use the raw Fineract currency code (e.g. "ZMK") so allocations are stored
     // under the same code that cashier summary queries use. validationCurrency is already
-    // the raw code from getOrgRawCurrencyCode() fetched above.
-    const allocateCurrency = validationCurrency || currency?.toUpperCase() || "ZMW";
+    // the selected organization currency fetched above.
+    const allocateCurrency = validationCurrency;
 
     // Allocate cash in Fineract – require resourceId as proof the request hit Fineract
     let fineractAllocationId: number | null = null;
@@ -351,11 +381,6 @@ export async function POST(
         return NextResponse.json(
           {
             error: "Fineract did not return a valid allocation ID",
-            details:
-              "The allocate request may not have reached Fineract, or Fineract returned an invalid response. Allocation cannot be verified.",
-            fineractRequest,
-            rawFineractResponse: result,
-            proofRequired: "resourceId must be present in Fineract response to confirm allocation",
           },
           { status: 502 }
         );
@@ -371,13 +396,6 @@ export async function POST(
       return NextResponse.json(
         {
           error: "Failed to allocate cash in Fineract",
-          details:
-            error.response?.data?.defaultUserMessage ||
-            error.response?.data?.errors?.[0]?.defaultUserMessage ||
-            error.message,
-          fineractError: error.response?.data || null,
-          fineractRequest,
-          rawFineractResponse: error.response?.data ?? null,
         },
         { status: error.response?.status || 500 }
       );
@@ -399,7 +417,7 @@ export async function POST(
           loanId,
           transactionType,
           amount: parseFloat(amount),
-          currency: allocateCurrency,
+          currency: displayCurrency,
           tellerId: teller.id,
           cashierId: cashier.id,
           fineractAllocationId,
@@ -481,7 +499,7 @@ export async function POST(
           cashierId: cashier.id, // Must be set for cashier allocations
           fineractAllocationId: fineractAllocationId || null, // Use null if undefined/0 or duplicate
           amount: parseFloat(amount),
-          currency: currency,
+          currency: displayCurrency,
           allocatedBy: session.user.id,
           notes,
           status: "ACTIVE",
@@ -503,7 +521,7 @@ export async function POST(
             cashierId: cashier.id,
             fineractAllocationId: null, // Set to null to avoid constraint
             amount: parseFloat(amount),
-            currency: currency,
+            currency: displayCurrency,
             allocatedBy: session.user.id,
             notes: `${
               notes || ""
@@ -518,10 +536,7 @@ export async function POST(
   } catch (error) {
     console.error("Error allocating cash:", error);
     return NextResponse.json(
-      {
-        error: "Failed to allocate cash",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: "Cash allocation could not be completed" },
       { status: 500 }
     );
   }

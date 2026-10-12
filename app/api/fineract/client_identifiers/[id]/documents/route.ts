@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken, getFineractTenantId } from "@/lib/api";
+import {
+  buildFineractErrorResponse,
+  createFineractErrorResponsePayload,
+} from "@/lib/fineract-route-error";
 
 /**
  * GET /api/fineract/client_identifiers/[id]/documents
@@ -88,38 +92,31 @@ export async function GET(
     }
 
     if (!response.ok) {
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        errorData = {
-          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
-        };
-      }
-
-      return NextResponse.json(
+      const errorResponse = createFineractErrorResponsePayload(
         {
-          error:
-            errorData.defaultUserMessage ||
-            errorData.developerMessage ||
-            "Failed to fetch documents",
-          details: errorData,
+          status: response.status,
+          errorData: await response.json().catch(() => ({})),
+          response: { statusText: response.statusText },
         },
-        { status: response.status }
+        {
+          action: "load",
+          resource: "identifier documents",
+        }
       );
+
+      return NextResponse.json(errorResponse.body, {
+        status: errorResponse.status,
+      });
     }
 
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching identifier documents:", error);
-    return NextResponse.json(
-      {
-        error: error?.message || "Internal server error",
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "load",
+      resource: "identifier documents",
+    });
   }
 }
 
@@ -254,44 +251,37 @@ export async function POST(
     }
 
     if (!response.ok) {
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        errorData = {
-          defaultUserMessage: `HTTP ${response.status}: ${response.statusText}`,
-          developerMessage: `HTTP ${response.status}: ${response.statusText}`,
-        };
-      }
+      const errorResponse = createFineractErrorResponsePayload(
+        {
+          status: response.status,
+          errorData: await response.json().catch(() => ({})),
+          response: { statusText: response.statusText },
+        },
+        {
+          action: "upload",
+          resource: "document",
+        }
+      );
 
       console.error(
         "Failed to upload document to identifier:",
         response.status,
         response.statusText,
-        errorData
+        errorResponse.body.details
       );
 
-      return NextResponse.json(
-        {
-          error:
-            errorData.defaultUserMessage ||
-            errorData.developerMessage ||
-            "Failed to upload document",
-          details: errorData,
-        },
-        { status: response.status }
-      );
+      return NextResponse.json(errorResponse.body, {
+        status: errorResponse.status,
+      });
     }
 
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error uploading document to identifier:", error);
-    return NextResponse.json(
-      {
-        error: error?.message || "Internal server error",
-      },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "upload",
+      resource: "document",
+    });
   }
 }

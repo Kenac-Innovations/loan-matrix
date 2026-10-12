@@ -154,6 +154,19 @@ test("USSD processing service uses a numeric automation user for consumer disbur
   );
 });
 
+test("USSD processing dispatches submission and CDE rejection SMS without awaiting delivery", () => {
+  const source = readRepoFile("lib/ussd-loan-processing-service.ts");
+  const smsSource = readRepoFile("lib/ussd-loan-sms-service.ts");
+
+  assert.match(source, /dispatchUssdLoanApplicationSms\(\{[\s\S]*event: "submission"/);
+  assert.match(source, /isRejectedCdeDecision\(cdeDecision\)/);
+  assert.match(source, /event: "rejection"/);
+  assert.match(smsSource, /void \(async \(\) =>/);
+  assert.match(smsSource, /\.catch\(\(error\) =>/);
+  assert.match(smsSource, /submissionSmsAttemptedAt/);
+  assert.match(smsSource, /rejectionSmsAttemptedAt/);
+});
+
 test("USSD submit route delegates loan processing to the shared service", () => {
   const routeSource = readRepoFile(
     "app/api/ussd-leads/[id]/submit/route.ts"

@@ -9,18 +9,18 @@ function readRepoFile(relativePath: string): string {
   return readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
-test("client header exposes consolidated statement action in a new tab", () => {
+test("client actions expose consolidated statement in a new tab", () => {
   const source = readRepoFile(
-    "app/(application)/clients/[id]/components/client-header.tsx"
+    "app/(application)/clients/[id]/components/client-servicing-status-actions.tsx"
   );
 
-  assert.match(source, /Consolidated Statement/);
+  assert.match(source, /Consolidated statement/i);
   assert.match(source, /\/api\/fineract\/clients\/\$\{clientId\}\/statement\?format=html/);
   assert.match(source, /target=\"_blank\"/);
 });
 
-test("client details page passes loan availability into the client header", () => {
+test("client details page is always rendered fresh", () => {
   const source = readRepoFile("app/(application)/clients/[id]/page.tsx");
 
-  assert.match(source, /hasLoans=/);
+  assert.match(source, /export const dynamic = "force-dynamic"/);
 });

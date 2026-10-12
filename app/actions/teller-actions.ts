@@ -95,11 +95,13 @@ export async function getTellerFromFineract(id: string) {
       bankId: string | null;
       bankName: string | null;
       bankGlAccountId: number | null;
+      bankGlAccountName: string | null;
       bankGlAccountCode: string | null;
     } = {
       bankId: null,
       bankName: null,
       bankGlAccountId: null,
+      bankGlAccountName: null,
       bankGlAccountCode: null,
     };
 
@@ -118,6 +120,7 @@ export async function getTellerFromFineract(id: string) {
                 id: true,
                 name: true,
                 glAccountId: true,
+                glAccountName: true,
                 glAccountCode: true,
               },
             },
@@ -139,6 +142,7 @@ export async function getTellerFromFineract(id: string) {
             bankId: dbTeller.bank?.id ?? null,
             bankName: dbTeller.bank?.name ?? null,
             bankGlAccountId: dbTeller.bank?.glAccountId ?? null,
+            bankGlAccountName: dbTeller.bank?.glAccountName ?? null,
             bankGlAccountCode: dbTeller.bank?.glAccountCode ?? null,
           };
 

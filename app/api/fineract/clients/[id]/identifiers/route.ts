@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 /**
@@ -17,16 +18,7 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error fetching client identifiers:", error);
-    return NextResponse.json(
-      {
-        error:
-          error?.message ||
-          error?.errorData?.defaultUserMessage ||
-          "Failed to fetch identifiers",
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }
 
@@ -51,36 +43,9 @@ export async function POST(
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
     console.error("Error creating client identifier:", error);
-
-    // Extract specific error message from Fineract response
-    let errorMessage = "Failed to create identifier";
-
-    if (error?.errorData) {
-      // Check for errors array with specific messages
-      if (
-        error.errorData.errors &&
-        Array.isArray(error.errorData.errors) &&
-        error.errorData.errors.length > 0
-      ) {
-        errorMessage =
-          error.errorData.errors[0].defaultUserMessage ||
-          error.errorData.errors[0].developerMessage ||
-          errorMessage;
-      } else if (error.errorData.defaultUserMessage) {
-        errorMessage = error.errorData.defaultUserMessage;
-      } else if (error.errorData.developerMessage) {
-        errorMessage = error.errorData.developerMessage;
-      }
-    } else if (error?.message) {
-      errorMessage = error.message;
-    }
-
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        details: error?.errorData || null,
-      },
-      { status: error?.status || 500 }
-    );
+    return buildFineractErrorResponse(error, {
+      action: "create",
+      resource: "client identifier",
+    });
   }
 }

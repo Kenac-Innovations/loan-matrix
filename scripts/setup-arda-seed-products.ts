@@ -76,6 +76,10 @@ function productPayload(product: SeedLoanProduct): Record<string, unknown> {
 }
 
 async function main() {
+  throw new Error(
+    "This legacy ARDA seed script is retired because it targets Omama and creates demonstration stock. Use scripts/arda/bootstrap-catalogue.ts for the guarded ARDA-only setup."
+  );
+
   const tenant = await prisma.tenant.findUnique({
     where: { slug: LOCAL_TENANT_SLUG },
   });

@@ -144,6 +144,12 @@ export function buildTellerVaultTransactions(
         }
       }
 
+      // A reversed vault row (e.g. a reopened variance resolution) stays visible in
+      // the history but no longer moves the balance.
+      if (!alloc.cashierId && alloc.status === "REVERSED") {
+        amount = 0;
+      }
+
       runningBalance += amount;
 
       return {

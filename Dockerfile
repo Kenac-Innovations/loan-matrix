@@ -13,12 +13,12 @@ FROM node:20-alpine AS base
 # Install dependencies only when needed
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
-# Install pnpm
-RUN npm install -g pnpm
+# Pin pnpm to the first release that supports the reviewed allowBuilds policy.
+RUN npm install -g pnpm@10.26.0
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 RUN \
     if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; \
     else echo "Lockfile not found." && exit 1; \
@@ -26,10 +26,10 @@ RUN \
 
 # Rebuild the source code only when needed
 FROM base AS builder
-# Install pnpm
-RUN npm install -g pnpm
+# Pin pnpm to the first release that supports the reviewed allowBuilds policy.
+RUN npm install -g pnpm@10.26.0
 WORKDIR /app
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 RUN pnpm install --no-frozen-lockfile
 COPY . .
 

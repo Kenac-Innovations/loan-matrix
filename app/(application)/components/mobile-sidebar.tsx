@@ -29,12 +29,14 @@ interface MobileSidebarProps {
   tenantLogoUrl?: string | null;
   canReadUsers: boolean;
   canResetUssdPin: boolean;
+  canAccessUssdDetails: boolean;
 }
 
 export function MobileSidebar({
   tenantLogoUrl,
   canReadUsers,
   canResetUssdPin,
+  canAccessUssdDetails,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const { mobileMenuOpen, setMobileMenuOpen } = useMobileMenu();
@@ -332,7 +334,8 @@ export function MobileSidebar({
                 href="/clients"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
                   pathname.startsWith("/clients") ||
-                  pathname.startsWith("/ussd-pin-reset")
+                  pathname.startsWith("/ussd-pin-reset") ||
+                  pathname.startsWith("/ussd-details")
                     ? `${activeBgColor} ${textColor}`
                     : `${textColorMuted} ${hoverBgColor} hover:${textColor}`
                 }`}
@@ -340,7 +343,8 @@ export function MobileSidebar({
                 <Users
                   className={`h-5 w-5 ${
                     pathname.startsWith("/clients") ||
-                    pathname.startsWith("/ussd-pin-reset")
+                    pathname.startsWith("/ussd-pin-reset") ||
+                    pathname.startsWith("/ussd-details")
                       ? iconColorActive
                       : iconColor
                   }`}
@@ -349,7 +353,8 @@ export function MobileSidebar({
               </Link>
 
               {(pathname.startsWith("/clients") ||
-                pathname.startsWith("/ussd-pin-reset")) && (
+                pathname.startsWith("/ussd-pin-reset") ||
+                pathname.startsWith("/ussd-details")) && (
                 <div className="pl-10 space-y-1">
                   <Link
                     href="/clients"
@@ -381,6 +386,18 @@ export function MobileSidebar({
                       }`}
                     >
                       USSD PIN Reset
+                    </Link>
+                  )}
+                  {canAccessUssdDetails && (
+                    <Link
+                      href="/ussd-details"
+                      className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                        pathname === "/ussd-details"
+                          ? iconColorActive
+                          : `${iconColor} hover:${textColor}`
+                      }`}
+                    >
+                      USSD Details
                     </Link>
                   )}
                 </div>
@@ -527,7 +544,7 @@ export function MobileSidebar({
 
             <div className="space-y-1">
               <Link
-                href={canReadUsers ? "/organization/users" : "/organization/payment-types"}
+                href="/organization/offices"
                 className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium ${
                   pathname.startsWith("/organization")
                     ? `${activeBgColor} ${textColor}`
@@ -546,6 +563,36 @@ export function MobileSidebar({
 
               {pathname.startsWith("/organization") && (
                 <div className="pl-10 space-y-1">
+                  <Link
+                    href="/organization/offices"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/organization/offices")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Manage Offices
+                  </Link>
+                  <Link
+                    href="/organization/holidays"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/organization/holidays")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Manage Holidays
+                  </Link>
+                  <Link
+                    href="/organization/currencies"
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium ${
+                      pathname.startsWith("/organization/currencies")
+                        ? iconColorActive
+                        : `${iconColor} hover:${textColor}`
+                    }`}
+                  >
+                    Manage Currencies
+                  </Link>
                   {canReadUsers && (
                     <Link
                       href="/organization/users"

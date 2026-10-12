@@ -9,10 +9,11 @@ import {
   Wallet,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { hasSuperAdminServer } from "@/lib/authorization";
+import { hasPermissionServer } from "@/lib/authorization";
 import { getClientDetailsPageFineractHeaders } from "@/lib/client-details-page-fineract-auth";
 import { getFineractTenantId } from "@/lib/fineract-tenant-service";
 import { prisma } from "@/lib/prisma";
+import { SpecificPermission } from "@/shared/types/auth";
 import { ClientDetails } from "./components/client-details";
 import { ClientLoans } from "./components/client-loans";
 import { ClientTransactions } from "./components/client-transactions";
@@ -22,6 +23,8 @@ import { ClientHeader } from "./components/client-header";
 import { ClientEntityKyc } from "./components/client-entity-kyc";
 import { ClientSavings } from "./components/client-savings";
 import { ClientFacility } from "./components/client-facility";
+
+export const dynamic = "force-dynamic";
 
 const FINERACT_BASE_URL =
   process.env.FINERACT_BASE_URL || "http://10.10.0.143:8443";
@@ -103,8 +106,10 @@ type PagedResponse<T> = {
   documents?: T[];
 };
 
-type ClientAccountsResponse = {
-  loanAccounts?: Array<{ id: number | string }>;
+type ClientServicingStatusSummary = {
+  assigned: boolean;
+  status: { code: string; name: string } | null;
+  policies: Record<string, boolean>;
 };
 
 /**
@@ -131,6 +136,29 @@ async function getClientData(clientId: number): Promise<FineractClient | null> {
     return (await response.json()) as FineractClient;
   } catch (error) {
     console.error("Error fetching client data:", error);
+    return null;
+  }
+}
+
+async function getClientServicingStatus(
+  clientId: number
+): Promise<ClientServicingStatusSummary | null> {
+  try {
+    const fineractTenantId = await getFineractTenantId();
+    const response = await fetch(
+      `${FINERACT_BASE_URL}/fineract-provider/api/v1/client-servicing-statuses/clients/${clientId}`,
+      {
+        method: "GET",
+        headers: getClientDetailsPageFineractHeaders(fineractTenantId),
+        cache: "no-store",
+      }
+    );
+
+    return response.ok
+      ? ((await response.json()) as ClientServicingStatusSummary)
+      : null;
+  } catch (error) {
+    console.error("Error fetching client servicing status:", error);
     return null;
   }
 }
@@ -362,34 +390,6 @@ async function getClientDocuments(
   }
 }
 
-async function getClientHasLoans(clientId: number): Promise<boolean> {
-  try {
-    const fineractTenantId = await getFineractTenantId();
-    const response = await fetch(
-      `${FINERACT_BASE_URL}/fineract-provider/api/v1/clients/${clientId}/accounts`,
-      {
-        method: "GET",
-        headers: getClientDetailsPageFineractHeaders(fineractTenantId),
-        cache: "no-store",
-      }
-    );
-
-    if (!response.ok) {
-      console.error(
-        `Failed to fetch accounts for client ${clientId}:`,
-        response.status
-      );
-      return false;
-    }
-
-    const data = (await response.json()) as ClientAccountsResponse;
-    return Array.isArray(data.loanAccounts) && data.loanAccounts.length > 0;
-  } catch (error) {
-    console.error("Error fetching client accounts:", error);
-    return false;
-  }
-}
-
 export default async function ClientDetailPage({ params }: PageProps) {
   const { id } = await params;
   const clientId = Number.parseInt(id);
@@ -399,14 +399,27 @@ export default async function ClientDetailPage({ params }: PageProps) {
   }
 
   // Fetch all data server-side in parallel
-  const [client, clientImage, datatables, canEditClient, hasLoans] =
+  const [
+    client,
+    clientImage,
+    datatables,
+    canEditClient,
+    canChangeServicingStatus,
+    servicingStatus,
+  ] =
     await Promise.all([
       getClientData(clientId),
       getClientImage(clientId),
       getDatatables(),
-      hasSuperAdminServer(),
-      getClientHasLoans(clientId),
+      hasPermissionServer(SpecificPermission.UPDATE_CLIENT),
+      hasPermissionServer(SpecificPermission.UPDATE_CLIENT_SERVICING_STATUS),
+      getClientServicingStatus(clientId),
     ]);
+
+  const canEditClientDetails =
+    canEditClient && servicingStatus?.policies.EDIT_CLIENT_DETAILS !== false;
+  const canOriginateNewLoan =
+    servicingStatus?.policies.ORIGINATE_NEW_LOAN !== false;
 
   // Fetch datatable data after we have the datatables list
   const datatableData = await getDatatableData(clientId, datatables || []);
@@ -442,8 +455,10 @@ export default async function ClientDetailPage({ params }: PageProps) {
         clientId={clientId}
         client={client}
         clientImage={clientImage}
-        canEditClient={canEditClient}
-        hasLoans={hasLoans}
+        canEditClient={canEditClientDetails}
+        canOriginateNewLoan={canOriginateNewLoan}
+        canChangeServicingStatus={canChangeServicingStatus}
+        servicingStatusName={servicingStatus?.status?.name}
       />
 
       {/* Client Overview Cards */}

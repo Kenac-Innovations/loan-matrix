@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
 import { fetchFineractAPI } from "@/lib/api";
 
 /**
@@ -28,18 +29,6 @@ export async function POST(
     return NextResponse.json(data);
   } catch (error: any) {
     console.error("Error selling loan:", error);
-    
-    // Return the actual error details from Fineract
-    if (error.status && error.errorData) {
-      return NextResponse.json(
-        { error: error.errorData },
-        { status: error.status }
-      );
-    }
-
-    return NextResponse.json(
-      { error: error.message || "Unknown error" },
-      { status: 500 }
-    );
+    return buildFineractErrorResponse(error);
   }
 }

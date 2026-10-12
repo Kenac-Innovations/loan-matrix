@@ -125,6 +125,7 @@ type FormDataState = {
 interface ClientEditFormProps {
   clientId: number;
   canEditClient: boolean;
+  canEditRestrictedClientFields: boolean;
 }
 
 function ClientEditFormSkeleton() {
@@ -298,7 +299,11 @@ function isEmailInvalid(email: string) {
   return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps) {
+export function ClientEditForm({
+  clientId,
+  canEditClient,
+  canEditRestrictedClientFields,
+}: ClientEditFormProps) {
   const router = useRouter();
   const { success: showSuccessToast } = useToast();
   const [client, setClient] = useState<ClientTemplateData | null>(null);
@@ -601,6 +606,16 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
         </Alert>
       )}
 
+      {!canEditRestrictedClientFields && (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Some sensitive client fields are locked by tenant settings and can
+            only be updated by a Super Admin.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <form onSubmit={handleSubmit}>
         <Card>
           <CardHeader>
@@ -760,6 +775,7 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
                   <Checkbox
                     id="isStaff"
                     checked={formData.isStaff}
+                    disabled={!canEditRestrictedClientFields}
                     onCheckedChange={(checked) =>
                       handleInputChange("isStaff", checked === true)
                     }
@@ -772,6 +788,7 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
                 <Label htmlFor="staffId">Staff</Label>
                 <Select
                   value={formData.staffId || "__none__"}
+                  disabled={!canEditRestrictedClientFields}
                   onValueChange={(value) =>
                     handleInputChange(
                       "staffId",
@@ -802,6 +819,7 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
                   <SearchableSelect
                     options={countryCodeOptions}
                     value={formData.countryCode}
+                    disabled={!canEditRestrictedClientFields}
                     onValueChange={(value) =>
                       handleInputChange("countryCode", value)
                     }
@@ -812,6 +830,7 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
                     id="mobileNo"
                     type="tel"
                     value={formData.mobileNo}
+                    disabled={!canEditRestrictedClientFields}
                     onChange={(e) => handlePhoneInputChange(e.target.value)}
                     className="flex-1"
                   />
@@ -895,6 +914,7 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
                   id="submittedOnDate"
                   type="date"
                   value={formData.submittedOnDate}
+                  disabled={!canEditRestrictedClientFields}
                   onChange={(e) =>
                     handleInputChange("submittedOnDate", e.target.value)
                   }
@@ -910,6 +930,7 @@ export function ClientEditForm({ clientId, canEditClient }: ClientEditFormProps)
                   id="activationDate"
                   type="date"
                   value={formData.activationDate}
+                  disabled={!canEditRestrictedClientFields}
                   onChange={(e) =>
                     handleInputChange("activationDate", e.target.value)
                   }
