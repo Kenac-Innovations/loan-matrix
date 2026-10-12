@@ -105,9 +105,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check authorization: require SETTLECASHFROMCASHIER_TELLER permission or superadmin
+    // Check authorization: require READ_CASHRECONCILIATION permission or superadmin
     const hasPermission = await hasFineractPermissionServer(
-      "SETTLECASHFROMCASHIER_TELLER"
+      "READ_CASHRECONCILIATION"
     );
     const isSuperAdmin = await hasSuperAdminServer();
 
