@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { transferClientToOfficeWithServiceAuth } from "./fineract-client-transfer-service";
+import { getClientServicingStatusWithServiceAuth } from "./fineract-client-servicing-status-service";
 import { getFineractBaseUrl } from "./fineract-base-url";
 import { normalizeFineractErrorPayload } from "./fineract-error";
 import {
@@ -597,13 +598,15 @@ export class FineractAPIService {
     return response.data;
   }
 
+  /** Read via the service account (see fineract-client-servicing-status-service). */
   async getClientServicingStatus(
     clientId: number
   ): Promise<ClientServicingStatusResponse> {
-    const response = await this.client.get<ClientServicingStatusResponse>(
-      `/client-servicing-statuses/clients/${clientId}`
-    );
-    return response.data;
+    return getClientServicingStatusWithServiceAuth({
+      baseUrl: this.config.baseUrl,
+      tenantId: this.config.tenantId,
+      clientId,
+    });
   }
 
   async updateClientServicingStatus(
