@@ -16,6 +16,8 @@ export type StockReportArtifactSnapshot = {
 
 const REQUIRED_COLUMNS: Record<string, string[]> = {
   [ARDA_STOCK_REPORT_NAMES[0]]: [
+    "Office",
+    "Client Name",
     "Loan Account",
     "Disbursement Date",
     "Stock Item",
@@ -28,6 +30,8 @@ const REQUIRED_COLUMNS: Record<string, string[]> = {
     "Loan Status",
   ],
   [ARDA_STOCK_REPORT_NAMES[1]]: [
+    "Office",
+    "Client Name",
     "Loan Account",
     "Transaction ID",
     "Repayment Date",
