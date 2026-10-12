@@ -3,7 +3,7 @@ import test from "node:test";
 
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/testdb";
 
-test("cross-branch servicing status uses the service account and hides history", async () => {
+test("servicing status is read with the service account", async () => {
   const [{ getSearchAuthToken }, { getClientServicingStatusWithServiceAuth }] =
     await Promise.all([
       import("../fineract-search-auth"),
@@ -40,7 +40,7 @@ test("cross-branch servicing status uses the service account and hides history",
 
   assert.equal(result.policies.ORIGINATE_NEW_LOAN, true);
   assert.equal(result.status?.code, "ACTIVE");
-  assert.deepEqual(result.history, []);
+  assert.equal(result.history.length, 1);
 });
 
 test("service-account servicing status errors keep the Fineract status", async () => {

@@ -4,11 +4,11 @@ import type { ClientServicingStatusResponse } from "./fineract-api";
 /**
  * Reads a client's servicing status with the service account.
  *
- * Used when a branch-restricted user selects a client from another branch
- * (e.g. before transferring them): Fineract's office-hierarchy check refuses the
- * user's own request even though the status is needed to decide whether the
- * client may take a new loan. Only the current status and policies are returned;
- * the audit history stays behind the user's own access rights.
+ * Servicing status is read with the service account by default: Fineract's
+ * office-hierarchy check otherwise refuses branch-restricted users for clients
+ * from other branches (e.g. a "Different Branch" client selected on the new lead
+ * form before transfer), even though the status decides whether the client may
+ * take a new loan. Changing a status still uses the user's own credentials.
  */
 export async function getClientServicingStatusWithServiceAuth(args: {
   baseUrl: string;
@@ -38,12 +38,5 @@ export async function getClientServicingStatusWithServiceAuth(args: {
     throw error;
   }
 
-  const data = (await response.json()) as ClientServicingStatusResponse;
-  return {
-    clientId: data.clientId,
-    assigned: data.assigned,
-    status: data.status,
-    policies: data.policies,
-    history: [],
-  };
+  return (await response.json()) as ClientServicingStatusResponse;
 }

@@ -598,17 +598,8 @@ export class FineractAPIService {
     return response.data;
   }
 
+  /** Read via the service account (see fineract-client-servicing-status-service). */
   async getClientServicingStatus(
-    clientId: number
-  ): Promise<ClientServicingStatusResponse> {
-    const response = await this.client.get<ClientServicingStatusResponse>(
-      `/client-servicing-statuses/clients/${clientId}`
-    );
-    return response.data;
-  }
-
-  /** Status and policies only, via the service account (see fineract-client-servicing-status-service). */
-  async getClientServicingStatusWithServiceAuth(
     clientId: number
   ): Promise<ClientServicingStatusResponse> {
     return getClientServicingStatusWithServiceAuth({
