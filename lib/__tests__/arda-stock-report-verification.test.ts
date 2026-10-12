@@ -77,6 +77,8 @@ test("validates the required result columns for all three reports", () => {
   const rows = {
     [ARDA_STOCK_REPORT_NAMES[0]]: [
       {
+        Office: "Head Office",
+        "Client Name": "ARDA Test Client",
         "Loan Account": "00081",
         "Disbursement Date": "2026-10-01",
         "Stock Item": "Seed Maize",
@@ -91,6 +93,8 @@ test("validates the required result columns for all three reports", () => {
     ],
     [ARDA_STOCK_REPORT_NAMES[1]]: [
       {
+        Office: "Head Office",
+        "Client Name": "ARDA Test Client",
         "Loan Account": "00081",
         "Transaction ID": 991,
         "Repayment Date": "2026-10-05",
@@ -124,6 +128,18 @@ test("validates the required result columns for all three reports", () => {
   for (const reportName of ARDA_STOCK_REPORT_NAMES) {
     assert.doesNotThrow(() => verifyReportColumns(reportName, rows[reportName]));
   }
+
+  for (const reportName of ARDA_STOCK_REPORT_NAMES.slice(0, 2)) {
+    for (const requiredColumn of ["Office", "Client Name"]) {
+      const row = { ...rows[reportName][0] } as Record<string, unknown>;
+      delete row[requiredColumn];
+      assert.throws(
+        () => verifyReportColumns(reportName, [row]),
+        new RegExp(`missing columns:.*${requiredColumn}`, "i")
+      );
+    }
+  }
+
   assert.throws(
     () =>
       verifyReportColumns(ARDA_STOCK_REPORT_NAMES[0], [

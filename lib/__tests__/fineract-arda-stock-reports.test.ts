@@ -38,11 +38,25 @@ test("defines one hidden selector and the three exact ARDA reports", () => {
 test("uses standard Fineract parameters plus the supplied stock item parameter", () => {
   const reports = buildArdaStockReportDefinitions(STOCK_ITEM_PARAMETER_ID);
   const expected = [1, 2, 5, 10, 25, STOCK_ITEM_PARAMETER_ID];
+  const expectedNames = [
+    "startDate",
+    "endDate",
+    "officeId",
+    "currencyId",
+    "loanProductId",
+    "stockItemId",
+  ];
 
   for (const report of reports.slice(1)) {
     assert.deepEqual(
       report.reportParameters?.map((parameter) => parameter.parameterId),
       expected
+    );
+    assert.deepEqual(
+      report.reportParameters?.map(
+        (parameter) => parameter.reportParameterName
+      ),
+      expectedNames
     );
   }
 });
@@ -60,6 +74,8 @@ test("all report SQL respects current-user and selected-office hierarchy", () =>
 test("disbursement report is inclusive, filterable, unreversed, and stock-valued", () => {
   const sql = definition("ARDA Stock Disbursement Report").reportSql;
 
+  assert.match(sql, /o\.name\s+AS "Office"/i);
+  assert.match(sql, /mc\.display_name\s+AS "Client Name"/i);
   assert.match(sql, /transaction_type_enum\s*=\s*1/);
   assert.match(sql, /is_reversed\s*=\s*false/);
   assert.match(sql, /transaction_date::date\s+BETWEEN[\s\S]*\$\{startDate\}[\s\S]*\$\{endDate\}/i);
@@ -78,6 +94,8 @@ test("disbursement report is inclusive, filterable, unreversed, and stock-valued
 test("repayment report exposes payment, cashier, allocation, and balance columns", () => {
   const sql = definition("ARDA Stock Repayment Report").reportSql;
 
+  assert.match(sql, /o\.name\s+AS "Office"/i);
+  assert.match(sql, /mc\.display_name\s+AS "Client Name"/i);
   assert.match(sql, /transaction_type_enum\s*=\s*2/);
   assert.match(sql, /is_reversed\s*=\s*false/);
   assert.match(sql, /lt\.id\s+AS "Transaction ID"/i);
