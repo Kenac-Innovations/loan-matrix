@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
 import { hasPermissionServer } from "@/lib/authorization";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
@@ -9,7 +10,11 @@ function clientIdFrom(value: string): number | null {
   return Number.isSafeInteger(clientId) && clientId > 0 ? clientId : null;
 }
 
-/** Retrieves the current servicing status, restrictions, and immutable audit history. */
+/**
+ * Retrieves the current servicing status, restrictions, and immutable audit history.
+ * Read with the service account so branch-restricted users can check clients from
+ * other branches (e.g. before transferring them); the caller must be logged in.
+ */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -19,6 +24,11 @@ export async function GET(
     const clientId = clientIdFrom(id);
     if (clientId === null) {
       return NextResponse.json({ error: "Invalid client ID" }, { status: 400 });
+    }
+
+    const session = await getSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const fineractService = await getFineractServiceWithSession();
