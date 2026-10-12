@@ -241,7 +241,7 @@ export async function GET(request: NextRequest) {
 
     // Check permission
     const hasPermission =
-      (await hasFineractPermissionServer("SETTLECASHFROMCASHIER_TELLER")) ||
+      (await hasFineractPermissionServer("CLOSESESSION_CASHIER")) ||
       (await hasSuperAdminServer());
 
     return NextResponse.json({
