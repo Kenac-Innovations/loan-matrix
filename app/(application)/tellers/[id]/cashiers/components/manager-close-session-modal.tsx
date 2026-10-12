@@ -322,8 +322,8 @@ export function ManagerCloseSessionModal({
               !canManagerClose && (
                 <Alert variant="default" className="mb-4 border-orange-200 bg-orange-50">
                   <AlertDescription className="text-orange-800">
-                    You can&apos;t close this session. A different user with branch
-                    manager rights must count and close it.
+                    You can&apos;t close this session. A different user with the Close cashier
+                    session permission must count and close it.
                   </AlertDescription>
                 </Alert>
               )
