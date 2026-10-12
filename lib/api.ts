@@ -226,6 +226,58 @@ export async function fetchFineractAPI(
 }
 
 /**
+ * Makes a Fineract request with explicit Basic credentials (never the session or
+ * service token). Errors are reduced to the user-facing message and status only:
+ * the payload is not logged or attached, because Fineract echoes rejected parameter
+ * values (e.g. a new password) back in its error body.
+ */
+export async function fetchFineractAPIWithCredentials(
+  endpoint: string,
+  basicAuth: string,
+  options: RequestInit = {},
+  version: "v1" | "v2" = "v1"
+) {
+  const fineractTenantId = await getFineractTenantIdFromService();
+  const url = `${baseUrl}/fineract-provider/api/${version}${
+    endpoint.startsWith("/") ? endpoint : `/${endpoint}`
+  }`;
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> | undefined),
+    Authorization: `Basic ${basicAuth}`,
+    "Fineract-Platform-TenantId": fineractTenantId,
+    "Content-Type": "application/json",
+  };
+
+  const response = (await performFineractRequest(url, options, headers)) as Response;
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}: ${response.statusText}`;
+    try {
+      const errorData = await response.json();
+      message =
+        errorData?.errors?.[0]?.defaultUserMessage ||
+        errorData?.defaultUserMessage ||
+        message;
+    } catch {
+      // Non-JSON error body; keep the status message
+    }
+    const error = new Error(message) as FineractError;
+    error.status = response.status;
+    throw error;
+  }
+
+  const text = await response.text();
+  if (!text || text.trim() === "") {
+    return {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Fineract returns HTTP 200 with a normal-looking CommandProcessingResult even when a
  * maker-checker-enabled command was intercepted and rolled back rather than applied -
  * the only signal is `rollbackTransaction: true`. Callers of actions that touch
