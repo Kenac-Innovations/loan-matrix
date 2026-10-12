@@ -85,7 +85,7 @@ export async function GET(
 
     // Check if user can act on this variance
     const hasPermission =
-      (await hasFineractPermissionServer("SETTLECASHFROMCASHIER_TELLER")) ||
+      (await hasFineractPermissionServer("CLOSESESSION_CASHIER")) ||
       (await hasSuperAdminServer());
 
     const staff = await resolveStaffIdForFineractUser(session.user.userId);
@@ -250,7 +250,7 @@ export async function POST(
 
     // Check authorization
     const hasPermission =
-      (await hasFineractPermissionServer("SETTLECASHFROMCASHIER_TELLER")) ||
+      (await hasFineractPermissionServer("CLOSESESSION_CASHIER")) ||
       (await hasSuperAdminServer());
 
     const staff = await resolveStaffIdForFineractUser(session.user.userId);

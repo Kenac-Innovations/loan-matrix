@@ -140,7 +140,7 @@ export function authorizeManagerClosure(input: {
       ok: false,
       status: 403,
       code: "PERMISSION_DENIED",
-      error: "Insufficient permission. Only branch managers can close sessions.",
+      error: "Insufficient permission. Requires the 'Close cashier session' permission.",
     };
   }
 
@@ -159,7 +159,7 @@ export function authorizeManagerClosure(input: {
       ok: false,
       status: 403,
       code: "PERMISSION_DENIED",
-      error: "A different user with branch manager rights must close this session",
+      error: "A different user with the 'Close cashier session' permission must close this session",
     };
   }
 
@@ -168,7 +168,7 @@ export function authorizeManagerClosure(input: {
       ok: false,
       status: 403,
       code: "PERMISSION_DENIED",
-      error: "A different user with branch manager rights must close this session",
+      error: "A different user with the 'Close cashier session' permission must close this session",
     };
   }
 

@@ -305,7 +305,7 @@ export async function GET(
     let canManagerClose = false;
     if (activeSession?.sessionStatus === "PENDING_CLOSURE" && isTellerManagementModuleOn) {
       const staffResult = await resolveStaffIdForFineractUser(session?.user?.userId);
-      const hasPermission = await hasFineractPermissionServer("SETTLECASHFROMCASHIER_TELLER");
+      const hasPermission = await hasFineractPermissionServer("CLOSESESSION_CASHIER");
       const authResult = authorizeManagerClosure({
         hasManagerPermission: hasPermission,
         staff:
@@ -1374,7 +1374,7 @@ export async function POST(
 
       // Authorization: manager must have permission, not be the cashier, and not be the initiator
       const staffResult = await resolveStaffIdForFineractUser(session?.user?.userId);
-      const hasManagerPermission = await hasFineractPermissionServer("SETTLECASHFROMCASHIER_TELLER");
+      const hasManagerPermission = await hasFineractPermissionServer("CLOSESESSION_CASHIER");
 
       const authResult = authorizeManagerClosure({
         hasManagerPermission,
@@ -1639,7 +1639,7 @@ export async function POST(
 
       // Authorization: manager must have permission, not be the cashier, and not be the initiator
       const staffResult = await resolveStaffIdForFineractUser(session?.user?.userId);
-      const hasManagerPermission = await hasFineractPermissionServer("SETTLECASHFROMCASHIER_TELLER");
+      const hasManagerPermission = await hasFineractPermissionServer("CLOSESESSION_CASHIER");
 
       const authResult = authorizeManagerClosure({
         hasManagerPermission,
