@@ -4,7 +4,10 @@ import test from "node:test";
 import {
   registerArdaStockReportsWithFineractApi,
 } from "../arda-stock-report-api-registration";
-import { ARDA_STOCK_REPORT_NAMES } from "../fineract-arda-stock-reports";
+import {
+  ARDA_STOCK_REPORT_NAMES,
+  ARDA_SUMMARY_REPORT_NAMES,
+} from "../fineract-arda-stock-reports";
 import type { FineractRequester } from "../fineract-arda-stock-details";
 
 type Report = {
@@ -22,6 +25,7 @@ function createHarness(existingReports: Report[] = []) {
   const reports = structuredClone(existingReports);
   const calls: Array<{ endpoint: string; method: string; body?: unknown }> = [];
   let nextReportId = 700;
+  let dataTableCreated = false;
 
   const request: FineractRequester = async (endpoint, options = {}) => {
     const method = options.method || "GET";
@@ -29,7 +33,13 @@ function createHarness(existingReports: Report[] = []) {
     calls.push({ endpoint, method, body });
 
     if (endpoint === "/datatables" && method === "POST") {
+      dataTableCreated = true;
       return { resourceIdentifier: "arda_stock_details" };
+    }
+    if (endpoint === "/datatables?apptable=m_loan" && method === "GET") {
+      return dataTableCreated
+        ? [{ registeredTableName: "arda_stock_details" }]
+        : [];
     }
     if (endpoint === "/reports" && method === "GET") {
       return reports.map(({ id, reportName }) => ({ id, reportName }));
@@ -62,7 +72,7 @@ function createHarness(existingReports: Report[] = []) {
       return { resourceId: reports[index].id };
     }
     if (endpoint.startsWith("/runreports/FullParameterList")) {
-      const name = ARDA_STOCK_REPORT_NAMES.find((reportName) =>
+      const name = [...ARDA_SUMMARY_REPORT_NAMES, ...ARDA_STOCK_REPORT_NAMES].find((reportName) =>
         endpoint.includes(encodeURIComponent(`'${reportName}'`))
       );
       const report = reports.find((candidate) => candidate.reportName === name);
@@ -90,7 +100,10 @@ test("creates the ARDA data table and reports through the Fineract API", async (
     request: harness.request,
   });
 
-  assert.deepEqual(result.created, [...ARDA_STOCK_REPORT_NAMES]);
+  assert.deepEqual(result.created, [
+    ...ARDA_SUMMARY_REPORT_NAMES,
+    ...ARDA_STOCK_REPORT_NAMES,
+  ]);
   assert.deepEqual(result.updated, []);
   assert.equal(
     harness.calls.filter(
@@ -102,7 +115,7 @@ test("creates the ARDA data table and reports through the Fineract API", async (
     harness.calls.filter(
       (call) => call.endpoint === "/reports" && call.method === "POST"
     ).length,
-    3
+    5
   );
   for (const report of harness.reports) {
     assert.deepEqual(
@@ -111,10 +124,24 @@ test("creates the ARDA data table and reports through the Fineract API", async (
     );
     assert.doesNotMatch(report.reportSql, /\$\{stockItemId\}/);
   }
+
+  await registerArdaStockReportsWithFineractApi({
+    tenantSlug: "arda",
+    tenantSettings: enabledSettings,
+    fineractTenantId: "arda",
+    request: harness.request,
+  });
+  assert.equal(
+    harness.calls.filter(
+      (call) => call.endpoint === "/datatables" && call.method === "POST"
+    ).length,
+    1
+  );
 });
 
 test("updates matching ARDA report IDs without creating duplicates", async () => {
-  const existing = ARDA_STOCK_REPORT_NAMES.map((reportName, index) => ({
+  const reportNames = [...ARDA_SUMMARY_REPORT_NAMES, ...ARDA_STOCK_REPORT_NAMES];
+  const existing = reportNames.map((reportName, index) => ({
     id: 100 + index,
     reportName,
     reportSql: "SELECT 1",
@@ -140,10 +167,10 @@ test("updates matching ARDA report IDs without creating duplicates", async () =>
   });
 
   assert.deepEqual(result.created, []);
-  assert.deepEqual(result.updated, [...ARDA_STOCK_REPORT_NAMES]);
+  assert.deepEqual(result.updated, reportNames);
   assert.equal(
     harness.calls.filter((call) => call.method === "PUT").length,
-    3
+    5
   );
   assert.equal(
     harness.calls.filter(

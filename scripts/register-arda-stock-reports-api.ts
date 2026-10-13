@@ -2,6 +2,10 @@ import { Prisma } from "../app/generated/prisma";
 import { registerArdaStockReportsWithFineractApi } from "../lib/arda-stock-report-api-registration";
 import type { FineractRequester } from "../lib/fineract-arda-stock-details";
 import { mergeArdaStockReportSetting } from "../lib/fineract-arda-stock-report-setup";
+import {
+  ARDA_STOCK_REPORT_NAMES,
+  ARDA_SUMMARY_REPORT_NAMES,
+} from "../lib/fineract-arda-stock-reports";
 import { prisma } from "../lib/prisma";
 
 function requiredEnv(name: string): string {
@@ -74,11 +78,7 @@ async function main(): Promise<void> {
           tenant: options.tenantSlug,
           fineractTenant: "arda",
           dataTable: "arda_stock_details",
-          reports: [
-            "ARDA Stock Disbursement Report",
-            "ARDA Stock Repayment Report",
-            "ARDA Stock Item Performance",
-          ],
+          reports: [...ARDA_SUMMARY_REPORT_NAMES, ...ARDA_STOCK_REPORT_NAMES],
         },
         null,
         2

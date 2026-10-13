@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   ARDA_STOCK_ITEM_OPTIONS_REPORT,
   ARDA_STOCK_REPORT_NAMES,
+  ARDA_SUMMARY_REPORT_NAMES,
+  buildArdaSummaryReportApiDefinitions,
   buildArdaStockReportApiDefinitions,
   buildArdaStockReportDefinitions,
 } from "../fineract-arda-stock-reports";
@@ -78,6 +80,46 @@ test("builds API-only definitions with standard Fineract filters", () => {
     );
     assert.doesNotMatch(report.reportSql, /\$\{stockItemId\}/);
   }
+});
+
+test("builds the two existing ARDA reports with filters, clients, and finance columns", () => {
+  const reports = buildArdaSummaryReportApiDefinitions();
+
+  assert.deepEqual(
+    reports.map((report) => report.reportName),
+    ARDA_SUMMARY_REPORT_NAMES
+  );
+  for (const report of reports) {
+    assert.deepEqual(
+      report.reportParameters?.map(
+        (parameter) => parameter.reportParameterName
+      ),
+      ["startDate", "endDate", "officeId", "currencyId", "loanProductId"]
+    );
+    assert.match(report.reportSql, /AS "Office"/i);
+    assert.match(report.reportSql, /AS "Client Name"/i);
+    assert.match(report.reportSql, /AS "Client Account"/i);
+    assert.match(report.reportSql, /AS "Loan Account"/i);
+    assert.match(report.reportSql, /AS "Loan Product"/i);
+    assert.match(report.reportSql, /\$\{startDate\}/);
+    assert.match(report.reportSql, /\$\{endDate\}/);
+    assert.match(report.reportSql, /\$\{officeId\}/);
+  }
+
+  const disbursements = reports[0].reportSql;
+  assert.match(disbursements, /AS "Disbursement Month"/i);
+  assert.match(disbursements, /AS "Disbursement Date"/i);
+  assert.match(disbursements, /AS "Disbursed Amount"/i);
+  assert.match(disbursements, /AS "Principal Repaid"/i);
+  assert.match(disbursements, /AS "Outstanding Amount"/i);
+
+  const outstanding = reports[1].reportSql;
+  assert.match(outstanding, /AS "Maturity Date"/i);
+  assert.match(outstanding, /AS "Principal Disbursed"/i);
+  assert.match(outstanding, /AS "Interest Outstanding"/i);
+  assert.match(outstanding, /AS "Fees Outstanding"/i);
+  assert.match(outstanding, /AS "Penalties Outstanding"/i);
+  assert.match(outstanding, /AS "Total Outstanding"/i);
 });
 
 test("all report SQL respects current-user and selected-office hierarchy", () => {

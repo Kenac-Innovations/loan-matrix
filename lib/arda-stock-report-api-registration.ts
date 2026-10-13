@@ -5,9 +5,11 @@ import {
 } from "@/lib/fineract-arda-stock-details";
 import {
   ARDA_STOCK_REPORT_NAMES,
+  buildArdaSummaryReportApiDefinitions,
   buildArdaStockReportApiDefinitions,
   type FineractReportDefinition,
 } from "@/lib/fineract-arda-stock-reports";
+import { isArdaStockReportsEnabled } from "@/lib/tenant-arda-stock-reports";
 
 type FineractReportSummary = { id: number; reportName: string };
 
@@ -31,6 +33,45 @@ const REQUIRED_PARAMETERS = [
   "currencyId",
   "loanProductId",
 ];
+
+async function ensureDataTable(
+  options: ArdaStockReportApiRegistrationOptions
+): Promise<"created" | "exists"> {
+  if (
+    !isArdaStockReportsEnabled({
+      tenantSlug: options.tenantSlug,
+      tenantSettings: options.tenantSettings,
+    })
+  ) {
+    throw new Error("ARDA stock reports are not enabled for this tenant.");
+  }
+  if (options.fineractTenantId.trim().toLowerCase() !== "arda") {
+    throw new Error("The resolved Fineract tenant must be arda.");
+  }
+
+  const tables = await options.request("/datatables?apptable=m_loan", {
+    authMode: "service",
+    cache: "no-store",
+  });
+  if (
+    Array.isArray(tables) &&
+    tables.some((table) => {
+      const record = table as Record<string, unknown>;
+      return [record.registeredTableName, record.datatableName, record.name]
+        .map(String)
+        .includes("arda_stock_details");
+    })
+  ) {
+    return "exists";
+  }
+
+  return ensureArdaStockDetailsDatatable({
+    appTenantSlug: options.tenantSlug,
+    tenantSettings: options.tenantSettings,
+    fineractTenantId: options.fineractTenantId,
+    request: options.request,
+  });
+}
 
 function reportPayload(report: FineractReportDefinition) {
   return {
@@ -124,13 +165,11 @@ async function verifyReports(
 export async function registerArdaStockReportsWithFineractApi(
   options: ArdaStockReportApiRegistrationOptions
 ): Promise<ArdaStockReportApiRegistrationResult> {
-  const dataTable = await ensureArdaStockDetailsDatatable({
-    appTenantSlug: options.tenantSlug,
-    tenantSettings: options.tenantSettings,
-    fineractTenantId: options.fineractTenantId,
-    request: options.request,
-  });
-  const definitions = buildArdaStockReportApiDefinitions();
+  const dataTable = await ensureDataTable(options);
+  const definitions = [
+    ...buildArdaSummaryReportApiDefinitions(),
+    ...buildArdaStockReportApiDefinitions(),
+  ];
   const existingReports = (await options.request("/reports", {
     authMode: "service",
     cache: "no-store",
