@@ -1,13 +1,12 @@
 "use client";
 
-import Link from "next/link";
+import { InventoryTabs } from "../components/inventory-tabs";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Banknote, RefreshCw, Scale } from "lucide-react";
+import { Banknote, RefreshCw, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -156,17 +155,7 @@ export default function InventoryFinancesPage() {
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Tabs value="financials" className="mb-3">
-            <TabsList>
-              <TabsTrigger value="stock-control" asChild>
-                <Link href="/inventory">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Stock Control
-                </Link>
-              </TabsTrigger>
-              <TabsTrigger value="financials">Financials</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <InventoryTabs />
           <h1 className="text-3xl font-bold text-white">Inventory Finances</h1>
           <p className="text-sm text-muted-foreground">
             Track stock received, stock issued, money collected, and outstanding recoveries.

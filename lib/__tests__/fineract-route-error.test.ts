@@ -75,3 +75,11 @@ test("preserves specific nested Fineract validation messages in shared route pay
     "Address line 1 must not exceed 100 characters."
   );
 });
+test('stock reconciliation response preserves the instruction and operation id', async () => {
+ const {createFineractErrorResponsePayload} = await import('../fineract-route-error');
+ const {StockActionPendingError} = await import('../inventory/stock-action-service');
+ const result=createFineractErrorResponsePayload(new StockActionPendingError('operation-1'));
+ assert.equal(result.status,409);
+ assert.match(result.body.error,/do not repeat the payout/);
+ assert.equal((result.body.details as {operationId?:string}).operationId,'operation-1');
+});

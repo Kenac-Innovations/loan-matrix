@@ -525,20 +525,22 @@ async function controlledWorkflow(input: { lead: WorkflowLead; targetStage: Work
   const tenant = await prisma.tenant.findUnique({ where: { id: input.lead.tenantId } });
   if (!tenant || !isArdaInventoryFeatureEnabled(tenant, "enforceStockAvailability")) return undefined;
   const raw = storedStockSelection(input.lead.stateMetadata);
-  if (!requiresStock(tenant.settings, input.lead.loanProductId, raw)) return { operation: null, changed: false };
-  const selection = parseStockSelection(raw);
+  const existing = await prisma.stockLoanIssue.findFirst({where: {tenantId: tenant.id, leadId: input.lead.id}});
+  if (!existing && !requiresStock(tenant.settings, input.lead.loanProductId, raw)) return { operation: null, changed: false };
   const actorUserId = input.actor?.userId;
   const operation = isDisbursementStage(input.targetStage) ? "ISSUE" : isRejectedStage(input.targetStage) || input.targetStage.isInitialState || input.targetStage.isFinalState ? "RELEASE" : "RESERVE";
   const key = { tenantId: tenant.id, leadId: input.lead.id };
+  if (operation === "RELEASE") {
+    if (validating) return {operation, changed: false};
+    if (!actorUserId) throw new Error("An authenticated actor is required to release stock.");
+    const result = await releaseStock({ ...key, actorUserId, reason: "Loan left the approval workflow" });
+    return { operation, changed: result?.changed ?? false, stockLoanIssueId: result?.issueId };
+  }
+  const selection = parseStockSelection(raw);
   if (operation === "RESERVE" && validating) {
     if (!actorUserId) throw new Error("An authenticated actor is required to reserve stock.");
     const result = await reserveStock({ ...key, actorUserId, selection });
     return { operation, changed: result.changed, stockLoanIssueId: result.issueId };
-  }
-  if (operation === "RELEASE" && !validating) {
-    if (!actorUserId) throw new Error("An authenticated actor is required to release stock.");
-    const result = await releaseStock({ ...key, actorUserId, reason: "Loan left the approval workflow" });
-    return { operation, changed: result?.changed ?? false, stockLoanIssueId: result?.issueId };
   }
   if (operation === "ISSUE") {
     const issue = await prisma.stockLoanIssue.findFirst({ where: key });
