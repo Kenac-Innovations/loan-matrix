@@ -1,4 +1,4 @@
-export type InventoryTenant = { id: string; slug: string; settings: unknown };
+export type InventoryTenant = { id: string; slug: string; settings?: unknown };
 export type InventoryAccessContext = { tenantId: string; tenantSlug: string; actorUserId: string; allowedOfficeIds: number[] };
 export class InventoryAccessError extends Error { constructor(message: string, public status = 403) { super(message); } }
 export function isArdaInventoryFeatureEnabled(tenant: InventoryTenant, feature: 'hasInventoryReports' | 'enforceStockAvailability'): boolean {

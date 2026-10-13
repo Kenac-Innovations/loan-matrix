@@ -1,3 +1,6 @@
+import { isArdaInventoryFeatureEnabled } from "./inventory-access";
+import { requiresStock, parseStockSelection, storedStockSelection } from "./stock-product-policy";
+import { reserveStock, releaseStock, verifyReservation } from "./stock-reservation-service";
 import { lockInventoryTenantIfEnabled } from "./inventory-lock";
 import { Prisma } from "@/app/generated/prisma";
 import { prisma } from "@/lib/prisma";
@@ -517,11 +520,42 @@ async function issueReservedStockForLead(
   return { operation: "ISSUE", changed: true, stockLoanIssueId: issue.id };
 }
 
+async function controlledWorkflow(input: { lead: WorkflowLead; targetStage: WorkflowStage; actor?: WorkflowActor }, validating: boolean): Promise<WorkflowInventoryResult | undefined> {
+  if (!isArdaTenantSlug(input.lead.tenantSlug || input.lead.tenant?.slug)) return undefined;
+  const tenant = await prisma.tenant.findUnique({ where: { id: input.lead.tenantId } });
+  if (!tenant || !isArdaInventoryFeatureEnabled(tenant, "enforceStockAvailability")) return undefined;
+  const raw = storedStockSelection(input.lead.stateMetadata);
+  if (!requiresStock(tenant.settings, input.lead.loanProductId, raw)) return { operation: null, changed: false };
+  const selection = parseStockSelection(raw);
+  const actorUserId = input.actor?.userId;
+  const operation = isDisbursementStage(input.targetStage) ? "ISSUE" : isRejectedStage(input.targetStage) || input.targetStage.isInitialState || input.targetStage.isFinalState ? "RELEASE" : "RESERVE";
+  const key = { tenantId: tenant.id, leadId: input.lead.id };
+  if (operation === "RESERVE" && validating) {
+    if (!actorUserId) throw new Error("An authenticated actor is required to reserve stock.");
+    const result = await reserveStock({ ...key, actorUserId, selection });
+    return { operation, changed: result.changed, stockLoanIssueId: result.issueId };
+  }
+  if (operation === "RELEASE" && !validating) {
+    if (!actorUserId) throw new Error("An authenticated actor is required to release stock.");
+    const result = await releaseStock({ ...key, actorUserId, reason: "Loan left the approval workflow" });
+    return { operation, changed: result?.changed ?? false, stockLoanIssueId: result?.issueId };
+  }
+  if (operation === "ISSUE") {
+    const issue = await prisma.stockLoanIssue.findFirst({ where: key });
+    if (issue?.status === "ISSUED") return { operation, changed: false, stockLoanIssueId: issue.id };
+    if (!validating) throw new Error("Stock disbursement has not been confirmed; reconcile the pending action.");
+    await prisma.$transaction(async tx => { await lockInventoryTenantIfEnabled(tx, tenant.id); await verifyReservation(tx, { ...key, selection }); });
+  }
+  return { operation, changed: false };
+}
+
 export async function applyArdaInventoryWorkflowOperation(input: {
   lead: WorkflowLead;
   targetStage: WorkflowStage;
   actor: WorkflowActor;
 }): Promise<WorkflowInventoryResult> {
+  const controlled = await controlledWorkflow(input, false);
+  if (controlled) return controlled;
   const operation = getArdaInventoryWorkflowOperation(input.lead, input.targetStage);
   if (!operation) return { operation: null, changed: false };
 
@@ -548,7 +582,10 @@ export async function applyArdaInventoryWorkflowOperation(input: {
 export async function validateArdaInventoryWorkflowOperation(input: {
   lead: WorkflowLead;
   targetStage: WorkflowStage;
+  actor?: WorkflowActor;
 }): Promise<InventoryWorkflowOperation> {
+  const controlled = await controlledWorkflow(input, true);
+  if (controlled) return controlled.operation;
   const operation = getArdaInventoryWorkflowOperation(input.lead, input.targetStage);
   if (!operation) return null;
 
