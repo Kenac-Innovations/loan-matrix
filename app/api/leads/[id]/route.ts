@@ -1,3 +1,6 @@
+import { StockControlError } from "@/lib/inventory/stock-errors";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
+import { withStockLeadEdit } from "@/lib/inventory/stock-lead-edit";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -157,6 +160,7 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (error) {
+    if (error instanceof StockControlError) return buildFineractErrorResponse(error);
     console.error("Error fetching lead:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -196,7 +200,7 @@ export async function PUT(
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    const updatedLead = await prisma.lead.update({
+    const updatedLead = await withStockLeadEdit(prisma, existingLead.id, session.user, body, tx => tx.lead.update({
       where: {
         id: existingLead.id,
       },
@@ -213,10 +217,11 @@ export async function PUT(
         },
         entityBankAccounts: { orderBy: { sortOrder: "asc" } },
       },
-    });
+    }));
 
     return NextResponse.json(updatedLead);
   } catch (error) {
+    if (error instanceof StockControlError) return buildFineractErrorResponse(error);
     console.error("Error updating lead:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -274,7 +279,7 @@ export async function PATCH(
       updateData.loanSubmissionDate = new Date(updateData.loanSubmissionDate);
     }
 
-    const updatedLead = await prisma.lead.update({
+    const updatedLead = await withStockLeadEdit(prisma, lead.id, session.user, updateData, tx => tx.lead.update({
       where: {
         id: lead.id,
       },
@@ -282,7 +287,7 @@ export async function PATCH(
         ...updateData,
         updatedAt: new Date(),
       },
-    });
+    }));
 
     console.log("Lead updated successfully:", {
       id: updatedLead.id,
@@ -292,6 +297,7 @@ export async function PATCH(
 
     return NextResponse.json(updatedLead);
   } catch (error) {
+    if (error instanceof StockControlError) return buildFineractErrorResponse(error);
     console.error("=== ERROR UPDATING LEAD ===");
     console.error(
       "Error type:",

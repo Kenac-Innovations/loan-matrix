@@ -1064,6 +1064,7 @@ export class TeamAwareStateMachineService {
       try {
         await validateArdaInventoryWorkflowOperation({
           lead,
+          actor: { userId: request.triggeredBy },
           targetStage: targetStage || {},
         });
       } catch (inventoryError) {

@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { InventoryTabs } from "./components/inventory-tabs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Banknote,
   Boxes,
   ClipboardList,
   Loader2,
@@ -23,7 +22,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Option = {
   value: string;
@@ -116,7 +114,6 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [savingItem, setSavingItem] = useState(false);
   const [receivingStock, setReceivingStock] = useState(false);
-  const [hasInventoryFinance, setHasInventoryFinance] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -181,7 +178,7 @@ export default function InventoryPage() {
         throw new Error("Inventory information could not be loaded.");
       }
 
-      const [configData, itemsData, balancesData, movementsData, tenantData] =
+      const [configData, itemsData, balancesData, movementsData] =
         await Promise.all([
           configResponse.json(),
           itemsResponse.json(),
@@ -194,7 +191,6 @@ export default function InventoryPage() {
       setItems(itemsData);
       setBalances(balancesData);
       setMovements(movementsData);
-      setHasInventoryFinance(tenantData?.settings?.features?.hasInventoryFinance === true);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Inventory load failed.");
     } finally {
@@ -327,19 +323,7 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {hasInventoryFinance && (
-            <Tabs value="stock-control">
-              <TabsList>
-                <TabsTrigger value="stock-control">Stock Control</TabsTrigger>
-                <TabsTrigger value="financials" asChild>
-                  <Link href="/inventory/finances">
-                    <Banknote className="mr-2 h-4 w-4" />
-                    Financials
-                  </Link>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
+          <InventoryTabs />
           <Button onClick={loadInventory} variant="outline" disabled={loading}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
