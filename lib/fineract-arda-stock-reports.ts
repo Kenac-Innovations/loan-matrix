@@ -23,6 +23,11 @@ export const ARDA_STOCK_REPORT_NAMES = [
   "ARDA Stock Item Performance",
 ] as const;
 
+export const ARDA_SUMMARY_REPORT_NAMES = [
+  "ARDA Disbursements by Month",
+  "ARDA Outstanding Balance by Branch",
+] as const;
+
 const reportParameters = (stockItemParameterId: number) => [
   { parameterId: 1, reportParameterName: "startDate" },
   { parameterId: 2, reportParameterName: "endDate" },
@@ -170,6 +175,83 @@ SELECT month AS "Month",
 FROM monthly
 ORDER BY month DESC, "Monthly Sales Rank" NULLS LAST, stock_item_name`;
 
+const monthlyDisbursementDetailSql = `SELECT
+       date_trunc('month', lt.transaction_date)::date AS "Disbursement Month",
+       lt.transaction_date AS "Disbursement Date",
+       lt.id AS "Transaction ID",
+       o.name AS "Office",
+       mc.display_name AS "Client Name",
+       mc.account_no AS "Client Account",
+       ml.account_no AS "Loan Account",
+       lp.name AS "Loan Product",
+       ml.currency_code AS "Currency",
+       lt.amount AS "Disbursed Amount",
+       COALESCE(ml.principal_repaid_derived, 0) AS "Principal Repaid",
+       COALESCE(ml.total_repayment_derived, 0) AS "Total Repaid",
+       COALESCE(ml.total_outstanding_derived, 0) AS "Outstanding Amount",
+       COALESCE(asd.stock_item_name, 'Not captured') AS "Stock Item",
+       COALESCE(asd.unit_of_measure, 'Not captured') AS "Unit",
+       asd.quantity AS "Quantity",
+       asd.unit_value AS "Unit Value",
+       COALESCE(asd.total_stock_value, lt.amount) AS "Stock Value",
+       COALESCE(ls.enum_value, 'Unknown') AS "Loan Status"
+FROM m_loan_transaction lt
+JOIN m_loan ml ON ml.id = lt.loan_id
+JOIN m_client mc ON mc.id = ml.client_id
+JOIN m_office o ON o.id = mc.office_id
+  AND o.hierarchy LIKE concat('\${currentUserHierarchy}', '%')
+LEFT JOIN m_product_loan lp ON lp.id = ml.product_id
+LEFT JOIN arda_stock_details asd ON asd.loan_id = ml.id
+LEFT JOIN r_enum_value ls ON ls.enum_id = ml.loan_status_id
+  AND ls.enum_name = 'loan_status_id'
+WHERE lt.transaction_type_enum = 1
+  AND lt.is_reversed = false
+  AND lt.transaction_date::date BETWEEN '\${startDate}'::date AND '\${endDate}'::date
+  AND ('\${officeId}' = '-1' OR o.hierarchy LIKE concat((SELECT hierarchy FROM m_office WHERE id = '\${officeId}'::bigint), '%'))
+  AND ('\${currencyId}' = '-1' OR ml.currency_code = '\${currencyId}')
+  AND ('\${loanProductId}' = '-1' OR ml.product_id = '\${loanProductId}'::bigint)
+ORDER BY lt.transaction_date DESC, o.name, mc.display_name`;
+
+const outstandingBalanceDetailSql = `SELECT
+       o.name AS "Office",
+       mc.display_name AS "Client Name",
+       mc.account_no AS "Client Account",
+       ml.account_no AS "Loan Account",
+       lp.name AS "Loan Product",
+       ml.disbursedon_date AS "Disbursement Date",
+       ml.expected_maturedon_date AS "Maturity Date",
+       ml.currency_code AS "Currency",
+       COALESCE(ml.principal_disbursed_derived, 0) AS "Principal Disbursed",
+       COALESCE(ml.principal_repaid_derived, 0) AS "Principal Repaid",
+       COALESCE(ml.principal_outstanding_derived, 0) AS "Principal Outstanding",
+       COALESCE(ml.interest_charged_derived, 0) AS "Interest Charged",
+       COALESCE(ml.interest_repaid_derived, 0) AS "Interest Repaid",
+       COALESCE(ml.interest_outstanding_derived, 0) AS "Interest Outstanding",
+       COALESCE(ml.fee_charges_outstanding_derived, 0) AS "Fees Outstanding",
+       COALESCE(ml.penalty_charges_outstanding_derived, 0) AS "Penalties Outstanding",
+       COALESCE(ml.total_repayment_derived, 0) AS "Total Repaid",
+       COALESCE(ml.total_outstanding_derived, 0) AS "Total Outstanding",
+       COALESCE(asd.stock_item_name, 'Not captured') AS "Stock Item",
+       COALESCE(asd.unit_of_measure, 'Not captured') AS "Unit",
+       asd.quantity AS "Quantity",
+       asd.unit_value AS "Unit Value",
+       COALESCE(asd.total_stock_value, ml.principal_disbursed_derived) AS "Stock Value",
+       COALESCE(ls.enum_value, 'Unknown') AS "Loan Status"
+FROM m_loan ml
+JOIN m_client mc ON mc.id = ml.client_id
+JOIN m_office o ON o.id = mc.office_id
+  AND o.hierarchy LIKE concat('\${currentUserHierarchy}', '%')
+LEFT JOIN m_product_loan lp ON lp.id = ml.product_id
+LEFT JOIN arda_stock_details asd ON asd.loan_id = ml.id
+LEFT JOIN r_enum_value ls ON ls.enum_id = ml.loan_status_id
+  AND ls.enum_name = 'loan_status_id'
+WHERE ml.disbursedon_date::date BETWEEN '\${startDate}'::date AND '\${endDate}'::date
+  AND COALESCE(ml.total_outstanding_derived, 0) > 0
+  AND ('\${officeId}' = '-1' OR o.hierarchy LIKE concat((SELECT hierarchy FROM m_office WHERE id = '\${officeId}'::bigint), '%'))
+  AND ('\${currencyId}' = '-1' OR ml.currency_code = '\${currencyId}')
+  AND ('\${loanProductId}' = '-1' OR ml.product_id = '\${loanProductId}'::bigint)
+ORDER BY o.name, mc.display_name, ml.account_no`;
+
 export function buildArdaStockReportDefinitions(
   stockItemParameterId: number
 ): FineractReportDefinition[] {
@@ -217,6 +299,52 @@ export function buildArdaStockReportDefinitions(
       useReport: true,
       reportSql: performanceSql,
       reportParameters: reportParameters(stockItemParameterId),
+    },
+  ];
+}
+
+const STOCK_ITEM_FILTER_SQL =
+  /\n\s+AND \('\$\{stockItemId\}' = '-1' OR asd\.stock_item_id = '\$\{stockItemId\}'\)/;
+
+export function buildArdaStockReportApiDefinitions(): FineractReportDefinition[] {
+  return buildArdaStockReportDefinitions(1)
+    .slice(1)
+    .map((report) => ({
+      ...report,
+      reportSql: report.reportSql.replace(STOCK_ITEM_FILTER_SQL, ""),
+      reportParameters: report.reportParameters?.filter(
+        (parameter) => parameter.reportParameterName !== "stockItemId"
+      ),
+    }));
+}
+
+export function buildArdaSummaryReportApiDefinitions(): FineractReportDefinition[] {
+  const apiParameters = reportParameters(1).filter(
+    (parameter) => parameter.reportParameterName !== "stockItemId"
+  );
+  const common = {
+    reportType: "Table" as const,
+    reportSubType: "",
+    reportCategory: "Loan",
+    useReport: true,
+  };
+
+  return [
+    {
+      ...common,
+      reportName: ARDA_SUMMARY_REPORT_NAMES[0],
+      description:
+        "ARDA disbursements with monthly grouping, client, stock, repayment, and balance detail.",
+      reportSql: monthlyDisbursementDetailSql,
+      reportParameters: apiParameters,
+    },
+    {
+      ...common,
+      reportName: ARDA_SUMMARY_REPORT_NAMES[1],
+      description:
+        "ARDA outstanding balances by branch with client, loan, stock, and finance detail.",
+      reportSql: outstandingBalanceDetailSql,
+      reportParameters: apiParameters,
     },
   ];
 }
