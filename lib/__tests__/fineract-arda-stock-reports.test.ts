@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   ARDA_STOCK_ITEM_OPTIONS_REPORT,
   ARDA_STOCK_REPORT_NAMES,
+  buildArdaStockReportApiDefinitions,
   buildArdaStockReportDefinitions,
 } from "../fineract-arda-stock-reports";
 
@@ -58,6 +59,24 @@ test("uses standard Fineract parameters plus the supplied stock item parameter",
       ),
       expectedNames
     );
+  }
+});
+
+test("builds API-only definitions with standard Fineract filters", () => {
+  const reports = buildArdaStockReportApiDefinitions();
+
+  assert.deepEqual(
+    reports.map((report) => report.reportName),
+    ARDA_STOCK_REPORT_NAMES
+  );
+  for (const report of reports) {
+    assert.deepEqual(
+      report.reportParameters?.map(
+        (parameter) => parameter.reportParameterName
+      ),
+      ["startDate", "endDate", "officeId", "currencyId", "loanProductId"]
+    );
+    assert.doesNotMatch(report.reportSql, /\$\{stockItemId\}/);
   }
 });
 

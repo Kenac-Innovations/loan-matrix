@@ -220,3 +220,18 @@ export function buildArdaStockReportDefinitions(
     },
   ];
 }
+
+const STOCK_ITEM_FILTER_SQL =
+  /\n\s+AND \('\$\{stockItemId\}' = '-1' OR asd\.stock_item_id = '\$\{stockItemId\}'\)/;
+
+export function buildArdaStockReportApiDefinitions(): FineractReportDefinition[] {
+  return buildArdaStockReportDefinitions(1)
+    .slice(1)
+    .map((report) => ({
+      ...report,
+      reportSql: report.reportSql.replace(STOCK_ITEM_FILTER_SQL, ""),
+      reportParameters: report.reportParameters?.filter(
+        (parameter) => parameter.reportParameterName !== "stockItemId"
+      ),
+    }));
+}
