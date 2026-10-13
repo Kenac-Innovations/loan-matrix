@@ -28,6 +28,8 @@ export interface TenantFeatures {
   hasCreditFacility: boolean;
   /** Enable finance reporting for tenant-managed inventory */
   hasInventoryFinance: boolean;
+  hasInventoryReports: boolean;
+  enforceStockAvailability: boolean;
   /** Default lead pipeline to all dates instead of today's date */
   showAllLeadsByDefault: boolean;
   /** Omama-only office-scoped dashboard for Admin/Administrator users on the leads page */
@@ -197,6 +199,8 @@ export const DEFAULT_FEATURES: TenantFeatures = {
   hasRevolvingCredit: false,
   hasCreditFacility: false,
   hasInventoryFinance: false,
+  hasInventoryReports: false,
+  enforceStockAvailability: false,
   showAllLeadsByDefault: false,
   officeScopedAdminLeadsDashboard: false,
   topupLoanBalanceExcludeUnrealizedInterests: false,
