@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { InventoryTabs } from "./components/inventory-tabs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Banknote,
   Boxes,
   ClipboardList,
   Loader2,
@@ -160,19 +159,21 @@ export default function InventoryPage() {
     setError(null);
 
     try {
-      const [configResponse, itemsResponse, balancesResponse, movementsResponse] =
+      const [configResponse, itemsResponse, balancesResponse, movementsResponse, tenantResponse] =
         await Promise.all([
         fetch("/api/inventory/config"),
         fetch("/api/inventory/items"),
         fetch("/api/inventory/balances"),
         fetch("/api/inventory/movements"),
+        fetch("/api/tenant"),
       ]);
 
       if (
         !configResponse.ok ||
         !itemsResponse.ok ||
         !balancesResponse.ok ||
-        !movementsResponse.ok
+        !movementsResponse.ok ||
+        !tenantResponse.ok
       ) {
         throw new Error("Inventory information could not be loaded.");
       }
@@ -183,6 +184,7 @@ export default function InventoryPage() {
           itemsResponse.json(),
           balancesResponse.json(),
           movementsResponse.json(),
+          tenantResponse.json(),
         ]);
 
       setConfig(configData);
@@ -321,12 +323,7 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href="/inventory/finances">
-              <Banknote className="mr-2 h-4 w-4" />
-              Inventory Finances
-            </Link>
-          </Button>
+          <InventoryTabs />
           <Button onClick={loadInventory} variant="outline" disabled={loading}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh

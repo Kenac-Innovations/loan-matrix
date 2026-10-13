@@ -1323,6 +1323,7 @@ model InventoryBalance {
 }
 
 model StockLoanIssue {
+  reservationGeneration Int @default(0)
   id               String              @id @default(cuid())
   tenantId         String
   leadId           String?             @unique
@@ -2004,4 +2005,22 @@ model RevolvingCreditRepayment {
 
   @@index([facilityId])
   @@index([drawdownId])
+}
+
+model StockActionOperation {
+  id String @id @default(cuid())
+  tenantId String
+  leadId String
+  loanId Int
+  command String
+  operationKey String
+  generation Int
+  status String @default("PREPARED")
+  requestSnapshot Json
+  result Json?
+  failureReason String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, operationKey])
+  @@index([tenantId, leadId, status])
 }

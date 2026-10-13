@@ -1,3 +1,4 @@
+import { StockApprovalSummary } from "../../inventory/components/stock-approval-summary";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -824,6 +825,7 @@ export default async function LeadDetailPage({
         </div>
       </div>
 
+      <StockApprovalSummary leadId={id} />
       <div className="mt-4 sm:mt-6 grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-3">
         <div className="lg:col-span-2 min-w-0">
           <LeadDetailTabs

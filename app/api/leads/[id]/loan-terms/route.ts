@@ -1,3 +1,7 @@
+import { StockControlError } from "@/lib/inventory/stock-errors";
+import { buildFineractErrorResponse } from "@/lib/fineract-route-error";
+import { withStockLeadEdit } from "@/lib/inventory/stock-lead-edit";
+import { getSession } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTenantBySlug, extractTenantSlugFromRequest } from "@/lib/tenant-service";
@@ -29,6 +33,7 @@ export async function POST(
     const lead = await prisma.lead.findUnique({
       where: {
         id: leadId,
+        tenantId: tenant.id,
       },
       select: {
         id: true,
@@ -98,13 +103,9 @@ export async function POST(
     
     console.log("Saving loan terms with charges:", data.charges);
 
-    const updatedLead = await prisma.lead.update({
-      where: { id: leadId },
-      data: {
-        stateMetadata: updatedMetadata,
-        lastModified: new Date(),
-      },
-    });
+    const updateData = {stateMetadata: updatedMetadata, lastModified: new Date()};
+    const session = await getSession();
+    const updatedLead = await withStockLeadEdit(prisma, leadId, session?.user, updateData, tx => tx.lead.update({where: {id: leadId},data: updateData}));
 
     console.log("Successfully updated lead with loan terms:", updatedLead.id);
 
@@ -114,6 +115,7 @@ export async function POST(
       message: "Loan terms saved successfully.",
     });
   } catch (error) {
+    if (error instanceof StockControlError) return buildFineractErrorResponse(error);
     console.error("Error saving loan terms:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
@@ -146,6 +148,7 @@ export async function GET(
     const lead = await prisma.lead.findUnique({
       where: {
         id: leadId,
+        tenantId: tenant.id,
       },
       select: {
         facilityType: true,
@@ -188,6 +191,7 @@ export async function GET(
       data: loanTerms,
     });
   } catch (error) {
+    if (error instanceof StockControlError) return buildFineractErrorResponse(error);
     console.error("Error fetching loan terms:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";

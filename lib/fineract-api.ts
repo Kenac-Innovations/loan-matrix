@@ -1643,6 +1643,13 @@ export class FineractAPIService {
     }
   }
 
+  private async stockCommand(endpoint: string, payload: Record<string, unknown>): Promise<any> {
+    const execute = async (body: Record<string, unknown>) => (await this.client.post(endpoint, body)).data;
+    if (this.client.defaults.headers["Fineract-Platform-TenantId"] !== "arda") return execute(payload);
+    const { guardStockRequest } = await import("./inventory/stock-request-guard");
+    return guardStockRequest(endpoint, "POST", payload, execute);
+  }
+
   async approveLoan(
     loanId: number,
     approvalDate?: string,
@@ -1652,7 +1659,7 @@ export class FineractAPIService {
       const today = new Date();
       const formattedDate = approvalDate ||
         `${today.getDate()} ${today.toLocaleString("en", { month: "long" })} ${today.getFullYear()}`;
-      const response: AxiosResponse<any> = await this.client.post(
+      const response = await this.stockCommand(
         `/loans/${loanId}?command=approve`,
         {
           approvedOnDate: formattedDate,
@@ -1664,7 +1671,7 @@ export class FineractAPIService {
           ...(options?.note && { note: options.note }),
         }
       );
-      return response.data;
+      return response;
     } catch (error: any) {
       console.error("Error approving loan:", { message: error.message, status: error.response?.status, data: error.response?.data });
       throw error;
@@ -1676,7 +1683,7 @@ export class FineractAPIService {
       const today = new Date();
       const formattedDate = disbursementDate ||
         `${today.getDate()} ${today.toLocaleString("en", { month: "long" })} ${today.getFullYear()}`;
-      const response: AxiosResponse<any> = await this.client.post(
+      const response = await this.stockCommand(
         `/loans/${loanId}?command=disburse`,
         {
           actualDisbursementDate: formattedDate,
@@ -1693,7 +1700,7 @@ export class FineractAPIService {
           ...(paymentDetails?.note && { note: paymentDetails.note }),
         }
       );
-      return response.data;
+      return response;
     } catch (error: any) {
       console.error("Error disbursing loan:", { message: error.message, status: error.response?.status, data: error.response?.data });
       throw error;
@@ -1705,11 +1712,11 @@ export class FineractAPIService {
       const today = new Date();
       const formattedDate = rejectionDate ||
         `${today.getDate()} ${today.toLocaleString("en", { month: "long" })} ${today.getFullYear()}`;
-      const response: AxiosResponse<any> = await this.client.post(
+      const response = await this.stockCommand(
         `/loans/${loanId}?command=reject`,
         { rejectedOnDate: formattedDate, dateFormat: "dd MMMM yyyy", locale: "en", ...(note && { note }) }
       );
-      return response.data;
+      return response;
     } catch (error: any) {
       console.error("Error rejecting loan:", { message: error.message, status: error.response?.status, data: error.response?.data });
       throw error;
