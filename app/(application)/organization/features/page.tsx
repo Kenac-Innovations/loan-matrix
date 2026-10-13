@@ -114,6 +114,13 @@ const FEATURE_CONFIGS: FeatureConfig[] = [
     tag: "New",
   },
   {
+    key: "hasInventoryFinance",
+    label: "Inventory Finance",
+    description:
+      "Enable the inventory finance tab with stock cost, issued value, repayment, recovery, and profit reporting.",
+    tag: "New",
+  },
+  {
     key: "autoResolveRepaymentCashier",
     label: "Auto-Resolve Repayment Cashier",
     description:

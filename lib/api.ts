@@ -1,3 +1,4 @@
+import { stockCommand } from "./inventory/stock-command-policy";
 import https from "https";
 import { getFineractTenantId as getFineractTenantIdFromService } from "./fineract-tenant-service";
 import { getFineractBaseUrl } from "./fineract-base-url";
@@ -217,8 +218,15 @@ export async function fetchFineractAPI(
   );
 
   try {
-    const response = await performFineractRequest(url, requestOptions, headers);
-    return readFineractResponse(response as Response, url);
+    const execute = async (body = requestOptions.body) => {
+      const response = await performFineractRequest(url, { ...requestOptions, body }, headers);
+      return readFineractResponse(response as Response, url);
+    };
+    if (headers["Fineract-Platform-TenantId"] === "arda" && stockCommand(endpoint, options.method)) {
+      const { guardStockRequest } = await import("./inventory/stock-request-guard");
+      return guardStockRequest(endpoint, options.method || "GET", typeof options.body === "string" ? JSON.parse(options.body) : {}, payload => execute(options.method === "DELETE" ? undefined : JSON.stringify(payload)));
+    }
+    return execute();
   } catch (error) {
     console.error("API request failed:", error);
     throw error;

@@ -1,3 +1,4 @@
+import { lockInventoryTenantIfEnabled } from "./inventory-lock";
 import { Prisma } from "@/app/generated/prisma";
 
 import {
@@ -190,6 +191,7 @@ async function recordMovement(
   request: MovementRequest
 ): Promise<LedgerResult> {
   return db.$transaction(async (tx) => {
+    await lockInventoryTenantIfEnabled(tx, request.tenantId);
     const existingMovement = await tx.inventoryMovement.findFirst({
       where: {
         tenantId: request.tenantId,

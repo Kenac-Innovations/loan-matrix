@@ -108,7 +108,7 @@ test("loan details Fineract GET surface is wired to service auth", () => {
     },
     {
       path: "app/api/fineract/loans/[id]/disburse/route.ts",
-      pattern: /fetchFineractAPI\(`\/loans\/\$\{id\}`,\s*\{\s*authMode:\s*"service"/,
+      pattern: /fetchFineractAPI\(`\/loans\/\$\{id\}`,\s*\{\s*authMode:\s*["']service["']/,
     },
     {
       path: "app/api/fineract/loans/[id]/undodisbursal/route.ts",

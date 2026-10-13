@@ -41,19 +41,17 @@ function run() {
   );
 
   assert.equal(
-    getTenantFeatures({
-      settings: {
-        features: { restrictSensitiveClientEditFieldsToSuperAdmin: true },
-      },
-    }).restrictSensitiveClientEditFieldsToSuperAdmin,
-    true,
-    "surfaces the new restricted client field flag when set"
+    getTenantFeatures(null).hasInventoryFinance,
+    false,
+    "inventory finance defaults to disabled for every tenant"
   );
 
   assert.equal(
-    getTenantFeatures(null).restrictSensitiveClientEditFieldsToSuperAdmin,
-    false,
-    "restrictSensitiveClientEditFieldsToSuperAdmin defaults to false"
+    getTenantFeatures({
+      settings: { features: { hasInventoryFinance: true } },
+    }).hasInventoryFinance,
+    true,
+    "surfaces the database-backed inventory finance setting when enabled"
   );
 }
 
