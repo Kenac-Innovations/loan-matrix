@@ -1,3 +1,4 @@
+import { lockInventoryTenantIfEnabled } from "./inventory-lock";
 import { Prisma } from "@/app/generated/prisma";
 
 import { applyInventoryMovement, InventoryLedgerError } from "./inventory-ledger";
@@ -44,6 +45,7 @@ function normalizeBalance(balance: Record<string, unknown>) {
 
 export async function issueInventoryStock(db: InventoryDb, request: IssueRequest) {
   return db.$transaction(async (tx) => {
+    await lockInventoryTenantIfEnabled(tx, request.tenantId);
     const existingMovement = await tx.inventoryMovement.findFirst({
       where: { tenantId: request.tenantId, idempotencyKey: request.idempotencyKey },
     });

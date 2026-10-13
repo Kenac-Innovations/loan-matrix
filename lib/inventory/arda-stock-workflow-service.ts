@@ -1,3 +1,4 @@
+import { lockInventoryTenantIfEnabled } from "./inventory-lock";
 import { Prisma } from "@/app/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { isArdaTenantSlug } from "@/lib/arda-tenant";
@@ -528,6 +529,7 @@ export async function applyArdaInventoryWorkflowOperation(input: {
   if (!details) return { operation: null, changed: false };
 
   return prisma.$transaction(async (tx) => {
+    await lockInventoryTenantIfEnabled(tx, input.lead.tenantId);
     if (operation === "RESERVE") {
       return reserveStockForLead(tx, input.lead, details, input.actor);
     }
