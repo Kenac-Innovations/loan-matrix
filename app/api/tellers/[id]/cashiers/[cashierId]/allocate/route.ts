@@ -6,6 +6,7 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession } from "@/lib/auth";
 import { getOrgCurrencyForWrite } from "@/lib/currency-utils";
 import { getGlAccountBalance } from "@/lib/gl-balance";
+import { pendingClosureBlockResponse } from "@/lib/cashier-session-guards";
 
 /**
  * POST /api/tellers/[id]/cashiers/[cashierId]/allocate
@@ -183,6 +184,10 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    // Check if session closure is pending
+    const blocked = await pendingClosureBlockResponse(tenant.id, cashier?.id);
+    if (blocked) return blocked;
 
     // Note: No session required for allocating cash to cashier
     // Cash allocation happens BEFORE starting a session - the allocated cash becomes the opening float

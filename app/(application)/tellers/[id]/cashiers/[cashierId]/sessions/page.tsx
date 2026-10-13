@@ -96,7 +96,9 @@ export default function SessionsHistoryPage({
     const colors: Record<string, string> = {
       NOT_STARTED: "bg-gray-500",
       ACTIVE: "bg-green-500",
+      PENDING_CLOSURE: "bg-orange-500",
       CLOSED: "bg-yellow-500",
+      REJECTED: "bg-red-500",
       CLOSED_VERIFIED: "bg-blue-500",
     };
 

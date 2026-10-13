@@ -49,6 +49,11 @@ export function mapApiPermissionsToSpecific(
     // Special permissions
     ALL_FUNCTIONS: SpecificPermission.ALL_FUNCTIONS,
     ALL_FUNCTIONS_READ: SpecificPermission.ALL_FUNCTIONS_READ,
+
+    // Teller permissions
+    SETTLECASHFROMCASHIER_TELLER: SpecificPermission.SETTLECASHFROMCASHIER_TELLER,
+    CLOSESESSION_CASHIER: SpecificPermission.CLOSESESSION_CASHIER,
+    READ_CASHRECONCILIATION: SpecificPermission.READ_CASHRECONCILIATION,
   };
 
   // Map API permissions to our specific permissions

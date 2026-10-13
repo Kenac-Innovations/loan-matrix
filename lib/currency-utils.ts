@@ -34,7 +34,7 @@ export function createOrgCurrencyResolver(deps: {
   const now = deps.now ?? Date.now;
 
   /** Returns null when Fineract cannot be reached. */
-  return async function resolveOrgCurrency(): Promise<CurrencyCacheEntry | null> {
+  async function resolveOrgCurrency(): Promise<CurrencyCacheEntry | null> {
     let key: string | null = null;
     try {
       key = await deps.getTenantKey();
@@ -70,7 +70,18 @@ export function createOrgCurrencyResolver(deps: {
     }
 
     return null;
-  };
+  }
+
+  /** Drops the current tenant's entry so the next call refetches. */
+  async function invalidate(): Promise<void> {
+    try {
+      cache.delete(await deps.getTenantKey());
+    } catch {
+      // No tenant resolved, so nothing was cached for it.
+    }
+  }
+
+  return Object.assign(resolveOrgCurrency, { invalidate });
 }
 
 const resolveOrgCurrency = createOrgCurrencyResolver({
@@ -78,11 +89,16 @@ const resolveOrgCurrency = createOrgCurrencyResolver({
   fetchCurrencies: () => fetchFineractAPI("/currencies"),
 });
 
+/** Call after the tenant's enabled currencies change in Fineract. */
+export async function invalidateOrgCurrencyCache(): Promise<void> {
+  await resolveOrgCurrency.invalidate();
+}
+
 /**
  * Normalize currency code - converts deprecated ZMK to ZMW.
  * Fineract may return ZMK (old Zambian Kwacha code pre-2013 redenomination).
  */
-function normalizeCode(code: string): string {
+export function normalizeCode(code: string): string {
   if (code.toUpperCase() === "ZMK") return "ZMW";
   return code;
 }

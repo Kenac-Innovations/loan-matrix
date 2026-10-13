@@ -5,6 +5,8 @@ import { getFineractServiceWithSession } from "./fineract-api";
 import { applyTopupDisbursementCharges } from "./topup-disbursement-charge-service";
 import { getPaymentTypeInfo, isPaymentTypeCash } from "./cash-repayment-teller";
 import { resolveCurrentUserCashierContext } from "./current-user-cashier";
+import { assertCashierNotPendingClosure } from "./cashier-session-guards";
+import { assertCashDisbursementAllowed, assertCashPaymentGate } from "./cashier-session-disbursement-gate";
 import {
   shouldBypassCashierRestrictionsForLoanDisbursement,
   shouldSkipManualFineractCashierSettleForLoanDisbursement,
@@ -359,6 +361,29 @@ export class TeamAwareStateMachineService {
       if (!paymentTypeIsCash) {
         throw new Error("Cash payout requires a cash disbursement payment type");
       }
+
+      // Resolve explicit cashier DB id and check session closure compliance
+      let explicitCashierId: string | undefined;
+      if (overrides.cashierId) {
+        const rawId = String(overrides.cashierId);
+        const cashierRecord = await prisma.cashier.findFirst({
+          where: {
+            tenantId: lead.tenantId,
+            OR: [
+              { id: rawId },
+              ...(Number.isFinite(Number(rawId)) ? [{ fineractCashierId: Number(rawId) }] : []),
+            ],
+          },
+          select: { id: true },
+        });
+        explicitCashierId = cashierRecord?.id;
+      }
+      await assertCashDisbursementAllowed({
+        tenantId: lead.tenantId,
+        isCash: true,
+        fineractUserId: triggeredBy,
+        cashierIds: explicitCashierId ? [explicitCashierId] : undefined,
+      });
 
       if (!overrides.tellerId || !overrides.cashierId) {
         const cashierContext = await resolveCurrentUserCashierContext(
@@ -940,6 +965,20 @@ export class TeamAwareStateMachineService {
             message: transitionGuard.message || "Fineract transition blocked",
           };
         }
+      }
+
+      // Gate cash disbursements/payouts before any skipped-stage Fineract actions (e.g.
+      // approve/disburse), so a blocked cashier can't leave the loan half-progressed.
+      if (
+        !isBackward &&
+        (targetStage?.fineractAction === "disburse" || targetStage?.fineractAction === "payout")
+      ) {
+        await assertCashPaymentGate({
+          tenantId: lead.tenantId,
+          payoutMethod: request.fineractOverrides?.payoutMethod,
+          paymentTypeId: request.fineractOverrides?.paymentTypeId,
+          fineractUserId: request.triggeredBy,
+        });
       }
 
       // 1d. Execute Fineract actions from skipped stages in pipeline order
@@ -1857,6 +1896,15 @@ export class TeamAwareStateMachineService {
             ? loanDisbursementAmount
             : undefined);
 
+        // Gate cash disbursements (module-off tenants make no extra calls).
+        if (lead?.tenantId && disbursementPaymentTypeId) {
+          await assertCashPaymentGate({
+            tenantId: lead.tenantId,
+            paymentTypeId: disbursementPaymentTypeId,
+            fineractUserId: triggeredBy,
+          });
+        }
+
         await fineract.disburseLoan(fineractLoanId, disburseDate, {
           paymentTypeId: disbursementPaymentTypeId,
           accountNumber:
@@ -2348,6 +2396,17 @@ export class TeamAwareStateMachineService {
       const fineractCashierId =
         cashier?.fineractCashierId ??
         (Number.isNaN(rawCashierId) ? null : rawCashierId);
+
+      // Ensure cashier is not in PENDING_CLOSURE state (freeze gap for session closure)
+      await assertCashierNotPendingClosure(lead.tenantId, cashier?.id);
+
+      // Check session closure compliance for cash disbursements
+      await assertCashDisbursementAllowed({
+        tenantId: lead.tenantId,
+        isCash: true,
+        fineractUserId: triggeredBy,
+        cashierIds: cashier?.id ? [cashier.id] : undefined,
+      });
 
       // Format date for Fineract
       const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];

@@ -37,9 +37,11 @@ import { ReconcileCashModal } from "./components/reconcile-cash-modal";
 // TransactionsModal replaced with dedicated page at /tellers/[id]/cashiers/[cashierId]/transactions
 import { StartSessionModal } from "./components/start-session-modal";
 import { CloseSessionModal } from "./components/close-session-modal";
+import { ManagerCloseSessionModal } from "./components/manager-close-session-modal";
 import { EditCashierModal } from "./components/edit-cashier-modal";
 import { CashInModal } from "./components/cash-in-modal";
 import { CashOutModal } from "./components/cash-out-modal";
+import { SessionClosureEnforcementModal } from "./components/session-closure-enforcement-modal";
 import {
   DollarSign,
   Wallet,
@@ -72,6 +74,7 @@ interface Cashier {
   isFullDay: boolean;
   status?: string;
   sessionStatus?: string;
+  closureWorkflow?: "TWO_STEP" | "LEGACY";
   allocatedBalance?: number;
   availableBalance?: number;
   openingFloat?: number;
@@ -81,6 +84,13 @@ interface Cashier {
   expectedBalance?: number;
   currencyCode?: string;
   balance?: number; // Fineract cash position computed by /api/tellers/[id]/cashiers
+  sessionClosureEnforcement?: {
+    mode: "ENFORCE" | "EXEMPT" | "INHERIT";
+    enforced: boolean;
+    source?: "CASHIER" | "TENANT_DEFAULT";
+    reason?: "MODULE_OFF" | "CASHIER_EXEMPT" | "NOT_ENROLLED";
+    enforcedFrom?: Date;
+  } | null;
 }
 
 interface CashierSessionData {
@@ -171,9 +181,16 @@ export default function CashiersPage({
   const [showEditCashierModal, setShowEditCashierModal] = useState(false);
   const [showStartSessionModal, setShowStartSessionModal] = useState(false);
   const [showCloseSessionModal, setShowCloseSessionModal] = useState(false);
+  const [showManagerCloseSessionModal, setShowManagerCloseSessionModal] =
+    useState(false);
   const [showCashInModal, setShowCashInModal] = useState(false);
   const [showCashOutModal, setShowCashOutModal] = useState(false);
+  const [showSessionClosureEnforcementModal, setShowSessionClosureEnforcementModal] =
+    useState(false);
   const [selectedCashier, setSelectedCashier] = useState<Cashier | null>(null);
+  const [closeSessionWorkflow, setCloseSessionWorkflow] = useState<
+    "TWO_STEP" | "LEGACY"
+  >("LEGACY");
   const [sessionData, setSessionData] = useState<CashierSessionData | null>(
     null
   );
@@ -350,18 +367,18 @@ export default function CashiersPage({
     loadParams();
   }, [fetchStaff, fetchSystemCurrency, params, refreshCashiers]);
 
-  // Auto-refresh balances for active sessions
+  // Auto-refresh balances for active or pending closure sessions
   useEffect(() => {
     if (!tellerId) return;
 
     const interval = setInterval(() => {
       // Skip background tabs: every refresh queries Fineract for each cashier
       if (document.visibilityState === "hidden") return;
-      // Only refresh if there are active sessions
-      const hasActiveSession = cashiers.some(
-        (c) => c.sessionStatus === "ACTIVE"
+      // Refresh if there are active or pending closure sessions
+      const hasActiveOrPendingSession = cashiers.some(
+        (c) => c.sessionStatus === "ACTIVE" || c.sessionStatus === "PENDING_CLOSURE"
       );
-      if (hasActiveSession && systemCurrency) {
+      if (hasActiveOrPendingSession && systemCurrency) {
         fetchCashierBalances(tellerId, systemCurrency);
       }
     }, 30000); // Refresh every 30 seconds
@@ -543,18 +560,26 @@ export default function CashiersPage({
         const colors: Record<string, string> = {
           NOT_STARTED: "bg-gray-500",
           ACTIVE: "bg-green-500",
+          PENDING_CLOSURE: "bg-orange-500",
           CLOSED: "bg-yellow-500",
           SETTLED: "bg-purple-500",
           CLOSED_VERIFIED: "bg-blue-500",
         };
         return (
-          <Badge
-            className={
-              colors[sessionStatus] ? `${colors[sessionStatus]} text-white` : ""
-            }
-          >
-            {sessionStatus.replace("_", " ")}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge
+              className={
+                colors[sessionStatus] ? `${colors[sessionStatus]} text-white` : ""
+              }
+            >
+              {sessionStatus.replace("_", " ")}
+            </Badge>
+            {cashier.sessionClosureEnforcement?.enforced && (
+              <Badge variant="secondary" className="text-xs">
+                Enforced
+              </Badge>
+            )}
+          </div>
         );
       },
     },
@@ -568,9 +593,13 @@ export default function CashiersPage({
           cashier.status === "CLOSED" || cashier.status === "SETTLED";
 
         const sessionStatus = cashier.sessionStatus || "NOT_STARTED";
+        const closureWorkflow = cashier.closureWorkflow || "LEGACY";
         const canStartSession =
           sessionStatus === "NOT_STARTED" || sessionStatus === "CLOSED";
         const canCloseSession = sessionStatus === "ACTIVE";
+        // Permission and segregation are checked by the modal (GET session) and the API.
+        const canManagerClose =
+          sessionStatus === "PENDING_CLOSURE" && closureWorkflow === "TWO_STEP";
 
         return (
           <DropdownMenu>
@@ -615,11 +644,26 @@ export default function CashiersPage({
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedCashier(cashier);
+                    setCloseSessionWorkflow(closureWorkflow);
                     setShowCloseSessionModal(true);
                   }}
                 >
                   <Square className="h-4 w-4 mr-2" />
-                  Close Session
+                  {closureWorkflow === "TWO_STEP"
+                    ? "Initiate Closure"
+                    : "Close Session"}
+                </DropdownMenuItem>
+              )}
+              {canManagerClose && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedCashier(cashier);
+                    setShowManagerCloseSessionModal(true);
+                  }}
+                >
+                  <Square className="h-4 w-4 mr-2" />
+                  Count & Close
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
@@ -704,6 +748,18 @@ export default function CashiersPage({
                 <History className="h-4 w-4 mr-2" />
                 View History
               </DropdownMenuItem>
+              {cashier.dbId && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedCashier(cashier);
+                    setShowSessionClosureEnforcementModal(true);
+                  }}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Session closure enforcement...
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -961,6 +1017,10 @@ export default function CashiersPage({
           tellerId={tellerId}
           cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
           cashierName={selectedCashier.staffName}
+          workflow={closeSessionWorkflow}
+          onSuccess={() => {
+            refreshCashiers(tellerId, systemCurrency);
+          }}
         />
       )}
 
@@ -1008,6 +1068,34 @@ export default function CashiersPage({
           tellerId={tellerId}
           cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
           cashierName={selectedCashier.staffName}
+          onSuccess={() => {
+            refreshCashiers(tellerId, systemCurrency);
+          }}
+        />
+      )}
+
+      {/* Manager Close Session Modal (TWO_STEP) */}
+      {selectedCashier && (
+        <ManagerCloseSessionModal
+          open={showManagerCloseSessionModal}
+          onOpenChange={setShowManagerCloseSessionModal}
+          tellerId={tellerId}
+          cashierId={selectedCashier.dbId || selectedCashier.id.toString()}
+          cashierName={selectedCashier.staffName}
+          onSuccess={() => {
+            refreshCashiers(tellerId, systemCurrency);
+          }}
+        />
+      )}
+
+      {/* Session Closure Enforcement Modal */}
+      {selectedCashier && (
+        <SessionClosureEnforcementModal
+          key={selectedCashier.dbId ?? selectedCashier.id}
+          open={showSessionClosureEnforcementModal}
+          onOpenChange={setShowSessionClosureEnforcementModal}
+          tellerId={tellerId}
+          cashier={selectedCashier}
           onSuccess={() => {
             refreshCashiers(tellerId, systemCurrency);
           }}

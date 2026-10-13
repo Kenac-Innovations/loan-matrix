@@ -22,6 +22,13 @@ model Tenant {
   restrictLeadVisibilityToBranches Boolean       @default(false)
   onlyOriginatorCanDisburse Boolean              @default(false)
   autoAssignLeadOnApproval Boolean               @default(false)
+  isTellerManagementModuleOn Boolean             @default(false) // enforcement switch only (no UI hidden); off = legacy session close and no disbursement blocking
+  enforceSessionClosureByDefault Boolean         @default(false) // default inherited by cashiers whose enforceSessionClosure is null
+  sessionClosureEnforcedFrom DateTime? // when tenant default was switched on; sessions before this are not enforced
+  sessionClosureSettingsUpdatedBy String?
+  sessionClosureSettingsUpdatedAt DateTime?
+  tellerModuleEnabledAt DateTime? // when the teller module was last switched on; nothing before it is enforced
+  cashVarianceTolerance  Float                   @default(0) // |variance| above this raises a CashVarianceEvent
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   alerts                 Alert[]
@@ -1019,6 +1026,10 @@ model Cashier {
   endTime           String? // HH:mm format
   status            String           @default("PENDING") // PENDING, ACTIVE, CLOSED
   isActive          Boolean          @default(true)
+  enforceSessionClosure Boolean? // null = inherit tenant default, true = enforce, false = exempt
+  sessionClosureEnforcedFrom DateTime? // set when explicitly enforced
+  sessionClosureFlagUpdatedBy String?
+  sessionClosureFlagUpdatedAt DateTime?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   teller            Teller           @relation(fields: [tellerId], references: [id], onDelete: Cascade)
@@ -1026,6 +1037,7 @@ model Cashier {
   settlements       CashSettlement[]
   sessions          CashierSession[]
   cashAllocations   CashAllocation[]
+  varianceEvents    CashVarianceEvent[]
 
   @@unique([tenantId, fineractCashierId])
   @@index([tenantId, tellerId])
@@ -1106,7 +1118,7 @@ model CashierSession {
   tellerId          String
   cashierId         String
   fineractSessionId Int?      @unique
-  sessionStatus     String    @default("NOT_STARTED") // NOT_STARTED, ACTIVE, CLOSED, CLOSED_VERIFIED
+  sessionStatus     String    @default("NOT_STARTED") // NOT_STARTED, ACTIVE, PENDING_CLOSURE, CLOSED, CLOSED_VERIFIED, REJECTED (legacy CLOSED_VERIFIED remapped in Phase 3)
   sessionStartTime  DateTime?
   sessionEndTime    DateTime?
   allocatedBalance  Float     @default(0) // Opening float
@@ -1122,15 +1134,85 @@ model CashierSession {
   comments          String?
   verifiedBy        String? // Supervisor who verified
   verifiedAt        DateTime?
+  businessDate      DateTime? @db.Date // business day (Africa/Harare) the session belongs to
+  officeId          Int?
+  currency          String? // raw Fineract currency code (e.g. ZMK)
+  fineractOpeningSummary Json?   // Snapshot of Fineract cashier summary at session start
+  fineractClosingSummary Json?   // Snapshot of Fineract cashier summary at session close
+  fineractBaselineNetCash Float? // Fineract netCash representing an empty drawer after this close
+  declaredAmount    Float? // cashier's declared count when initiating closure
+  closureInitiatedBy String?
+  closureInitiatedAt DateTime?
+  managerCountedAmount Float? // branch manager's physical count
+  closedBy          String?
+  closedAt          DateTime?
+  closureRejectedBy String?
+  closureRejectedAt DateTime?
+  closureRejectionReason String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   teller            Teller    @relation(fields: [tellerId], references: [id], onDelete: Cascade)
   cashier           Cashier   @relation(fields: [cashierId], references: [id], onDelete: Cascade)
+  varianceEvents    CashVarianceEvent[]
 
   @@index([tenantId, tellerId])
   @@index([tenantId, cashierId])
   @@index([tenantId, sessionStatus])
   @@index([sessionStartTime])
+  @@index([tenantId, cashierId, businessDate])
+  @@index([tenantId, officeId, businessDate])
+}
+
+model CashVarianceEvent {
+  id                     String                 @id @default(cuid())
+  tenantId               String
+  sessionId              String
+  cashierId              String
+  tellerId               String
+  officeId               Int?
+  businessDate           DateTime               @db.Date
+  type                   String // SHORTAGE, OVERAGE
+  amount                 Float // absolute value
+  currency               String
+  expectedBalance        Float
+  countedAmount          Float
+  status                 String                 @default("OPEN") // OPEN, UNDER_REVIEW, RESOLVED
+  resolutionType         String? // CASHIER_REPAID, COUNTING_ERROR, WRITTEN_OFF, SALARY_RECOVERY, POSTED_TO_SUSPENSE
+  resolutionNotes        String?
+  fineractJournalEntryId String?
+  vaultAllocationId      String? // vault CashAllocation created by the current resolution
+  raisedBy               String
+  raisedAt               DateTime               @default(now())
+  resolvedBy             String?
+  resolvedAt             DateTime?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  session                CashierSession         @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  cashier                Cashier                @relation(fields: [cashierId], references: [id], onDelete: Restrict)
+  logs                   CashVarianceEventLog[]
+
+  @@unique([sessionId])
+  @@index([tenantId, status])
+  @@index([tenantId, officeId, businessDate])
+  @@index([tenantId, cashierId, status])
+}
+
+model CashVarianceEventLog {
+  id                 String            @id @default(cuid())
+  tenantId           String
+  eventId            String
+  action             String // RAISED, STATUS_CHANGED, NOTE_ADDED, RESOLVED, REOPENED
+  fromStatus         String?
+  toStatus           String?
+  notes              String?
+  resolutionType     String?
+  vaultAdjustment    Float?
+  vaultAllocationId  String?
+  performedBy        String
+  createdAt          DateTime          @default(now())
+  event              CashVarianceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, eventId])
 }
 
 model LoanPayout {

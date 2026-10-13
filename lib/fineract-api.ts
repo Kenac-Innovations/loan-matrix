@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from "axios";
 import { transferClientToOfficeWithServiceAuth } from "./fineract-client-transfer-service";
+import { getClientServicingStatusWithServiceAuth } from "./fineract-client-servicing-status-service";
 import { getFineractBaseUrl } from "./fineract-base-url";
 import { normalizeFineractErrorPayload } from "./fineract-error";
 import {
@@ -597,13 +598,15 @@ export class FineractAPIService {
     return response.data;
   }
 
+  /** Read via the service account (see fineract-client-servicing-status-service). */
   async getClientServicingStatus(
     clientId: number
   ): Promise<ClientServicingStatusResponse> {
-    const response = await this.client.get<ClientServicingStatusResponse>(
-      `/client-servicing-statuses/clients/${clientId}`
-    );
-    return response.data;
+    return getClientServicingStatusWithServiceAuth({
+      baseUrl: this.config.baseUrl,
+      tenantId: this.config.tenantId,
+      clientId,
+    });
   }
 
   async updateClientServicingStatus(
@@ -1711,6 +1714,18 @@ export class FineractAPIService {
       console.error("Error rejecting loan:", { message: error.message, status: error.response?.status, data: error.response?.data });
       throw error;
     }
+  }
+
+  /**
+   * Staff id linked to a Fineract user, or null when the user has no staff link.
+   * Unlike getStaffByUserId, transport/auth errors are thrown so callers can
+   * fail closed instead of treating an outage as "no staff".
+   */
+  async getUserStaffIdStrict(userId: number): Promise<number | null> {
+    const response: AxiosResponse<{ staff?: { id?: number }; staffId?: number }> =
+      await this.client.get(`/users/${userId}`);
+    const staffId = Number(response.data?.staff?.id ?? response.data?.staffId);
+    return Number.isFinite(staffId) && staffId > 0 ? staffId : null;
   }
 
   // Get staff member by user ID

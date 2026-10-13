@@ -217,6 +217,22 @@ export function toFineractHolidayUpdatePayload(input: HolidayUpdateInput) {
   };
 }
 
+export const currencyUpdateInputSchema = z.object({
+  currencies: z
+    .array(
+      z
+        .string()
+        .trim()
+        .toUpperCase()
+        .regex(/^[A-Z]{3}$/, "Currency codes must be 3 letters."),
+    )
+    .min(1, "At least one currency must remain enabled.")
+    .refine(
+      (codes) => new Set(codes).size === codes.length,
+      "Duplicate currency codes are not allowed.",
+    ),
+});
+
 export function validationErrorMessage(error: z.ZodError) {
   return error.issues[0]?.message || "Please review the entered details.";
 }

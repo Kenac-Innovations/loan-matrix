@@ -4,6 +4,7 @@ import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { prisma } from "@/lib/prisma";
 import { getFineractServiceWithSession } from "@/lib/fineract-api";
 import { reverseMobileMoneyPayout } from "@/lib/mobile-money-transactions";
+import { pendingClosureBlockResponse } from "@/lib/cashier-session-guards";
 
 function formatDateForFineract(d: Date): string {
   const day = d.getDate();
@@ -163,6 +164,10 @@ export async function POST(
     }
 
     const txnNote = `Reversal - ${reason}`;
+
+    // Check if session closure is pending (freeze gap)
+    const blocked = await pendingClosureBlockResponse(tenant.id, cashier.id);
+    if (blocked) return blocked;
 
     // Send the payout amount to Fineract so net cash increases by that amount
     const txnAmountStr = allocationAmount.toFixed(2);

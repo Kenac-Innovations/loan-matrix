@@ -56,6 +56,13 @@ export enum SpecificPermission {
   // Special permission that grants all access
   ALL_FUNCTIONS = "ALL_FUNCTIONS",
   ALL_FUNCTIONS_READ = "ALL_FUNCTIONS_READ",
+
+  // Teller permissions
+  SETTLECASHFROMCASHIER_TELLER = "SETTLECASHFROMCASHIER_TELLER",
+  // Branch manager cash control: close/reject cashier sessions and act on cash variance events
+  CLOSESESSION_CASHIER = "CLOSESESSION_CASHIER",
+  // Read the session reconciliation report (incl. CSV)
+  READ_CASHRECONCILIATION = "READ_CASHRECONCILIATION",
 }
 
 export enum AccessLevel {
