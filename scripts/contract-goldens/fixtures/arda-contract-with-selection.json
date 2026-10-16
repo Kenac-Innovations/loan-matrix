@@ -1,0 +1,81 @@
+{
+  "template": "arda-contract",
+  "leadId": "clead007ardacontractwithsel",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "documentVariant": "ARDA_STOCK_INPUT",
+    "clientName": "Chinwe Mwila",
+    "nrc": "333333/44/4",
+    "dateOfBirth": "1989-05-18",
+    "gender": "Female",
+    "gflNo": "GFL-2026-007890",
+    "loanId": "LOAN-2026-007890",
+    "loanAmount": 100000,
+    "disbursedAmount": 0,
+    "tenure": "12 months",
+    "numberOfPayments": 12,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-05-15",
+    "interest": 15000,
+    "fees": 5000,
+    "totalCostOfCredit": 20000,
+    "totalRepayment": 120000,
+    "paymentPerPeriod": 10000,
+    "monthlyPercentageRate": 2.5,
+    "currency": "ZMW",
+    "branch": "Kasama",
+    "loanOfficer": "Robert Zulu",
+    "loanPurpose": "Agricultural input financing",
+    "executionPlace": "Kasama",
+    "executionDate": "2026-03-15",
+    "accountNumber": "ACC111222333",
+    "stockLoanSelection": {
+      "inventoryItemName": "Improved Maize Seed - ZM623",
+      "quantity": "50",
+      "unitOfMeasure": "bags",
+      "unitValue": "2000",
+      "totalValue": "100000",
+      "currencyCode": "ZMW",
+      "fineractOfficeName": "Kasama Agricultural Office"
+    },
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-05-15",
+        "paymentAmount": 10000,
+        "principal": 8333.33,
+        "interestAndFees": 1666.67,
+        "remainingBalance": 91666.67
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-06-15",
+        "paymentAmount": 10000,
+        "principal": 8333.33,
+        "interestAndFees": 1666.67,
+        "remainingBalance": 83333.34
+      },
+      {
+        "paymentNumber": 3,
+        "dueDate": "2026-07-15",
+        "paymentAmount": 10000,
+        "principal": 8333.33,
+        "interestAndFees": 1666.67,
+        "remainingBalance": 75000.01
+      },
+      {
+        "paymentNumber": 4,
+        "dueDate": "2026-08-15",
+        "paymentAmount": 10000,
+        "principal": 8333.33,
+        "interestAndFees": 1666.67,
+        "remainingBalance": 66666.68
+      }
+    ],
+    "charges": []
+  },
+  "signatures": {
+    "borrower": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "loanOfficer": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  }
+}

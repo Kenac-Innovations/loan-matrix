@@ -1,0 +1,83 @@
+{
+  "template": "omama",
+  "leadId": "clead010omamafull",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "clientName": "Ndaba Mwangi",
+    "nrc": "666666/77/7",
+    "dateOfBirth": "1985-04-08",
+    "gender": "Male",
+    "employeeNo": "EMP0099887",
+    "employer": "Copperbelt University",
+    "gflNo": "GFL-2026-010123",
+    "loanId": "LOAN-2026-010123",
+    "loanAmount": 35000,
+    "disbursedAmount": 35000,
+    "tenure": "9 months",
+    "numberOfPayments": 9,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-04-18",
+    "interest": 5250,
+    "fees": 1750,
+    "totalCostOfCredit": 7000,
+    "totalRepayment": 42000,
+    "paymentPerPeriod": 4666.67,
+    "monthlyPercentageRate": 2.2,
+    "currency": "ZMW",
+    "branch": "Ndola",
+    "loanOfficer": "Peter Siachela",
+    "loanPurpose": "Educational expenses",
+    "executionPlace": "Ndola",
+    "executionDate": "2026-03-15",
+    "firstname": "Ndaba",
+    "lastname": "Mwangi",
+    "mobileNo": "+260765556789",
+    "residentialAddress": "789 Mining Avenue, Ndola",
+    "accountNumber": "ACC222333444",
+    "branchName": "Ndola Branch",
+    "sortCode": "GFLZM",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-18",
+        "paymentAmount": 4666.67,
+        "principal": 3888.89,
+        "interestAndFees": 777.78,
+        "remainingBalance": 31111.11
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-18",
+        "paymentAmount": 4666.67,
+        "principal": 3888.89,
+        "interestAndFees": 777.78,
+        "remainingBalance": 27222.22
+      },
+      {
+        "paymentNumber": 3,
+        "dueDate": "2026-06-18",
+        "paymentAmount": 4666.67,
+        "principal": 3888.89,
+        "interestAndFees": 777.78,
+        "remainingBalance": 23333.33
+      }
+    ],
+    "charges": [
+      {
+        "name": "Documentation Fee",
+        "amount": 350
+      },
+      {
+        "name": "Monthly Processing Fee",
+        "amount": 1400
+      }
+    ]
+  },
+  "signatures": {
+    "borrower": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "guarantor": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "loanOfficer": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  },
+  "logoUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "templateFile": "omama-full-loan/full-loan-template-from-db.html"
+}

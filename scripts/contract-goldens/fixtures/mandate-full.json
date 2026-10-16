@@ -1,0 +1,56 @@
+{
+  "template": "mandate",
+  "leadId": "clead005mandatefull",
+  "now": "2026-03-15T10:30:00+02:00",
+  "data": {
+    "clientName": "David Chishala",
+    "nrc": "111111/22/2",
+    "dateOfBirth": "1986-11-05",
+    "gender": "Male",
+    "gflNo": "GFL-2026-005678",
+    "loanAmount": 40000,
+    "disbursedAmount": 40000,
+    "tenure": "12 months",
+    "numberOfPayments": 12,
+    "paymentFrequency": "Monthly",
+    "firstPaymentDate": "2026-04-15",
+    "interest": 6000,
+    "fees": 2000,
+    "totalCostOfCredit": 8000,
+    "totalRepayment": 48000,
+    "paymentPerPeriod": 4000,
+    "monthlyPercentageRate": 2.0,
+    "currency": "ZMW",
+    "branch": "Chilanga",
+    "mobileNo": "+260763334567",
+    "residentialAddress": "123 Independence Avenue, Lusaka",
+    "bankName": "Standard Chartered Bank",
+    "branchName": "Chilanga Branch",
+    "sortCode": "SCBLZM",
+    "accountNumber": "ACC123456789",
+    "repaymentSchedule": [
+      {
+        "paymentNumber": 1,
+        "dueDate": "2026-04-15",
+        "paymentAmount": 4000,
+        "principal": 3333.33,
+        "interestAndFees": 666.67,
+        "remainingBalance": 36666.67
+      },
+      {
+        "paymentNumber": 2,
+        "dueDate": "2026-05-15",
+        "paymentAmount": 4000,
+        "principal": 3333.33,
+        "interestAndFees": 666.67,
+        "remainingBalance": 33333.34
+      }
+    ],
+    "charges": []
+  },
+  "signatures": {
+    "borrower": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+  },
+  "organizationName": "Goodfellow Finance Limited",
+  "logoUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+}
