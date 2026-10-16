@@ -10,6 +10,7 @@ import {
 import { getTenantFromHeaders } from "@/lib/tenant-service";
 import { getSession, getCurrentUserDetails } from "@/lib/auth";
 import { resolveInterestRateDisplayMode } from "@/lib/interest-rate-display";
+import { generateRulethuLoanStatementHTML, isRulethuStatementTenant } from "@/lib/rulethu-loan-statement";
 
 /**
  * GET /api/fineract/loans/[id]/statement
@@ -122,6 +123,24 @@ export async function GET(
     }
 
     // Filter transactions by date if provided
+    // The installment schedule contains current allocations, not historical snapshots.
+    // Do not label current balances as a historical Rulethu statement.
+    if (isRulethuStatementTenant(tenant?.slug) && format !== "json") {
+      if (hasTransactionDateFilter) {
+        return NextResponse.json(
+          { error: "Rulethu installment statements show current balances. Remove the from/to filters to view the statement." },
+          { status: 400 }
+        );
+      }
+      const html = generateRulethuLoanStatementHTML(loanData, clientData, companyInfo, preparedBy);
+      return new NextResponse(html, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Disposition": `inline; filename="loan-statement-${loanData.accountNo}.html"`,
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
     let transactions = loanData.transactions || [];
     let openingPrincipalBalance = 0;
     let openingRunningBalance = 0;
